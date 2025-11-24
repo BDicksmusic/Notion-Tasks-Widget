@@ -55,8 +55,8 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "",
-      "repo": ""
+      "owner": "BDicksmusic",
+      "repo": "Notion-Tasks-Widget"
     }
   },
   "keywords": [],
