@@ -1,0 +1,352 @@
+:root {
+  color-scheme: dark;
+  --notion-bg: #191919;
+  --notion-bg-secondary: #202020;
+  --notion-bg-hover: rgba(255, 255, 255, 0.055);
+  --notion-bg-active: rgba(255, 255, 255, 0.09);
+  --notion-border: rgba(255, 255, 255, 0.09);
+  --notion-text: rgba(255, 255, 255, 0.9);
+  --notion-text-muted: rgba(255, 255, 255, 0.443);
+  --notion-blue: #2383e2;
+  --notion-red: #e03e3e;
+  --notion-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, 'Apple Color Emoji', Arial, sans-serif;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--notion-font);
+  background: var(--notion-bg);
+  color: var(--notion-text);
+  overflow-y: auto !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+.settings-shell {
+  min-height: 100vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--notion-bg);
+  border-bottom: 1px solid var(--notion-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  -webkit-app-region: drag;
+}
+
+.settings-header-info {
+  -webkit-app-region: no-drag;
+}
+
+.settings-header .eyebrow {
+  display: none; /* Notion doesn't usually show this in settings headers */
+}
+
+.settings-header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--notion-text);
+}
+
+.settings-header .subtitle {
+  display: none; /* Simplify to match Notion modal */
+}
+
+.settings-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.settings-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0; /* Sections will touch or have margin */
+  padding: 0 0 40px;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.settings-card {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--notion-border);
+  border-radius: 0;
+  padding: 32px 24px;
+  box-shadow: none;
+}
+
+.settings-card:last-child {
+  border-bottom: none;
+}
+
+.settings-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.settings-card h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--notion-text);
+}
+
+.settings-card-header p {
+  margin: 0;
+  color: var(--notion-text-muted);
+  font-size: 14px;
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.field-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--notion-text-muted);
+}
+
+.field input,
+.field textarea {
+  border-radius: 4px;
+  border: 1px solid var(--notion-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--notion-text);
+  padding: 6px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 100ms ease, background 100ms ease;
+}
+
+.field input:hover,
+.field textarea:hover {
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.field input:focus,
+.field textarea:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.field textarea {
+  min-height: 80px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.field-hint {
+  color: var(--notion-text-muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 12px;
+}
+
+.form-actions button {
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-weight: 500;
+  cursor: pointer;
+  background: var(--notion-blue);
+  color: white;
+  font-size: 14px;
+  transition: background 100ms ease;
+}
+
+.form-actions button:hover {
+  background: #1d70c2;
+}
+
+.form-actions button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.feedback {
+  font-size: 12px;
+  margin: 0;
+  font-weight: 500;
+  margin-top: 4px;
+}
+
+.feedback.success {
+  color: var(--matrix-green);
+}
+
+.feedback.error {
+  color: var(--notion-red);
+}
+
+.settings-loading,
+.settings-error {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--notion-text-muted);
+  font-size: 14px;
+}
+
+.settings-error {
+  color: var(--notion-red);
+}
+
+/* App Preferences specific layout */
+.app-preferences {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  color: var(--notion-text);
+}
+
+.switch input {
+  display: none;
+}
+
+.slider {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+  transition: background-color 0.2s;
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.switch input:checked + .slider {
+  background-color: var(--notion-blue);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(14px);
+}
+
+.switch:hover .slider {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.switch input:checked:hover + .slider {
+  background-color: #1d70c2;
+}
+
+.app-actions {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.pill.ghost {
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--notion-text-muted);
+  padding: 6px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.pill.ghost:hover {
+  background: var(--notion-bg-hover);
+  color: var(--notion-text);
+  border-color: transparent;
+}
+
+.icon-button {
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--notion-text-muted);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+  font-size: 16px;
+}
+
+.icon-button:hover {
+  background: var(--notion-bg-hover);
+  color: var(--notion-text);
+}
+
+.close-button:hover {
+  background: var(--notion-bg-hover); /* Notion just highlights background, doesn't turn red usually */
+  color: var(--notion-text);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 5px;
+  border: 2px solid var(--notion-bg); /* Padding effect */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

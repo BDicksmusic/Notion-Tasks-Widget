@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "lib": ["ES2020", "DOM"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"],
+      "@common/*": ["src/common/*"]
+    }
+  },
+  "include": ["src/renderer", "src/shared", "src/common", "src/types"],
+  "exclude": ["dist", "node_modules"]
+}
+
+
+
+

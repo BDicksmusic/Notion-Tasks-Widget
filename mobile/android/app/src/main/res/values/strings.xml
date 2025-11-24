@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Notion Tasks Widget</string>
+    <string name="title_activity_main">Notion Tasks Widget</string>
+    <string name="package_name">com.notiontasks.widget.mobile</string>
+    <string name="custom_url_scheme">com.notiontasks.widget.mobile</string>
+</resources>

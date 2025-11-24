@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "CommonJS",
+    "lib": ["ES2020"],
+    "outDir": "dist/main",
+    "rootDir": "src",
+    "types": ["node"],
+    "declaration": false,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["src/shared/*"],
+      "@common/*": ["src/common/*"]
+    }
+  },
+  "include": ["src/main/**/*.ts", "src/shared/**/*.ts", "src/common/**/*.ts"],
+  "exclude": [
+    "src/renderer",
+    "dist",
+    "node_modules",
+    "src/shared/platform/mobile/**/*",
+    "src/shared/platform/mobileBridge.ts"
+  ]
+}
+
