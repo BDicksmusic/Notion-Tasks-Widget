@@ -143,6 +143,9 @@ export interface NotionSettings {
   parentTaskProperty?: string;
   // Initial status to reset to after recurring completion
   initialStatus?: string;
+  // Widget Link - Date property to track when task was last synced to widget
+  // This is updated every time a task is pushed to Notion
+  widgetLinkProperty?: string;
 }
 
 export interface AppPreferences {

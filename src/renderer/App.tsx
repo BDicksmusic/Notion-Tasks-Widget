@@ -703,6 +703,28 @@ const App = () => {
     };
   }, [appPreferences?.autoRefreshTasks, fetchTasks]);
 
+  // Focus-based sync: trigger sync when window gains focus
+  // This catches changes made in Notion while user was away
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const handleWindowFocus = () => {
+      // Trigger background sync when window gains focus
+      if (typeof widgetAPI.forceSync === 'function') {
+        widgetAPI.forceSync().catch((error) => {
+          console.error('Focus-triggered sync failed', error);
+        });
+      }
+      // Also refresh local task list to show any new data
+      fetchTasks();
+    };
+    
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [fetchTasks]);
+
   const handleAddTask = useCallback(
     async (payload: NotionCreatePayload) => {
       try {

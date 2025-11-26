@@ -940,9 +940,14 @@ ipcMain.handle('tasks:fetch', async () => {
 ipcMain.handle('tasks:getSubtasks', async (_event, parentTaskId: string) => {
   return getSubtasks(parentTaskId);
 });
-ipcMain.handle('tasks:add', async (_event, payload: NotionCreatePayload) =>
-  createLocalTask(payload)
-);
+ipcMain.handle('tasks:add', async (_event, payload: NotionCreatePayload) => {
+  const task = createLocalTask(payload);
+  // Immediately push to Notion - user's work is top priority!
+  syncEngine.pushImmediate().catch((err) => {
+    console.error('[IPC] tasks:add - immediate push failed:', err);
+  });
+  return task;
+});
 ipcMain.handle(
   'tasks:update',
   async (_event, taskId: string, updates: TaskUpdatePayload) => {
@@ -1030,6 +1035,10 @@ ipcMain.handle(
     const updated = updateLocalTask(taskId, finalUpdates);
     BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('tasks:updated', updated);
+    });
+    // Immediately push to Notion - user's work is top priority!
+    syncEngine.pushImmediate().catch((err) => {
+      console.error('[IPC] tasks:update - immediate push failed:', err);
     });
     return updated;
   }
@@ -1287,13 +1296,28 @@ ipcMain.handle('localStatus:mergeNotionStatuses', async () => {
 // Projects can be created locally and synced to Notion later
 // ============================================================================
 ipcMain.handle('localProject:create', (_event, payload: CreateLocalProjectPayload) => {
-  return createLocalProject(payload);
+  const project = createLocalProject(payload);
+  // Immediately push to Notion
+  syncEngine.pushImmediate().catch((err) => {
+    console.error('[IPC] localProject:create - immediate push failed:', err);
+  });
+  return project;
 });
 ipcMain.handle('localProject:update', (_event, projectId: string, updates: Partial<CreateLocalProjectPayload>) => {
-  return updateLocalProject(projectId, updates);
+  const project = updateLocalProject(projectId, updates);
+  // Immediately push to Notion
+  syncEngine.pushImmediate().catch((err) => {
+    console.error('[IPC] localProject:update - immediate push failed:', err);
+  });
+  return project;
 });
 ipcMain.handle('localProject:delete', (_event, projectId: string) => {
-  return deleteLocalProject(projectId);
+  const result = deleteLocalProject(projectId);
+  // Immediately push to Notion
+  syncEngine.pushImmediate().catch((err) => {
+    console.error('[IPC] localProject:delete - immediate push failed:', err);
+  });
+  return result;
 });
 ipcMain.handle('localProject:get', (_event, projectId: string) => {
   return getProject(projectId);
@@ -1373,12 +1397,21 @@ ipcMain.handle(
   async (_event, payload: WritingEntryPayload) => {
     createLocalWritingEntry(payload);
     notifyWritingEntryCaptured();
+    // Immediately push to Notion
+    syncEngine.pushImmediate().catch((err) => {
+      console.error('[IPC] writing:createEntry - immediate push failed:', err);
+    });
   }
 );
 ipcMain.handle(
   'timeLog:createEntry',
   async (_event, payload: TimeLogEntryPayload) => {
-    return createLocalTimeLogEntry(payload);
+    const entry = createLocalTimeLogEntry(payload);
+    // Immediately push to Notion
+    syncEngine.pushImmediate().catch((err) => {
+      console.error('[IPC] timeLog:createEntry - immediate push failed:', err);
+    });
+    return entry;
   }
 );
 ipcMain.handle(
@@ -1420,13 +1453,22 @@ ipcMain.handle(
 ipcMain.handle(
   'timeLog:update',
   async (_event, entryId: string, updates: TimeLogUpdatePayload) => {
-    return updateLocalTimeLogEntry(entryId, updates);
+    const entry = updateLocalTimeLogEntry(entryId, updates);
+    // Immediately push to Notion
+    syncEngine.pushImmediate().catch((err) => {
+      console.error('[IPC] timeLog:update - immediate push failed:', err);
+    });
+    return entry;
   }
 );
 ipcMain.handle(
   'timeLog:delete',
   async (_event, entryId: string) => {
     deleteLocalTimeLogEntry(entryId);
+    // Immediately push to Notion
+    syncEngine.pushImmediate().catch((err) => {
+      console.error('[IPC] timeLog:delete - immediate push failed:', err);
+    });
   }
 );
 ipcMain.handle(

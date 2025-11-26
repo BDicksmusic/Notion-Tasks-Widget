@@ -636,8 +636,11 @@ class SyncEngine extends EventEmitter {
     try {
       this.ensureTaskCacheMatchesFilter();
       
-      // Check if initial import is needed - do this FIRST
-      // Don't let push failures block the import
+      // ALWAYS push pending changes FIRST - local changes take priority!
+      // User's work should go to Notion immediately, even during import
+      await this.pushPending();
+      
+      // Check if initial import is needed
       if (!this.isInitialImportDone()) {
         // Only start import if not already running
         if (!this.importRunning) {
@@ -646,13 +649,26 @@ class SyncEngine extends EventEmitter {
         return;
       }
       
-      // Push pending changes after import is complete
-      await this.pushPending();
-      
       // Regular sync cycle - pull from Notion
       await this.pullRemote();
     } finally {
       this.running = false;
+    }
+  }
+
+  /**
+   * Immediately push any pending local changes to Notion.
+   * Call this after creating/updating a task for instant sync.
+   * This is separate from tick() to avoid blocking the UI.
+   */
+  async pushImmediate(): Promise<void> {
+    // Don't block if another operation is running
+    // Just push pending changes directly
+    try {
+      await this.pushPending();
+    } catch (error) {
+      console.error('[SyncEngine] Immediate push failed:', error);
+      // Don't throw - the queue will retry on next tick
     }
   }
 

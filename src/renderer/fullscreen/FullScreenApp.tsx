@@ -387,7 +387,7 @@ const FullScreenApp = () => {
   const [searchQuery, setSearchQuery] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     return window.localStorage?.getItem(SEARCH_QUERY_STORAGE_KEY) ?? '';
-  });
+    });
   const [sortHold, setSortHold] = useState<Record<string, number>>({});
   const [displayTasks, setDisplayTasks] = useState<Task[]>([]);
   const [quickAddCollapsed, setQuickAddCollapsed] = useState(false);
@@ -1711,6 +1711,25 @@ const FullScreenApp = () => {
     };
   }, [appPreferences?.autoRefreshTasks, fetchTasks]);
 
+  // Focus-based sync: trigger sync when window gains focus
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const handleWindowFocus = () => {
+      if (typeof widgetAPI.forceSync === 'function') {
+        widgetAPI.forceSync().catch((error) => {
+          console.error('Focus-triggered sync failed', error);
+        });
+      }
+      fetchTasks();
+    };
+    
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [fetchTasks]);
+
   const handleAddTask = useCallback(
     async (payload: NotionCreatePayload) => {
       try {
@@ -1974,10 +1993,10 @@ const FullScreenApp = () => {
     searchQuery
       ? `No tasks match "${searchQuery}"`
       : dayFilter === 'today'
-        ? 'No tasks due today match these filters.'
-        : dayFilter === 'week'
-          ? 'No tasks due this week match these filters.'
-          : 'No tasks match the current filters.';
+      ? 'No tasks due today match these filters.'
+      : dayFilter === 'week'
+        ? 'No tasks due this week match these filters.'
+      : 'No tasks match the current filters.';
 
   const handleUpdateTask = useCallback(
     async (taskId: string, updates: TaskUpdatePayload) => {
@@ -2679,29 +2698,29 @@ const FullScreenApp = () => {
   // Render organizer toolbar (filter/sort/group/search buttons) - reusable across views
   const renderOrganizerToolbar = (variant: 'compact' | 'full' = 'full', hideSearch = false) => (
     <div className={`widget-toolbar ${variant === 'compact' ? 'is-compact' : ''}`}>
-      <div className="task-organizer">
-        <OrganizerIconButton
-          label="Filters"
-          icon={<FilterIcon />}
-          pressed={filtersPanelOpen}
-          highlighted={filterTriggerHighlighted}
-          onClick={() => toggleOrganizerPanel('filters')}
-          ariaControls="task-organizer-panel"
-          title={filterSummary}
-        />
-      </div>
-      <SortButton
-        sortRules={sortRules}
-        isOpen={sortPanelOpen}
-        onToggle={() => toggleOrganizerPanel('sort')}
-        ariaControls="task-organizer-panel"
-      />
-      <GroupButton
-        grouping={grouping}
-        isOpen={groupPanelOpen}
-        onToggle={() => toggleOrganizerPanel('group')}
-        ariaControls="task-organizer-panel"
-      />
+              <div className="task-organizer">
+                <OrganizerIconButton
+                  label="Filters"
+                  icon={<FilterIcon />}
+                  pressed={filtersPanelOpen}
+                  highlighted={filterTriggerHighlighted}
+                  onClick={() => toggleOrganizerPanel('filters')}
+                  ariaControls="task-organizer-panel"
+                  title={filterSummary}
+                />
+              </div>
+              <SortButton
+                sortRules={sortRules}
+                isOpen={sortPanelOpen}
+                onToggle={() => toggleOrganizerPanel('sort')}
+                ariaControls="task-organizer-panel"
+              />
+              <GroupButton
+                grouping={grouping}
+                isOpen={groupPanelOpen}
+                onToggle={() => toggleOrganizerPanel('group')}
+                ariaControls="task-organizer-panel"
+              />
       {!hideSearch && (
         <div className="task-organizer">
           <OrganizerIconButton
@@ -2716,163 +2735,163 @@ const FullScreenApp = () => {
         </div>
       )}
       {variant === 'full' && !searchQuery && filterSummaryParts.length > 0 && (
-        <span className="filter-summary-text" title={filterSummary}>
-          {filterSummary}
-        </span>
-      )}
-    </div>
+                <span className="filter-summary-text" title={filterSummary}>
+                  {filterSummary}
+                </span>
+              )}
+            </div>
   );
 
   // Render organizer panels (filter/sort/group dropdowns) - reusable across views
   const renderOrganizerPanels = () => (
     <>
-      {filtersPanelOpen && (
+                {filtersPanelOpen && (
         <div className="task-organizer-pane sidebar-organizer-pane compact-filters">
-          <div className="task-organizer-section">
+                    <div className="task-organizer-section">
             {/* Compact single-row filter layout */}
             <div className="filter-row-compact">
-              <div
-                className="widget-switch task-filter-switch day-filter-switch"
-                role="group"
-                aria-label="Day filter"
-              >
-                <button
-                  type="button"
-                  data-day="all"
-                  className={dayFilter === 'all' ? 'active' : ''}
-                  aria-pressed={dayFilter === 'all'}
-                  onClick={() => setDayFilter('all')}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  data-day="today"
-                  className={dayFilter === 'today' ? 'active' : ''}
-                  aria-pressed={dayFilter === 'today'}
-                  onClick={() => setDayFilter('today')}
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  data-day="week"
-                  className={dayFilter === 'week' ? 'active' : ''}
-                  aria-pressed={dayFilter === 'week'}
-                  onClick={() => setDayFilter('week')}
-                >
-                  Week
-                </button>
-              </div>
+                          <div
+                            className="widget-switch task-filter-switch day-filter-switch"
+                            role="group"
+                            aria-label="Day filter"
+                          >
+                            <button
+                              type="button"
+                              data-day="all"
+                              className={dayFilter === 'all' ? 'active' : ''}
+                              aria-pressed={dayFilter === 'all'}
+                              onClick={() => setDayFilter('all')}
+                            >
+                              All
+                            </button>
+                            <button
+                              type="button"
+                              data-day="today"
+                              className={dayFilter === 'today' ? 'active' : ''}
+                              aria-pressed={dayFilter === 'today'}
+                              onClick={() => setDayFilter('today')}
+                            >
+                              Today
+                            </button>
+                            <button
+                              type="button"
+                              data-day="week"
+                              className={dayFilter === 'week' ? 'active' : ''}
+                              aria-pressed={dayFilter === 'week'}
+                              onClick={() => setDayFilter('week')}
+                            >
+                              Week
+                            </button>
+                          </div>
               
-              <div
-                className="widget-switch task-filter-switch status-switch"
-                role="group"
-                aria-label="Status filter"
-              >
-                {STATUS_FILTER_BUTTONS.map((option) => {
-                  const isActive = statusFilter === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      data-status={toFilterSlug(option.value)}
-                      className={isActive ? 'active' : ''}
-                      aria-pressed={isActive}
-                      onClick={() =>
-                        setStatusFilter((prev) =>
-                          prev === option.value ? 'all' : option.value
-                        )
-                      }
-                      title={option.label}
-                      aria-label={option.label}
-                    >
-                      {option.emoji ?? option.label}
-                    </button>
-                  );
-                })}
-              </div>
+                          <div
+                            className="widget-switch task-filter-switch status-switch"
+                            role="group"
+                            aria-label="Status filter"
+                          >
+                            {STATUS_FILTER_BUTTONS.map((option) => {
+                              const isActive = statusFilter === option.value;
+                              return (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  data-status={toFilterSlug(option.value)}
+                                  className={isActive ? 'active' : ''}
+                                  aria-pressed={isActive}
+                                  onClick={() =>
+                                    setStatusFilter((prev) =>
+                                      prev === option.value ? 'all' : option.value
+                                    )
+                                  }
+                                  title={option.label}
+                                  aria-label={option.label}
+                                >
+                                  {option.emoji ?? option.label}
+                                </button>
+                              );
+                            })}
+                          </div>
               
-              <div
-                className="widget-switch task-filter-switch deadline-filter-switch"
-                role="group"
-                aria-label="Deadline filter"
-              >
-                <button
-                  type="button"
-                  data-deadline="all"
-                  className={deadlineFilter === 'all' ? 'active' : ''}
-                  aria-pressed={deadlineFilter === 'all'}
-                  onClick={() => setDeadlineFilter('all')}
-                >
-                  All
-                </button>
-                <button
-                  type="button"
-                  data-deadline="hard"
-                  className={deadlineFilter === 'hard' ? 'active' : ''}
-                  aria-pressed={deadlineFilter === 'hard'}
-                  onClick={() => setDeadlineFilter('hard')}
-                >
-                  Hard only
-                </button>
-              </div>
+                          <div
+                            className="widget-switch task-filter-switch deadline-filter-switch"
+                            role="group"
+                            aria-label="Deadline filter"
+                          >
+                            <button
+                              type="button"
+                              data-deadline="all"
+                              className={deadlineFilter === 'all' ? 'active' : ''}
+                              aria-pressed={deadlineFilter === 'all'}
+                              onClick={() => setDeadlineFilter('all')}
+                            >
+                              All
+                            </button>
+                            <button
+                              type="button"
+                              data-deadline="hard"
+                              className={deadlineFilter === 'hard' ? 'active' : ''}
+                              aria-pressed={deadlineFilter === 'hard'}
+                              onClick={() => setDeadlineFilter('hard')}
+                            >
+                              Hard only
+                            </button>
+                          </div>
               
-              <div
-                className="widget-switch task-filter-switch matrix-switch"
-                role="group"
-                aria-label="Matrix filter"
-              >
-                {MATRIX_FILTER_BUTTONS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    data-matrix={toFilterSlug(option.id)}
+                          <div
+                            className="widget-switch task-filter-switch matrix-switch"
+                            role="group"
+                            aria-label="Matrix filter"
+                          >
+                            {MATRIX_FILTER_BUTTONS.map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                data-matrix={toFilterSlug(option.id)}
                     className={matrixFilter === option.id ? 'active' : ''}
-                    aria-pressed={matrixFilter === option.id}
-                    onClick={() => setMatrixFilter(option.id)}
-                    title={option.description}
-                    aria-label={option.description}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="task-organizer-section-footer">
-              <span className="task-organizer-section-meta">
-                {filterSummary}
-              </span>
-              <button
-                type="button"
-                className="task-organizer-close"
-                onClick={() => setActiveOrganizerPanel(null)}
+                                aria-pressed={matrixFilter === option.id}
+                                onClick={() => setMatrixFilter(option.id)}
+                                title={option.description}
+                                aria-label={option.description}
+                              >
+                                {option.label}
+                              </button>
+                            ))}
+                        </div>
+                      </div>
+                      <div className="task-organizer-section-footer">
+                        <span className="task-organizer-section-meta">
+                          {filterSummary}
+                        </span>
+                          <button
+                            type="button"
+                            className="task-organizer-close"
+                            onClick={() => setActiveOrganizerPanel(null)}
                 aria-label="Close filters"
-              >
+                          >
                 ✕
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+                          </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
       {sortPanelOpen && (
         <div className="task-organizer-pane sidebar-organizer-pane">
-          <SortPanel
-            sortRules={sortRules}
-            onSortRulesChange={setSortRules}
-            onClose={() => setActiveOrganizerPanel(null)}
-          />
-        </div>
-      )}
+                <SortPanel
+                  sortRules={sortRules}
+                  onSortRulesChange={setSortRules}
+                  onClose={() => setActiveOrganizerPanel(null)}
+                />
+              </div>
+            )}
       {groupPanelOpen && (
         <div className="task-organizer-pane sidebar-organizer-pane">
-          <GroupPanel
-            grouping={grouping}
-            onGroupingChange={setGrouping}
-            onClose={() => setActiveOrganizerPanel(null)}
-          />
-        </div>
-      )}
+                <GroupPanel
+                  grouping={grouping}
+                  onGroupingChange={setGrouping}
+                  onClose={() => setActiveOrganizerPanel(null)}
+                />
+              </div>
+            )}
     </>
   );
 
@@ -3031,17 +3050,17 @@ const FullScreenApp = () => {
         return (
           <div key="list" className="dashboard-panel panel-list" style={panelStyle}>
             <div className="dashboard-panel-body">
-              <TaskList
+            <TaskList
                 tasks={filteredTasks}
-                loading={loading}
-                error={error}
-                statusOptions={statusOptions}
-                manualStatuses={manualStatuses}
-                completedStatus={notionSettings?.completedStatus}
-                onUpdateTask={handleUpdateTask}
-                emptyMessage={filterEmptyMessage}
-                grouping={visibleGrouping}
-                groups={visibleGroups}
+              loading={loading}
+              error={error}
+              statusOptions={statusOptions}
+              manualStatuses={manualStatuses}
+              completedStatus={notionSettings?.completedStatus}
+              onUpdateTask={handleUpdateTask}
+              emptyMessage={filterEmptyMessage}
+              grouping={visibleGrouping}
+              groups={visibleGroups}
                 sortHold={sortHold}
                 holdDuration={SORT_HOLD_DURATION}
                 onPopOutTask={
@@ -4864,11 +4883,11 @@ const FullScreenApp = () => {
               </button>
               {!quickAddCollapsed && (
                 <div className="quick-add-content">
-                  <QuickAdd
-                    onAdd={handleAddTask}
-                    statusOptions={statusOptions}
-                    manualStatuses={manualStatuses}
-                    completedStatus={notionSettings?.completedStatus}
+              <QuickAdd
+                onAdd={handleAddTask}
+                statusOptions={statusOptions}
+                manualStatuses={manualStatuses}
+                completedStatus={notionSettings?.completedStatus}
                     isCollapsed={false}
                     onCollapseToggle={() => setQuickAddCollapsed(true)}
                     projects={projects}
@@ -5005,9 +5024,9 @@ const FullScreenApp = () => {
                     onChange={(e) => setCalendarCustomDays(parseInt(e.target.value, 10))}
                     className="calendar-custom-days-slider"
                     title={`${calendarCustomDays} days`}
-                  />
-                )}
-              </div>
+              />
+            )}
+          </div>
               <div className="calendar-list-view-toggle">
                 <button
                   type="button"
@@ -6191,10 +6210,10 @@ const FullScreenApp = () => {
                 </button>
               </div>
               <div className="notes-panel-content">
-                <WritingWidget
-                  settings={writingSettings}
-                  onCreate={handleCreateWritingEntry}
-                />
+          <WritingWidget
+            settings={writingSettings}
+            onCreate={handleCreateWritingEntry}
+          />
               </div>
             </aside>
           </div>

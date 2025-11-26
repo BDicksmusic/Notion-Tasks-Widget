@@ -527,7 +527,9 @@ function loadTaskDefaults(): NotionSettings {
     projectRelationProperty: envDefault(
       'NOTION_TASK_PROJECT_RELATION_PROP',
       ''
-    ).trim()
+    ).trim(),
+    // Widget Link - Date property updated on every sync to track linked tasks
+    widgetLinkProperty: envDefault('NOTION_TASK_WIDGET_LINK_PROP', 'Widget Link').trim() || undefined
   };
 }
 
