@@ -49,6 +49,16 @@ export interface WidgetAPI {
   getStatusOptions(): Promise<TaskStatusOption[]>;
   getOrderOptions(): Promise<TaskOrderOption[]>;
   getSubtasks(parentTaskId: string): Promise<Task[]>;
+  
+  // Trash Management
+  listTrashedTasks(): Promise<Task[]>;
+  countTrashedTasks(): Promise<number>;
+  restoreTaskFromTrash(taskId: string): Promise<Task | null>;
+  permanentlyDeleteTask(taskId: string): Promise<boolean>;
+  emptyTrash(): Promise<number>;
+  cleanupOldTrashedTasks(daysOld?: number): Promise<number>;
+  onTrashChanged(callback: () => void): () => void;
+  
   openTaskWindow(taskId: string): Promise<void>;
   resizeWindow(
     direction: ResizeDirection,

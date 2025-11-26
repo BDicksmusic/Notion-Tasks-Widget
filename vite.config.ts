@@ -70,7 +70,10 @@ export default defineConfig({
         widgetSettings: path.resolve(rendererRoot, 'widget-settings.html'),
         fullscreen: path.resolve(rendererRoot, 'fullscreen.html'),
         calendar: path.resolve(rendererRoot, 'calendar.html')
-      }
+      },
+      external: [
+        '@huggingface/transformers'
+      ]
     }
   }
 });

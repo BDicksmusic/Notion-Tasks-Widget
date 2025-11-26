@@ -178,6 +178,15 @@ const migrations: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_chat_summaries_created ON chat_summaries(created_at DESC);`,
       `CREATE INDEX IF NOT EXISTS idx_chat_summaries_sync ON chat_summaries(sync_status);`
     ]
+  },
+  {
+    id: '006_task_trash',
+    statements: [
+      // Add trashed_at column to track when tasks were detected as deleted in Notion
+      `ALTER TABLE tasks ADD COLUMN trashed_at TEXT;`,
+      // Index for efficiently querying trashed tasks
+      `CREATE INDEX IF NOT EXISTS idx_tasks_trashed ON tasks(trashed_at) WHERE trashed_at IS NOT NULL;`
+    ]
   }
 ];
 

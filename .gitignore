@@ -1,11 +1,13 @@
 # Dependencies
 node_modules/
-package-lock.json
+# Note: package-lock.json is tracked for reproducible builds in CI/CD
 
 # Build outputs
 dist/
-build/
 release/
+# Keep build resources (icons, update config) but ignore build artifacts
+build/*.exe
+build/*.msi
 *.exe
 *.7z
 win-unpacked/

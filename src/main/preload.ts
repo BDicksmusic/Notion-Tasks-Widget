@@ -33,6 +33,32 @@ const widgetAPI: WidgetAPI = {
   getSubtasks(parentTaskId: string) {
     return ipcRenderer.invoke('tasks:getSubtasks', parentTaskId);
   },
+  
+  // Trash Management API
+  listTrashedTasks() {
+    return ipcRenderer.invoke('trash:list');
+  },
+  countTrashedTasks() {
+    return ipcRenderer.invoke('trash:count');
+  },
+  restoreTaskFromTrash(taskId: string) {
+    return ipcRenderer.invoke('trash:restore', taskId);
+  },
+  permanentlyDeleteTask(taskId: string) {
+    return ipcRenderer.invoke('trash:delete', taskId);
+  },
+  emptyTrash() {
+    return ipcRenderer.invoke('trash:empty');
+  },
+  cleanupOldTrashedTasks(daysOld?: number) {
+    return ipcRenderer.invoke('trash:cleanup', daysOld);
+  },
+  onTrashChanged(callback: () => void) {
+    const listener = () => callback();
+    ipcRenderer.on('trash:changed', listener);
+    return () => ipcRenderer.removeListener('trash:changed', listener);
+  },
+  
   openTaskWindow(taskId) {
     return ipcRenderer.invoke('taskWindow:open', taskId);
   },

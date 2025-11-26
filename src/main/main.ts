@@ -30,7 +30,14 @@ import {
   importTasksFromJson,
   getTaskCount,
   buildSubtaskRelationships,
-  getSubtasks
+  getSubtasks,
+  // Trash management
+  listTrashedTasks,
+  countTrashedTasks,
+  restoreTaskFromTrash,
+  permanentlyDeleteTask,
+  emptyTrash,
+  cleanupOldTrashedTasks
 } from './db/repositories/taskRepository';
 import type {
   AppPreferences,
@@ -1045,6 +1052,58 @@ ipcMain.handle(
 );
 ipcMain.handle('tasks:statusOptions', () => getStatusOptions());
 ipcMain.handle('tasks:orderOptions', () => getOrderOptions());
+
+// ============================================================================
+// TRASH MANAGEMENT
+// View, restore, or permanently delete tasks that were deleted in Notion
+// ============================================================================
+ipcMain.handle('trash:list', () => {
+  return listTrashedTasks();
+});
+
+ipcMain.handle('trash:count', () => {
+  return countTrashedTasks();
+});
+
+ipcMain.handle('trash:restore', (_event, taskId: string) => {
+  const restored = restoreTaskFromTrash(taskId);
+  if (restored) {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('tasks:updated', restored);
+      window.webContents.send('trash:changed');
+    });
+  }
+  return restored;
+});
+
+ipcMain.handle('trash:delete', (_event, taskId: string) => {
+  const deleted = permanentlyDeleteTask(taskId);
+  if (deleted) {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('trash:changed');
+    });
+  }
+  return deleted;
+});
+
+ipcMain.handle('trash:empty', () => {
+  const count = emptyTrash();
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('trash:changed');
+  });
+  return count;
+});
+
+ipcMain.handle('trash:cleanup', (_event, daysOld?: number) => {
+  const count = cleanupOldTrashedTasks(daysOld ?? 30);
+  if (count > 0) {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('trash:changed');
+    });
+  }
+  return count;
+});
+
 ipcMain.handle('projects:statusOptions', () => getProjectStatusOptions());
 ipcMain.handle('projects:fetchAndSaveStatusOptions', async () => {
   console.log('[IPC] projects:fetchAndSaveStatusOptions - Fetching from Notion...');

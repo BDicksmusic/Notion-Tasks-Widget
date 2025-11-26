@@ -12,6 +12,7 @@ async function build() {
     external: [
       'electron',
       'better-sqlite3',
+      'undici',
       // Keep native modules external
     ],
     format: 'cjs',

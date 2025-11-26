@@ -16,8 +16,8 @@ let statusListeners: Set<(status: UpdateStatus, info: UpdateInfo | null) => void
 // Only check for updates in production
 const isDev = process.env.NODE_ENV === 'development';
 
-// Disable auto-updates until first release is published
-const UPDATES_ENABLED = false;
+// Enable auto-updates for production builds
+const UPDATES_ENABLED = true;
 
 // Configure autoUpdater
 // electron-updater will automatically use the publish config from package.json

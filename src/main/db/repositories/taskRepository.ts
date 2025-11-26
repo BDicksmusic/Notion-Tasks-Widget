@@ -28,6 +28,8 @@ type TaskRow = {
   tracking_goal_minutes: number | null;
   done_tracking_after_cycle: number | null;
   auto_fill_estimated_time: number | null;
+  // Trash tracking
+  trashed_at: string | null;
 };
 
 type FieldMap = Record<string, string>;
@@ -71,6 +73,10 @@ function mapRowToTask(row: TaskRow): Task {
   }
   if (row.auto_fill_estimated_time != null) {
     task.autoFillEstimatedTime = row.auto_fill_estimated_time === 1;
+  }
+  // Trash tracking
+  if (row.trashed_at) {
+    task.trashedAt = row.trashed_at;
   }
   return task;
 }
@@ -226,13 +232,13 @@ function updatesToCreatePayload(
   return createPayload;
 }
 
-export function listTasks(limit = 2000) {
+export function listTasks(limit = 2000, includeTrash = false) {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT * FROM ${TABLE} ORDER BY last_modified_local DESC LIMIT ?`
-    )
-    .all(limit) as TaskRow[];
+  // By default, exclude trashed tasks from the main list
+  const query = includeTrash
+    ? `SELECT * FROM ${TABLE} ORDER BY last_modified_local DESC LIMIT ?`
+    : `SELECT * FROM ${TABLE} WHERE sync_status != 'trashed' ORDER BY last_modified_local DESC LIMIT ?`;
+  const rows = db.prepare(query).all(limit) as TaskRow[];
   const tasks = rows.map(mapRowToTask);
   
   const withStatus = tasks.filter(t => t.status).length;
@@ -703,5 +709,176 @@ export function buildSubtaskRelationships(
 export function getSubtasks(parentTaskId: string): Task[] {
   const allTasks = listTasks();
   return allTasks.filter(task => task.parentTaskId === parentTaskId);
+}
+
+// ============================================================================
+// TRASH MANAGEMENT
+// Tasks deleted in Notion are marked as trashed rather than immediately deleted
+// ============================================================================
+
+/**
+ * Mark a task as trashed (detected as deleted in Notion)
+ */
+export function markTaskAsTrashed(taskId: string): void {
+  const db = getDb();
+  const trashedAt = new Date().toISOString();
+  db.prepare(
+    `UPDATE ${TABLE} SET sync_status = 'trashed', trashed_at = ? WHERE client_id = ? OR notion_id = ?`
+  ).run(trashedAt, taskId, taskId);
+  console.log(`[TaskRepo] Marked task as trashed: ${taskId}`);
+}
+
+/**
+ * Mark multiple tasks as trashed in a single transaction
+ */
+export function markTasksAsTrashed(taskIds: string[]): number {
+  if (taskIds.length === 0) return 0;
+  
+  const db = getDb();
+  const trashedAt = new Date().toISOString();
+  let count = 0;
+  
+  const markTrashed = db.transaction(() => {
+    for (const taskId of taskIds) {
+      const result = db.prepare(
+        `UPDATE ${TABLE} SET sync_status = 'trashed', trashed_at = ? WHERE (client_id = ? OR notion_id = ?) AND sync_status != 'trashed'`
+      ).run(trashedAt, taskId, taskId);
+      count += result.changes;
+    }
+  });
+  
+  markTrashed();
+  if (count > 0) {
+    console.log(`[TaskRepo] Marked ${count} tasks as trashed`);
+  }
+  return count;
+}
+
+/**
+ * List all trashed tasks
+ */
+export function listTrashedTasks(): Task[] {
+  const db = getDb();
+  const rows = db
+    .prepare(`SELECT * FROM ${TABLE} WHERE sync_status = 'trashed' ORDER BY trashed_at DESC`)
+    .all() as TaskRow[];
+  return rows.map(mapRowToTask);
+}
+
+/**
+ * Count trashed tasks
+ */
+export function countTrashedTasks(): number {
+  const db = getDb();
+  const result = db
+    .prepare(`SELECT COUNT(*) as count FROM ${TABLE} WHERE sync_status = 'trashed'`)
+    .get() as { count: number };
+  return result.count;
+}
+
+/**
+ * Restore a task from trash (set back to synced status)
+ */
+export function restoreTaskFromTrash(taskId: string): Task | null {
+  const db = getDb();
+  const result = db.prepare(
+    `UPDATE ${TABLE} SET sync_status = 'synced', trashed_at = NULL WHERE (client_id = ? OR notion_id = ?) AND sync_status = 'trashed'`
+  ).run(taskId, taskId);
+  
+  if (result.changes === 0) {
+    return null;
+  }
+  
+  console.log(`[TaskRepo] Restored task from trash: ${taskId}`);
+  const row = readRowById(taskId);
+  return row ? mapRowToTask(row) : null;
+}
+
+/**
+ * Permanently delete a task (removes from database entirely)
+ */
+export function permanentlyDeleteTask(taskId: string): boolean {
+  const db = getDb();
+  const result = db.prepare(
+    `DELETE FROM ${TABLE} WHERE client_id = ? OR notion_id = ?`
+  ).run(taskId, taskId);
+  
+  // Also clear any sync queue entries
+  clearEntriesForEntity('task', taskId);
+  
+  if (result.changes > 0) {
+    console.log(`[TaskRepo] Permanently deleted task: ${taskId}`);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Permanently delete all trashed tasks
+ */
+export function emptyTrash(): number {
+  const db = getDb();
+  const trashedTasks = listTrashedTasks();
+  
+  let deleted = 0;
+  const deleteAll = db.transaction(() => {
+    for (const task of trashedTasks) {
+      const result = db.prepare(
+        `DELETE FROM ${TABLE} WHERE client_id = ? OR notion_id = ?`
+      ).run(task.id, task.id);
+      deleted += result.changes;
+      clearEntriesForEntity('task', task.id);
+    }
+  });
+  
+  deleteAll();
+  if (deleted > 0) {
+    console.log(`[TaskRepo] Emptied trash: ${deleted} tasks permanently deleted`);
+  }
+  return deleted;
+}
+
+/**
+ * Auto-cleanup: permanently delete tasks that have been in trash for more than X days
+ */
+export function cleanupOldTrashedTasks(daysOld: number = 30): number {
+  const db = getDb();
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+  const cutoffIso = cutoffDate.toISOString();
+  
+  // First get the tasks to delete (so we can clear sync queue entries)
+  const oldTrashedRows = db.prepare(
+    `SELECT client_id FROM ${TABLE} WHERE sync_status = 'trashed' AND trashed_at < ?`
+  ).all(cutoffIso) as { client_id: string }[];
+  
+  if (oldTrashedRows.length === 0) {
+    return 0;
+  }
+  
+  let deleted = 0;
+  const cleanup = db.transaction(() => {
+    for (const row of oldTrashedRows) {
+      db.prepare(`DELETE FROM ${TABLE} WHERE client_id = ?`).run(row.client_id);
+      clearEntriesForEntity('task', row.client_id);
+      deleted++;
+    }
+  });
+  
+  cleanup();
+  console.log(`[TaskRepo] Auto-cleaned ${deleted} tasks older than ${daysOld} days from trash`);
+  return deleted;
+}
+
+/**
+ * Get all notion_ids for synced (non-trashed, non-local) tasks
+ * Used to detect which tasks have been deleted in Notion
+ */
+export function getSyncedTaskNotionIds(): Set<string> {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT notion_id FROM ${TABLE} WHERE notion_id IS NOT NULL AND sync_status != 'trashed' AND sync_status != 'local'`
+  ).all() as { notion_id: string }[];
+  return new Set(rows.map(r => r.notion_id));
 }
 

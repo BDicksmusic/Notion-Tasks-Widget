@@ -82,6 +82,12 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Notion Tasks Widget"
     },
+    "extraResources": [
+      {
+        "from": "build/app-update.yml",
+        "to": "app-update.yml"
+      }
+    ],
     "publish": {
       "provider": "github",
       "owner": "BDicksmusic",

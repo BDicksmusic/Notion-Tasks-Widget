@@ -40,6 +40,8 @@ export interface Task {
   trackingGoalMinutes?: number;
   doneTrackingAfterCycle?: boolean;
   autoFillEstimatedTime?: boolean;
+  // Trash fields - for tasks deleted in Notion
+  trashedAt?: string;         // ISO date when task was detected as deleted
 }
 
 export interface Contact {
@@ -449,7 +451,7 @@ export interface StatusDiagnostics {
   projects: StatusBreakdown;
 }
 
-export type SyncStatus = 'pending' | 'synced' | 'conflict' | 'local';
+export type SyncStatus = 'pending' | 'synced' | 'conflict' | 'local' | 'trashed';
 
 export interface SyncStateSummary {
   state: 'idle' | 'syncing' | 'error' | 'offline';

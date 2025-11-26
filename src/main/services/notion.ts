@@ -734,6 +734,13 @@ export async function addTask(payload: NotionCreatePayload): Promise<Task> {
     };
   }
 
+  // Set Widget Link date property - marks this task as synced to the widget
+  if (settings.widgetLinkProperty) {
+    properties[settings.widgetLinkProperty] = {
+      date: { start: new Date().toISOString() }
+    };
+  }
+
   const client = notion;
   const pageResponse = await withRetry(
     client,
@@ -897,7 +904,16 @@ export async function updateTask(
     };
   }
 
-  if (!Object.keys(properties).length) {
+  // Always update Widget Link date property when syncing - marks last sync time
+  if (settings.widgetLinkProperty) {
+    properties[settings.widgetLinkProperty] = {
+      date: { start: new Date().toISOString() }
+    };
+  }
+
+  // If only widgetLinkProperty was set and nothing else, that's still valid
+  const hasRealUpdates = Object.keys(properties).filter(k => k !== settings.widgetLinkProperty).length > 0;
+  if (!hasRealUpdates && !settings.widgetLinkProperty) {
     throw new Error('No updates specified');
   }
 

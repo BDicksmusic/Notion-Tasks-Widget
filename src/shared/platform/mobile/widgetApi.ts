@@ -149,6 +149,31 @@ const widgetAPI: WidgetAPI = {
     // For mobile, subtasks not yet implemented
     return [];
   },
+  
+  // Trash Management - mobile stubs
+  async listTrashedTasks(): Promise<Task[]> {
+    // No trash management on mobile yet
+    return [];
+  },
+  async countTrashedTasks(): Promise<number> {
+    return 0;
+  },
+  async restoreTaskFromTrash(_taskId: string): Promise<Task | null> {
+    return null;
+  },
+  async permanentlyDeleteTask(_taskId: string): Promise<boolean> {
+    return false;
+  },
+  async emptyTrash(): Promise<number> {
+    return 0;
+  },
+  async cleanupOldTrashedTasks(_daysOld?: number): Promise<number> {
+    return 0;
+  },
+  onTrashChanged(_callback: () => void): () => void {
+    return () => {};
+  },
+  
   async openTaskWindow(_taskId: string) {
     // No-op on mobile; the UI hides pop-out actions.
   },
