@@ -9,7 +9,8 @@ env:
   NODE_VERSION: '20'
 
 jobs:
-  desktop:
+  # Type check first (fast fail)
+  typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,19 +22,79 @@ jobs:
         run: npm ci
       - name: Type check
         run: npm run typecheck
-      - name: Build Electron assets
+
+  # Build desktop apps for all platforms
+  build-desktop:
+    needs: typecheck
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+          - os: ubuntu-latest
+            platform: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build Electron app
         run: npm run build
-      - name: Upload desktop artifacts
+      
+      - name: Build installer (Windows)
+        if: matrix.platform == 'win'
+        run: npx electron-builder --win
+      
+      - name: Build installer (macOS)
+        if: matrix.platform == 'mac'
+        run: npx electron-builder --mac
+      
+      - name: Build installer (Linux)
+        if: matrix.platform == 'linux'
+        run: npx electron-builder --linux
+      
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'win'
         uses: actions/upload-artifact@v4
         with:
-          name: electron-dist
+          name: windows-installer
           path: |
-            dist/main
-            dist/renderer
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
+      
+      - name: Upload macOS artifacts
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-installer
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/latest-mac.yml
+      
+      - name: Upload Linux artifacts
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-installer
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/latest-linux.yml
 
-  android:
+  # Android build
+  build-android:
+    needs: typecheck
     runs-on: ubuntu-latest
-    needs: desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -64,5 +125,3 @@ jobs:
         with:
           name: android-apk
           path: mobile/android/app/build/outputs/apk/debug/*.apk
-
-
