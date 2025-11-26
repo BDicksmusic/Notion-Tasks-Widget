@@ -1716,8 +1716,9 @@ const FullScreenApp = () => {
     if (typeof window === 'undefined') return;
     
     const handleWindowFocus = () => {
-      if (typeof widgetAPI.forceSync === 'function') {
-        widgetAPI.forceSync().catch((error) => {
+      const api = getWidgetAPI();
+      if (typeof api.forceSync === 'function') {
+        api.forceSync().catch((error: Error) => {
           console.error('Focus-triggered sync failed', error);
         });
       }
@@ -2983,7 +2984,7 @@ const FullScreenApp = () => {
               <button
                 type="button"
                 className="kanban-shortcut-btn"
-                onClick={() => setTasksSubView('kanban')}
+                onClick={() => setProjectSubView('kanban')}
                 title="Open Kanban board for this project"
               >
                 ▥ Open Kanban Board
@@ -3301,6 +3302,7 @@ const FullScreenApp = () => {
             <div className="dashboard-panel-body">
               <EisenhowerMatrix
                 tasks={projectTasks}
+                projects={projects}
                 completedStatus={notionSettings?.completedStatus}
                 onUpdateTask={handleUpdateTask}
                 onSelectTask={handleOpenTaskFromSubview}
@@ -3326,8 +3328,8 @@ const FullScreenApp = () => {
               <KanbanBoard
                 tasks={projectTasks}
                 statusOptions={statusOptions}
+                projects={projects}
                 completedStatus={notionSettings?.completedStatus}
-                manualStatuses={manualStatuses}
                 onUpdateTask={handleUpdateTask}
                 onSelectTask={handleOpenTaskFromSubview}
                 onPopOutTask={
@@ -4921,8 +4923,8 @@ const FullScreenApp = () => {
             </div>
             <div className="notes-panel-content">
               <WritingWidget
-                onSubmit={handleCreateWritingEntry}
-                projects={projects}
+                settings={writingSettings}
+                onCreate={handleCreateWritingEntry}
               />
             </div>
           </aside>
@@ -5370,8 +5372,8 @@ const FullScreenApp = () => {
             </div>
             <div className="notes-panel-content">
               <WritingWidget
-                onSubmit={handleCreateWritingEntry}
-                projects={projects}
+                settings={writingSettings}
+                onCreate={handleCreateWritingEntry}
               />
             </div>
           </aside>
