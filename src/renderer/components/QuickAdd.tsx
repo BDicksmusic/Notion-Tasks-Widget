@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import type {
   NotionCreatePayload,
+  Project,
   TaskStatusOption
 } from '@shared/types';
 import {
@@ -20,6 +21,8 @@ interface Props {
   completedStatus?: string;
   isCollapsed?: boolean;
   onCollapseToggle?: () => void;
+  projects?: Project[];
+  enableDragToPlace?: boolean;
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -34,7 +37,9 @@ const QuickAdd = ({
   manualStatuses,
   completedStatus,
   isCollapsed = false,
-  onCollapseToggle
+  onCollapseToggle,
+  projects = [],
+  enableDragToPlace = false
 }: Props) => {
   const [value, setValue] = useState('');
   const [date, setDate] = useState(() => todayISO());
@@ -46,6 +51,7 @@ const QuickAdd = ({
   const [status, setStatus] = useState<string>('');
   const [notes, setNotes] = useState('');
   const [showNotes, setShowNotes] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -124,7 +130,8 @@ const QuickAdd = ({
         urgent: selectedMatrix.urgent,
         important: selectedMatrix.important,
         status: status || undefined,
-        mainEntry: notes.trim() || undefined
+        mainEntry: notes.trim() || undefined,
+        projectIds: selectedProjectId ? [selectedProjectId] : undefined
       });
       setValue('');
       setDate(todayISO());
@@ -133,6 +140,7 @@ const QuickAdd = ({
       setHardDeadline(true);
       setStatus(availableStatuses[0] ?? '');
       setNotes('');
+      setSelectedProjectId('');
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to create task');
@@ -269,6 +277,24 @@ const QuickAdd = ({
                 ))}
               </select>
             </div>
+            {projects.length > 0 && (
+              <div className="capture-project-inline">
+                <select
+                  className="project-select capture-project-select"
+                  value={selectedProjectId}
+                  onChange={(event) => setSelectedProjectId(event.target.value)}
+                  disabled={pending}
+                  aria-label="Project"
+                >
+                  <option value="">No project</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.title || 'Untitled'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           <div className="property-group-flags capture-property-group-flags">
@@ -353,6 +379,40 @@ const QuickAdd = ({
             >
               {pending ? 'Adding…' : 'Add Task'}
             </button>
+            {enableDragToPlace && value.trim() && (
+              <div
+                className="capture-drag-handle"
+                draggable
+                onDragStart={(e) => {
+                  // Create payload for the new task
+                  const payload: NotionCreatePayload = {
+                    title: value.trim(),
+                    date: date || undefined,
+                    dateEnd: dateEnd || undefined,
+                    hardDeadline,
+                    urgent: selectedMatrix.urgent,
+                    important: selectedMatrix.important,
+                    status: status || undefined,
+                    mainEntry: notes.trim() || undefined,
+                    projectIds: selectedProjectId ? [selectedProjectId] : undefined
+                  };
+                  e.dataTransfer.setData('application/x-new-task', JSON.stringify(payload));
+                  e.dataTransfer.effectAllowed = 'copy';
+                  
+                  // Visual feedback
+                  const dragElement = e.currentTarget as HTMLElement;
+                  dragElement.classList.add('is-dragging');
+                }}
+                onDragEnd={(e) => {
+                  const dragElement = e.currentTarget as HTMLElement;
+                  dragElement.classList.remove('is-dragging');
+                }}
+                title="Drag to place task in calendar, kanban, or matrix"
+              >
+                <span className="drag-icon">⋮⋮</span>
+                <span className="drag-label">Drag to place</span>
+              </div>
+            )}
           </div>
         </article>
 

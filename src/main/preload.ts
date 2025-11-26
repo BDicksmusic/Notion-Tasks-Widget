@@ -1,5 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DockState, Task, UpdateInfo, UpdateStatus } from '../shared/types';
+import type {
+  CrossWindowDragState,
+  CrossWindowDropPayload,
+  DockState,
+  ImportProgress,
+  Project,
+  SavedView,
+  StatusDiagnostics,
+  SyncStateSummary,
+  Task,
+  UpdateInfo,
+  UpdateStatus
+} from '../shared/types';
 import type { SettingsAPI, WidgetAPI } from '../shared/ipc';
 
 const widgetAPI: WidgetAPI = {
@@ -15,6 +27,12 @@ const widgetAPI: WidgetAPI = {
   getStatusOptions() {
     return ipcRenderer.invoke('tasks:statusOptions');
   },
+  getOrderOptions() {
+    return ipcRenderer.invoke('tasks:orderOptions');
+  },
+  getSubtasks(parentTaskId: string) {
+    return ipcRenderer.invoke('tasks:getSubtasks', parentTaskId);
+  },
   openTaskWindow(taskId) {
     return ipcRenderer.invoke('taskWindow:open', taskId);
   },
@@ -26,6 +44,12 @@ const widgetAPI: WidgetAPI = {
   },
   updateSettings(settings) {
     return ipcRenderer.invoke('settings:update', settings);
+  },
+  getChatbotSettings() {
+    return ipcRenderer.invoke('settings:chatbot:get');
+  },
+  updateChatbotSettings(settings) {
+    return ipcRenderer.invoke('settings:chatbot:update', settings);
   },
   setAlwaysOnTop(flag: boolean) {
     return ipcRenderer.invoke('window:setAlwaysOnTop', flag);
@@ -51,6 +75,15 @@ const widgetAPI: WidgetAPI = {
   getTotalLoggedTime(taskId) {
     return ipcRenderer.invoke('timeLog:getTotalLogged', taskId);
   },
+  getTodayLoggedTime(taskId) {
+    return ipcRenderer.invoke('timeLog:getTodayLogged', taskId);
+  },
+  getAggregatedTimeData(taskId, subtaskIds = []) {
+    return ipcRenderer.invoke('timeLog:getAggregated', taskId, subtaskIds);
+  },
+  transcribeSpeech(payload) {
+    return ipcRenderer.invoke('speech:transcribe', payload);
+  },
   getAllTimeLogEntries(taskId) {
     return ipcRenderer.invoke('timeLog:getAllEntries', taskId);
   },
@@ -62,6 +95,27 @@ const widgetAPI: WidgetAPI = {
   },
   deleteTimeLogEntry(entryId) {
     return ipcRenderer.invoke('timeLog:delete', entryId);
+  },
+  getProjectsSettings() {
+    return ipcRenderer.invoke('settings:projects:get');
+  },
+  getProjects() {
+    return ipcRenderer.invoke('projects:fetch');
+  },
+  refreshProjects() {
+    return ipcRenderer.invoke('projects:refresh');
+  },
+  getProjectStatusOptions() {
+    return ipcRenderer.invoke('projects:statusOptions');
+  },
+  fetchAndSaveProjectStatusOptions() {
+    return ipcRenderer.invoke('projects:fetchAndSaveStatusOptions');
+  },
+  getContacts() {
+    return ipcRenderer.invoke('contacts:fetch');
+  },
+  refreshContacts() {
+    return ipcRenderer.invoke('contacts:refresh');
   },
   getAppPreferences() {
     return ipcRenderer.invoke('settings:app:get');
@@ -106,6 +160,16 @@ const widgetAPI: WidgetAPI = {
       ipcRenderer.removeListener('tasks:updated', listener);
     };
   },
+  onProjectsUpdated(callback) {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      projects: Project[]
+    ) => callback(projects);
+    ipcRenderer.on('projects:updated', listener);
+    return () => {
+      ipcRenderer.removeListener('projects:updated', listener);
+    };
+  },
   openWidgetSettingsWindow() {
     return ipcRenderer.invoke('widgetSettings:window:open');
   },
@@ -146,6 +210,222 @@ const widgetAPI: WidgetAPI = {
   },
   getAppVersion() {
     return ipcRenderer.invoke('app:getVersion');
+  },
+  getSyncStatus() {
+    return ipcRenderer.invoke('sync:status');
+  },
+  forceSync() {
+    return ipcRenderer.invoke('sync:force');
+  },
+  getSyncTimestamps() {
+    return ipcRenderer.invoke('sync:timestamps');
+  },
+  getStatusDiagnostics() {
+    return ipcRenderer.invoke('diagnostics:statusSummary') as Promise<StatusDiagnostics>;
+  },
+  getDetailedStatusDiagnostics() {
+    return ipcRenderer.invoke('diagnostics:statusDetailed');
+  },
+  
+  // ============================================================================
+  // LOCAL STATUS MANAGEMENT (LOCAL-FIRST)
+  // Manage statuses independently of Notion
+  // ============================================================================
+  getLocalTaskStatuses() {
+    return ipcRenderer.invoke('localStatus:listTaskStatuses');
+  },
+  getLocalProjectStatuses() {
+    return ipcRenderer.invoke('localStatus:listProjectStatuses');
+  },
+  createLocalTaskStatus(options: { name: string; color?: string; sortOrder?: number; isCompleted?: boolean }) {
+    return ipcRenderer.invoke('localStatus:createTaskStatus', options);
+  },
+  createLocalProjectStatus(options: { name: string; color?: string; sortOrder?: number; isCompleted?: boolean }) {
+    return ipcRenderer.invoke('localStatus:createProjectStatus', options);
+  },
+  updateLocalTaskStatus(id: string, updates: { name?: string; color?: string | null; sortOrder?: number; isCompleted?: boolean }) {
+    return ipcRenderer.invoke('localStatus:updateTaskStatus', id, updates);
+  },
+  deleteLocalTaskStatus(id: string) {
+    return ipcRenderer.invoke('localStatus:deleteTaskStatus', id);
+  },
+  getCombinedStatuses() {
+    return ipcRenderer.invoke('localStatus:getCombinedStatuses');
+  },
+  mergeNotionStatuses() {
+    return ipcRenderer.invoke('localStatus:mergeNotionStatuses');
+  },
+  
+  // ============================================================================
+  // LOCAL PROJECT MANAGEMENT (LOCAL-FIRST)
+  // Create and manage projects locally, sync to Notion later
+  // ============================================================================
+  createLocalProject(payload: { title: string; status?: string | null; description?: string | null; startDate?: string | null; endDate?: string | null; tags?: string[] | null }) {
+    return ipcRenderer.invoke('localProject:create', payload);
+  },
+  updateLocalProject(projectId: string, updates: Partial<{ title: string; status?: string | null; description?: string | null; startDate?: string | null; endDate?: string | null; tags?: string[] | null }>) {
+    return ipcRenderer.invoke('localProject:update', projectId, updates);
+  },
+  deleteLocalProject(projectId: string) {
+    return ipcRenderer.invoke('localProject:delete', projectId);
+  },
+  getLocalProject(projectId: string) {
+    return ipcRenderer.invoke('localProject:get', projectId);
+  },
+  
+  importProjects() {
+    return ipcRenderer.invoke('sync:importProjects');
+  },
+  importTimeLogs() {
+    return ipcRenderer.invoke('sync:importTimeLogs');
+  },
+  testConnection() {
+    return ipcRenderer.invoke('sync:testConnection');
+  },
+  isInitialImportDone() {
+    return ipcRenderer.invoke('sync:isInitialImportDone');
+  },
+  
+  // Notion connection status
+  isNotionConnected() {
+    return ipcRenderer.invoke('notion:isConnected');
+  },
+  getNotionConnectionStatus() {
+    return ipcRenderer.invoke('notion:getConnectionStatus');
+  },
+  performInitialImport() {
+    return ipcRenderer.invoke('sync:performInitialImport');
+  },
+  getImportProgress() {
+    return ipcRenderer.invoke('sync:getImportProgress');
+  },
+  resetImport() {
+    return ipcRenderer.invoke('sync:resetImport');
+  },
+  onSyncStatusChange(callback) {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      status: SyncStateSummary
+    ) => callback(status);
+    ipcRenderer.on('sync:status-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('sync:status-changed', listener);
+    };
+  },
+  onImportProgress(callback) {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      progress: ImportProgress
+    ) => callback(progress);
+    ipcRenderer.on('import:progress', listener);
+    return () => {
+      ipcRenderer.removeListener('import:progress', listener);
+    };
+  },
+  
+  // Cross-window drag-and-drop APIs
+  startCrossWindowDrag(task: Task, sourceWindow: 'widget' | 'fullscreen') {
+    return ipcRenderer.invoke('crossWindowDrag:start', task, sourceWindow);
+  },
+  endCrossWindowDrag() {
+    return ipcRenderer.invoke('crossWindowDrag:end');
+  },
+  getCrossWindowDragState() {
+    return ipcRenderer.invoke('crossWindowDrag:getState');
+  },
+  handleCrossWindowDrop(payload: CrossWindowDropPayload) {
+    return ipcRenderer.invoke('crossWindowDrag:drop', payload);
+  },
+  onCrossWindowDragChange(callback: (state: CrossWindowDragState) => void) {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      state: CrossWindowDragState
+    ) => callback(state);
+    ipcRenderer.on('crossWindowDrag:stateChanged', listener);
+    return () => {
+      ipcRenderer.removeListener('crossWindowDrag:stateChanged', listener);
+    };
+  },
+  
+  // Focus stack APIs
+  getFocusStack() {
+    return ipcRenderer.invoke('focusStack:get');
+  },
+  addToFocusStack(taskId: string) {
+    return ipcRenderer.invoke('focusStack:add', taskId);
+  },
+  removeFromFocusStack(taskId: string) {
+    return ipcRenderer.invoke('focusStack:remove', taskId);
+  },
+  clearFocusStack() {
+    return ipcRenderer.invoke('focusStack:clear');
+  },
+  onFocusStackChange(callback: (taskIds: string[]) => void) {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      taskIds: string[]
+    ) => callback(taskIds);
+    ipcRenderer.on('focusStack:changed', listener);
+    return () => {
+      ipcRenderer.removeListener('focusStack:changed', listener);
+    };
+  },
+  
+  // Saved views APIs
+  getSavedViews() {
+    return ipcRenderer.invoke('views:getAll');
+  },
+  saveView(view: Omit<SavedView, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) {
+    return ipcRenderer.invoke('views:save', view);
+  },
+  deleteView(viewId: string) {
+    return ipcRenderer.invoke('views:delete', viewId);
+  },
+  openViewWindow(view: SavedView) {
+    return ipcRenderer.invoke('views:openWindow', view);
+  },
+  
+  // Calendar widget APIs
+  openCalendarWindow() {
+    return ipcRenderer.invoke('calendar:window:open');
+  },
+  closeCalendarWindow() {
+    return ipcRenderer.invoke('calendar:window:close');
+  },
+  calendarExpand() {
+    return ipcRenderer.invoke('calendar:dock:expand');
+  },
+  calendarCollapse() {
+    return ipcRenderer.invoke('calendar:dock:collapse');
+  },
+  calendarSetEdge(edge: import('../shared/types').DockEdge) {
+    return ipcRenderer.invoke('calendar:dock:setEdge', edge);
+  },
+  getCalendarDockState() {
+    return ipcRenderer.invoke('calendar:dock:getState');
+  },
+  
+  // Chatbot AI assistant APIs
+  sendChatbotMessage(payload: {
+    message: string;
+    tasks: import('../shared/types').Task[];
+    projects: import('../shared/types').Project[];
+  }) {
+    return ipcRenderer.invoke('chatbot:sendMessage', payload);
+  },
+  executeChatbotActions(payload: {
+    actions: import('../shared/types').TaskAction[];
+  }) {
+    return ipcRenderer.invoke('chatbot:executeActions', payload);
+  },
+  getChatSummaries(limit?: number, offset?: number) {
+    return ipcRenderer.invoke('chatbot:getSummaries', limit, offset);
+  },
+  getChatSummary(summaryId: string) {
+    return ipcRenderer.invoke('chatbot:getSummary', summaryId);
+  },
+  deleteChatSummary(summaryId: string) {
+    return ipcRenderer.invoke('chatbot:deleteSummary', summaryId);
   }
 };
 
@@ -185,6 +465,24 @@ const settingsAPI: SettingsAPI = {
   },
   createTimeLogEntry(payload) {
     return ipcRenderer.invoke('timeLog:createEntry', payload);
+  },
+  getProjectsSettings() {
+    return ipcRenderer.invoke('settings:projects:get');
+  },
+  updateProjectsSettings(settings) {
+    return ipcRenderer.invoke('settings:projects:update', settings);
+  },
+  getContactsSettings() {
+    return ipcRenderer.invoke('settings:contacts:get');
+  },
+  updateContactsSettings(settings) {
+    return ipcRenderer.invoke('settings:contacts:update', settings);
+  },
+  getFeatureToggles() {
+    return ipcRenderer.invoke('settings:features:get');
+  },
+  updateFeatureToggles(toggles) {
+    return ipcRenderer.invoke('settings:features:update', toggles);
   }
 };
 

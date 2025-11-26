@@ -16,6 +16,9 @@ let statusListeners: Set<(status: UpdateStatus, info: UpdateInfo | null) => void
 // Only check for updates in production
 const isDev = process.env.NODE_ENV === 'development';
 
+// Disable auto-updates until first release is published
+const UPDATES_ENABLED = false;
+
 // Configure autoUpdater
 // electron-updater will automatically use the publish config from package.json
 // But we can override if environment variables are set
@@ -30,11 +33,6 @@ if (GITHUB_OWNER && GITHUB_REPO && !isDev) {
 }
 
 export function initializeUpdater(mainWindow: BrowserWindow | null): void {
-  if (isDev) {
-    console.log('Update checking disabled in development mode');
-    return;
-  }
-
   // electron-updater will use package.json build.publish config if available
   // Environment variables are optional overrides
   if (GITHUB_OWNER && GITHUB_REPO) {
@@ -43,15 +41,41 @@ export function initializeUpdater(mainWindow: BrowserWindow | null): void {
       owner: GITHUB_OWNER,
       repo: GITHUB_REPO
     });
+    console.log(`Updater configured for GitHub: ${GITHUB_OWNER}/${GITHUB_REPO}`);
   } else {
     // Check if publish config exists in package.json (electron-updater reads this automatically)
     // If not configured, log a warning but don't fail - user can configure later
     console.log('Update checking will use package.json build.publish config if available');
   }
 
+  if (isDev) {
+    console.log('Update checking disabled in development mode (set NODE_ENV=production to test)');
+    // In dev mode, we can still set up the event handlers for testing
+    // but won't actually check for updates
+    setupEventHandlers();
+    return;
+  }
+
+  setupEventHandlers();
+
+  // Auto-check on startup (after a delay to let app initialize)
+  // Run in background, don't block startup
+  setTimeout(() => {
+    checkForUpdates().catch(err => {
+      // Silently handle - error is already logged in checkForUpdates
+      console.log('Auto-update check failed silently, app continues normally');
+    });
+  }, 10000); // 10 second delay to not impact startup
+}
+
+function setupEventHandlers(): void {
+
   // Set update check interval (optional - we'll do manual checks)
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+
+  // Configure update channel (use 'latest' for GitHub releases)
+  autoUpdater.channel = 'latest';
 
   // Event handlers
   autoUpdater.on('checking-for-update', () => {
@@ -82,9 +106,20 @@ export function initializeUpdater(mainWindow: BrowserWindow | null): void {
 
   autoUpdater.on('error', (error) => {
     console.error('Update error:', error);
+    let errorMessage = error.message || 'Unknown error';
+    
+    // Provide more helpful error messages
+    if (errorMessage.includes('ENOTFOUND') || errorMessage.includes('network')) {
+      errorMessage = 'Network error: Could not connect to GitHub. Please check your internet connection.';
+    } else if (errorMessage.includes('404') || errorMessage.includes('Not Found')) {
+      errorMessage = 'Repository not found. Please verify the GitHub repository configuration in package.json.';
+    } else if (errorMessage.includes('401') || errorMessage.includes('Unauthorized')) {
+      errorMessage = 'Authentication failed. If this is a private repository, you may need to configure a GitHub token.';
+    }
+    
     updateInfo = {
       version: 'unknown',
-      error: error.message
+      error: errorMessage
     };
     setStatus('error', updateInfo);
     broadcastStatus();
@@ -109,11 +144,6 @@ export function initializeUpdater(mainWindow: BrowserWindow | null): void {
     setStatus('ready', updateInfo);
     broadcastStatus();
   });
-
-  // Auto-check on startup (after a delay to let app initialize)
-  setTimeout(() => {
-    checkForUpdates();
-  }, 5000);
 }
 
 function setStatus(status: UpdateStatus, info: UpdateInfo | null): void {
@@ -134,11 +164,27 @@ function broadcastStatus(): void {
 export async function checkForUpdates(): Promise<void> {
   if (isDev) {
     console.log('Update checking disabled in development mode');
+    // In dev mode, simulate a check for testing UI
+    setStatus('checking', null);
+    broadcastStatus();
+    setTimeout(() => {
+      setStatus('not-available', { version: app.getVersion() });
+      broadcastStatus();
+    }, 1000);
+    return;
+  }
+
+  if (!UPDATES_ENABLED) {
+    console.log('Auto-updates disabled until first release is published');
+    setStatus('not-available', { version: app.getVersion() });
+    broadcastStatus();
     return;
   }
 
   try {
-    await autoUpdater.checkForUpdates();
+    console.log('Checking for updates...');
+    const result = await autoUpdater.checkForUpdates();
+    console.log('Update check result:', result);
   } catch (error) {
     console.error('Failed to check for updates:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

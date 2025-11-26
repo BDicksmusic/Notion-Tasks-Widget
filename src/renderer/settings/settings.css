@@ -14,13 +14,26 @@
   --radius-lg: 8px;
 }
 
+html {
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto !important; /* Override widget shell lock */
+}
+
 body {
   margin: 0;
   font-family: var(--notion-font);
   background: var(--notion-bg);
   color: var(--notion-text);
   overflow-y: auto !important;
+  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+  height: auto;
+  overflow: visible !important; /* Allow scrolling inside the React tree */
 }
 
 .settings-shell {
@@ -330,6 +343,40 @@ body {
 .close-button:hover {
   background: var(--notion-bg-hover); /* Notion just highlights background, doesn't turn red usually */
   color: var(--notion-text);
+}
+
+.shortcut-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.shortcut-keys {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #e2e8f0;
+}
+
+.shortcut-description {
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 ::-webkit-scrollbar {

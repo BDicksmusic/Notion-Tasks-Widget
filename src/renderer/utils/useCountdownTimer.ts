@@ -12,13 +12,17 @@ interface CountdownState {
 
 const TIMER_STATUS = '⌚';
 const DEFAULT_TODO_STATUS = 'To-do';
+const DEFAULT_START_STATUS = 'Start';
+const DEFAULT_END_STATUS = 'End';
 
 export function useCountdownTimer(
   tasks: Task[],
   onUpdateTask: (taskId: string, updates: { status: string | null }) => Promise<void>,
   onCreateTimeLog: (payload: TimeLogEntryPayload) => Promise<void>,
   todoStatus: string = DEFAULT_TODO_STATUS,
-  onComplete?: (taskId: string) => void
+  onComplete?: (taskId: string) => void,
+  startStatusValue: string = DEFAULT_START_STATUS,
+  endStatusValue: string = DEFAULT_END_STATUS
 ) {
   const [countdowns, setCountdowns] = useState<Map<string, CountdownState>>(new Map());
   const [sessionInputs, setSessionInputs] = useState<Map<string, string>>(new Map());
@@ -110,13 +114,13 @@ export function useCountdownTimer(
       return next;
     });
 
-    // Create time log entry with status "start"
+    // Create time log entry with start status
     if (task) {
       const startTimeISO = new Date(startTime).toISOString();
       onCreateTimeLog({
         taskId: task.id,
         taskTitle: task.title,
-        status: 'start',
+        status: startStatusValue,
         startTime: startTimeISO,
         sessionLengthMinutes
       }).catch((err) => {
@@ -130,7 +134,7 @@ export function useCountdownTimer(
       next.delete(taskId);
       return next;
     });
-  }, [tasks, onCreateTimeLog]);
+  }, [tasks, onCreateTimeLog, startStatusValue]);
 
   const stopCountdown = useCallback((taskId: string): string | null => {
     let initialStatus: string | null = null;
@@ -234,11 +238,11 @@ export function useCountdownTimer(
                 // Play completion sound
                 playCompletionSound();
                 
-                // Create time log entry
+                // Create time log entry with end status
                 onCreateTimeLog({
                   taskId: task.id,
                   taskTitle: task.title,
-                  status: 'completed',
+                  status: endStatusValue,
                   startTime,
                   endTime,
                   sessionLengthMinutes: countdown.sessionLengthMinutes
@@ -288,7 +292,7 @@ export function useCountdownTimer(
         intervalRef.current = null;
       }
     };
-  }, [countdowns.size, tasks, onUpdateTask, onCreateTimeLog, todoStatus, onComplete, playCompletionSound, playWarningSound]);
+  }, [countdowns.size, tasks, onUpdateTask, onCreateTimeLog, todoStatus, onComplete, playCompletionSound, playWarningSound, endStatusValue]);
 
   const getRemainingTime = (taskId: string): number => {
     return countdowns.get(taskId)?.remainingSeconds ?? 0;

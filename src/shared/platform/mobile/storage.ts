@@ -14,28 +14,75 @@ const STORAGE_KEYS = {
   writing: 'mobile.settings.writing',
   timeLog: 'mobile.settings.timeLog',
   app: 'mobile.preferences.app',
-  dock: 'mobile.dock.state'
+  dock: 'mobile.dock.state',
+  devDefaultsApplied: 'mobile.dev.defaultsApplied'
 } as const;
 
+// Type declaration for dev defaults injected at build time
+declare const __MOBILE_DEV_DEFAULTS__: {
+  apiKey: string;
+  databaseId: string;
+  dataSourceId: string;
+  titleProperty: string;
+  statusProperty: string;
+  dateProperty: string;
+  deadlineProperty: string;
+  deadlineHardValue: string;
+  deadlineSoftValue: string;
+  urgentProperty: string;
+  urgentStatusActive: string;
+  urgentStatusInactive: string;
+  importantProperty: string;
+  importantStatusActive: string;
+  importantStatusInactive: string;
+  completedStatus: string;
+  mainEntryProperty: string;
+} | undefined;
+
+declare const __DEV_MODE__: boolean | undefined;
+
+// Get dev defaults if available (injected at build time from .env)
+function getDevDefaults(): Partial<NotionSettings> | null {
+  try {
+    if (typeof __MOBILE_DEV_DEFAULTS__ !== 'undefined' && __MOBILE_DEV_DEFAULTS__) {
+      return __MOBILE_DEV_DEFAULTS__;
+    }
+  } catch {
+    // Not available
+  }
+  return null;
+}
+
+function isDevMode(): boolean {
+  try {
+    return typeof __DEV_MODE__ !== 'undefined' && __DEV_MODE__ === true;
+  } catch {
+    return false;
+  }
+}
+
+// Build default settings, using dev defaults if available
+const devDefaults = getDevDefaults();
+
 const DEFAULT_NOTION_SETTINGS: NotionSettings = {
-  apiKey: '',
-  databaseId: '',
-  dataSourceId: '',
-  titleProperty: '',
-  statusProperty: '',
-  dateProperty: '',
-  deadlineProperty: '',
-  deadlineHardValue: '',
-  deadlineSoftValue: '',
+  apiKey: devDefaults?.apiKey || '',
+  databaseId: devDefaults?.databaseId || '',
+  dataSourceId: devDefaults?.dataSourceId || '',
+  titleProperty: devDefaults?.titleProperty || 'Name',
+  statusProperty: devDefaults?.statusProperty || 'Status',
+  dateProperty: devDefaults?.dateProperty || 'Date',
+  deadlineProperty: devDefaults?.deadlineProperty || 'Hard Deadline?',
+  deadlineHardValue: devDefaults?.deadlineHardValue || '⭕Hard',
+  deadlineSoftValue: devDefaults?.deadlineSoftValue || '🔵Soft',
   statusPresets: [],
-  urgentProperty: '',
-  urgentStatusActive: '',
-  urgentStatusInactive: '',
-  importantProperty: '',
-  importantStatusActive: '',
-  importantStatusInactive: '',
-  completedStatus: '',
-  mainEntryProperty: 'Main Entry'
+  urgentProperty: devDefaults?.urgentProperty || 'Urgent',
+  urgentStatusActive: devDefaults?.urgentStatusActive || '‼',
+  urgentStatusInactive: devDefaults?.urgentStatusInactive || '○',
+  importantProperty: devDefaults?.importantProperty || 'Important',
+  importantStatusActive: devDefaults?.importantStatusActive || '◉',
+  importantStatusInactive: devDefaults?.importantStatusInactive || '○',
+  completedStatus: devDefaults?.completedStatus || '✅',
+  mainEntryProperty: devDefaults?.mainEntryProperty || 'Main Entry'
 };
 
 const DEFAULT_WRITING_SETTINGS: WritingSettings = {
@@ -63,6 +110,22 @@ const DEFAULT_DOCK_STATE: DockState = { edge: 'top', collapsed: false };
 
 export const mobileStore = {
   async getTaskSettings(): Promise<NotionSettings> {
+    // Check if we should auto-apply dev defaults on first run
+    const devDefaults = getDevDefaults();
+    if (devDefaults?.apiKey) {
+      const { value: applied } = await Preferences.get({ key: STORAGE_KEYS.devDefaultsApplied });
+      if (!applied) {
+        // Check if there are existing settings with an API key
+        const existing = await readJson(STORAGE_KEYS.tasks, DEFAULT_NOTION_SETTINGS);
+        if (!existing.apiKey) {
+          console.log('[mobileStore] Auto-applying dev defaults from .env');
+          const withDefaults = normalizeNotionSettings({ ...existing, ...devDefaults });
+          await writeJson(STORAGE_KEYS.tasks, withDefaults);
+          await Preferences.set({ key: STORAGE_KEYS.devDefaultsApplied, value: 'true' });
+          return withDefaults;
+        }
+      }
+    }
     return normalizeNotionSettings(
       await readJson(STORAGE_KEYS.tasks, DEFAULT_NOTION_SETTINGS)
     );
@@ -175,4 +238,5 @@ function normalizeDockState(state: DockState): DockState {
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
+
 

@@ -4,4 +4,10 @@
     <string name="title_activity_main">Notion Tasks Widget</string>
     <string name="package_name">com.notiontasks.widget.mobile</string>
     <string name="custom_url_scheme">com.notiontasks.widget.mobile</string>
+    
+    <!-- Widget strings -->
+    <string name="widget_tasks_name">Tasks</string>
+    <string name="widget_tasks_description">View and manage your upcoming tasks</string>
+    <string name="widget_capture_name">Quick Capture</string>
+    <string name="widget_capture_description">Quickly add tasks or writing entries</string>
 </resources>

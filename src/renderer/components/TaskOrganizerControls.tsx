@@ -24,7 +24,8 @@ const GROUPING_OPTIONS: { value: GroupingOption; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'dueDate', label: 'Due date' },
   { value: 'priority', label: 'Priority' },
-  { value: 'status', label: 'Status' }
+  { value: 'status', label: 'Status' },
+  { value: 'project', label: 'Project' }
 ];
 
 const iconProps = {

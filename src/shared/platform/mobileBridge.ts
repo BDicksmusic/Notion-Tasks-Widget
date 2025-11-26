@@ -1,9 +1,7 @@
 import type { SettingsAPI, WidgetAPI } from '@shared/ipc';
 import { createMobileAPIs } from './mobile/widgetApi';
-import { setPlatformApis } from '.';
 
 // Type declarations for browser globals (only used in mobile/browser context)
-// These are only used at runtime in browser context, not in Node.js
 declare const window: typeof globalThis & {
   widgetAPI?: WidgetAPI;
   settingsAPI?: SettingsAPI;
@@ -12,6 +10,14 @@ declare const window: typeof globalThis & {
 };
 
 let initialized = false;
+
+// Store the APIs so they can be accessed by index.ts
+let _mobileWidgetAPI: WidgetAPI | null = null;
+let _mobileSettingsAPI: SettingsAPI | null = null;
+
+export function getMobileAPIs() {
+  return { widgetAPI: _mobileWidgetAPI, settingsAPI: _mobileSettingsAPI };
+}
 
 export function ensureMobileBridge() {
   if (initialized) return;
@@ -25,7 +31,8 @@ export function ensureMobileBridge() {
   const { widgetAPI, settingsAPI } = createMobileAPIs();
   window.widgetAPI = widgetAPI;
   window.settingsAPI = settingsAPI;
-  setPlatformApis(widgetAPI, settingsAPI, 'mobile');
+  _mobileWidgetAPI = widgetAPI;
+  _mobileSettingsAPI = settingsAPI;
+  
   initialized = true;
 }
-

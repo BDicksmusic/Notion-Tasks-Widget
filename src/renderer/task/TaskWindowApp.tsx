@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import TaskList from '../components/TaskList';
 import { widgetBridge } from '@shared/platform';
 import type {
+  CrossWindowDragState,
   NotionSettings,
   Task,
   TaskStatusOption,
@@ -20,6 +21,12 @@ const TaskWindowApp = () => {
   );
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [sortHold, setSortHold] = useState<Record<string, number>>({});
+  const [crossWindowDrag, setCrossWindowDrag] = useState<CrossWindowDragState>({
+    task: null,
+    sourceWindow: null,
+    isDragging: false
+  });
+  const [isDropTarget, setIsDropTarget] = useState(false);
 
   const taskId = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -92,6 +99,48 @@ const TaskWindowApp = () => {
     };
   }, [taskId]);
 
+  // Subscribe to cross-window drag state
+  useEffect(() => {
+    if (typeof widgetAPI.onCrossWindowDragChange !== 'function') {
+      return;
+    }
+    widgetAPI.getCrossWindowDragState?.().then((state) => {
+      setCrossWindowDrag(state);
+    }).catch(() => {});
+    
+    const unsubscribe = widgetAPI.onCrossWindowDragChange((state) => {
+      setCrossWindowDrag(state);
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  // Cross-window drag handlers
+  const handleCrossWindowDragStart = useCallback((dragTask: Task) => {
+    if (typeof widgetAPI.startCrossWindowDrag === 'function') {
+      void widgetAPI.startCrossWindowDrag(dragTask, 'widget');
+    }
+  }, []);
+
+  const handleCrossWindowDragEnd = useCallback(() => {
+    // Don't auto-end - let the drop handler or cancel do it
+  }, []);
+
+  // Cancel cross-window drag with Escape
+  useEffect(() => {
+    if (!crossWindowDrag.isDragging) return;
+    
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        widgetAPI.endCrossWindowDrag?.();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [crossWindowDrag.isDragging]);
+
   const handleUpdateTask = useCallback(
     async (id: string, updates: TaskUpdatePayload) => {
       await widgetAPI.updateTask(id, updates);
@@ -123,8 +172,43 @@ const TaskWindowApp = () => {
   const manualStatuses = notionSettings?.statusPresets ?? [];
   const completedStatus = notionSettings?.completedStatus;
 
+  // Handle dropping a task onto this window to replace the current focus task
+  const handleDrop = useCallback(async () => {
+    if (!crossWindowDrag.isDragging || !crossWindowDrag.task) return;
+    
+    // Add to focus stack
+    try {
+      await widgetAPI.addToFocusStack?.(crossWindowDrag.task.id);
+      widgetAPI.endCrossWindowDrag?.();
+    } catch (error) {
+      console.error('Failed to add to focus stack', error);
+    }
+    setIsDropTarget(false);
+  }, [crossWindowDrag]);
+
   return (
-    <div className="task-window-shell">
+    <div 
+      className={`task-window-shell ${isDropTarget ? 'is-drop-target' : ''} ${crossWindowDrag.isDragging ? 'is-receiving-drag' : ''}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setIsDropTarget(true);
+      }}
+      onDragLeave={() => setIsDropTarget(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        void handleDrop();
+      }}
+      onClick={crossWindowDrag.isDragging ? () => void handleDrop() : undefined}
+    >
+      {/* Cross-window drag indicator */}
+      {crossWindowDrag.isDragging && (
+        <div className="task-window-drop-overlay" onClick={() => void handleDrop()}>
+          <div className="drop-overlay-content">
+            <span className="drop-icon">📥</span>
+            <span className="drop-text">Click to add "{crossWindowDrag.task?.title}" to queue</span>
+          </div>
+        </div>
+      )}
       <div className="task-window-surface">
         <section className="task-window-body">
           <TaskList
@@ -140,6 +224,9 @@ const TaskWindowApp = () => {
             sortHold={sortHold}
             holdDuration={7000}
             disableSortHoldIndicators
+            enableExternalDrag={true}
+            onTaskDragStart={handleCrossWindowDragStart}
+            onTaskDragEnd={handleCrossWindowDragEnd}
           />
         </section>
         <footer className="task-window-footer">

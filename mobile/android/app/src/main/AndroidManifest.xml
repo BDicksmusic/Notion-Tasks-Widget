@@ -33,6 +33,38 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Tasks Widget -->
+        <receiver
+            android:name=".TasksWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_tasks_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.notiontasks.widget.REFRESH_TASKS" />
+                <action android:name="com.notiontasks.widget.OPEN_APP" />
+                <action android:name="com.notiontasks.widget.ADD_TASK" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_tasks_info" />
+        </receiver>
+
+        <!-- Quick Capture Widget -->
+        <receiver
+            android:name=".QuickCaptureWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_capture_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.notiontasks.widget.QUICK_TASK" />
+                <action android:name="com.notiontasks.widget.QUICK_WRITING" />
+                <action android:name="com.notiontasks.widget.OPEN_CAPTURE_APP" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_capture_info" />
+        </receiver>
     </application>
 
     <!-- Permissions -->

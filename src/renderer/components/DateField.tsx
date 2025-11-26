@@ -1,5 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+const RECURRENCE_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+const REMINDER_OPTIONS = [
+  { key: '15min', label: 'In 15 minutes', icon: '⏱️' },
+  { key: '30min', label: 'In 30 minutes', icon: '⏱️' },
+  { key: '1hr', label: 'In 1 hour', icon: '🕐' },
+  { key: '3hr', label: 'In 3 hours', icon: '🕒' },
+  { key: 'tomorrow9am', label: 'Tomorrow 9 AM', icon: '🌅' },
+  { key: 'tomorrow6pm', label: 'Tomorrow 6 PM', icon: '🌆' },
+  { key: 'nextWeek', label: 'Next week', icon: '📅' },
+  { key: 'dueDate', label: 'At due date/time', icon: '📌' },
+] as const;
+
+// Recurrence pattern types for smarter scheduling
+type RecurrenceType = 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | 'custom' | 'everyXDays';
+
+interface RecurrencePattern {
+  type: RecurrenceType;
+  days?: string[]; // For weekly/custom: specific days
+  interval?: number; // For everyXDays: number of days
+  dayOfMonth?: number; // For monthly: day of the month
+}
+
 interface Props {
   value?: string | null;
   endValue?: string | null;
@@ -11,6 +33,12 @@ interface Props {
   inputClassName?: string;
   placeholder?: string;
   ariaLabel?: string;
+  // Recurrence props
+  recurrence?: string[];
+  onRecurrenceChange?: (recurrence: string[] | null) => void;
+  // Reminder props
+  reminderAt?: string | null;
+  onReminderChange?: (reminderAt: string | null) => void;
 }
 
 type CalendarCell = {
@@ -78,7 +106,11 @@ const DateField = ({
   className,
   inputClassName,
   placeholder = 'Select date',
-  ariaLabel
+  ariaLabel,
+  recurrence,
+  onRecurrenceChange,
+  reminderAt,
+  onReminderChange
 }: Props) => {
   const [open, setOpen] = useState(false);
   const [visibleMonth, setVisibleMonth] = useState<Date>(() =>
@@ -98,7 +130,14 @@ const DateField = ({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [placement, setPlacement] = useState<'above' | 'below'>('above');
+  const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  
+  // Secondary panel state for recurrence/reminder
+  const [activePanel, setActivePanel] = useState<'none' | 'repeat' | 'reminder'>('none');
+  const [repeatType, setRepeatType] = useState<RecurrenceType>(() => 
+    deriveRepeatType(recurrence)
+  );
+  const [everyXDays, setEveryXDays] = useState(2);
 
   useEffect(() => {
     setTextValue(formatTextValue(value, allowRange ? endValue : null));
@@ -110,25 +149,54 @@ const DateField = ({
     setTimeState(deriveTimeState(value, allowRange ? endValue : null));
   }, [value, endValue, allowRange]);
 
-  const updatePlacement = () => {
+  const updatePopoverPosition = () => {
     const wrapper = wrapperRef.current;
+    const popover = popoverRef.current;
     if (!wrapper) return;
+    
     const rect = wrapper.getBoundingClientRect();
     const viewportHeight = window.innerHeight || 0;
-    const estimatedHeight =
-      popoverRef.current?.offsetHeight ?? 260;
-    const spaceBelow = viewportHeight - rect.bottom;
-    const spaceAbove = rect.top;
-    if (spaceBelow >= estimatedHeight || spaceBelow > spaceAbove) {
-      setPlacement('below');
+    const viewportWidth = window.innerWidth || 0;
+    const popoverHeight = popover?.offsetHeight ?? 400;
+    const popoverWidth = popover?.offsetWidth ?? 240;
+    
+    // Calculate vertical position
+    const spaceBelow = viewportHeight - rect.bottom - 10;
+    const spaceAbove = rect.top - 10;
+    
+    let top: number;
+    if (spaceBelow >= popoverHeight || spaceBelow > spaceAbove) {
+      // Position below
+      top = rect.bottom + 6;
     } else {
-      setPlacement('above');
+      // Position above
+      top = rect.top - popoverHeight - 6;
     }
+    
+    // Keep within viewport vertically
+    top = Math.max(10, Math.min(top, viewportHeight - popoverHeight - 10));
+    
+    // Calculate horizontal position - align to left of input but keep in viewport
+    let left = rect.left;
+    if (left + popoverWidth > viewportWidth - 10) {
+      left = viewportWidth - popoverWidth - 10;
+    }
+    left = Math.max(10, left);
+    
+    setPopoverPosition({ top, left });
   };
 
   useEffect(() => {
     if (!open) return;
-    updatePlacement();
+    
+    // Initial position calculation
+    updatePopoverPosition();
+    
+    // Recalculate after a frame to get accurate popover dimensions
+    requestAnimationFrame(() => {
+      updatePopoverPosition();
+    });
+    
     const handlePointer = (event: MouseEvent) => {
       const target = event.target as Node;
       if (
@@ -137,23 +205,37 @@ const DateField = ({
         !buttonRef.current?.contains(target)
       ) {
         setOpen(false);
+        setActivePanel('none');
       }
     };
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
+      if (event.key === 'Escape') {
+        if (activePanel !== 'none') {
+          setActivePanel('none');
+        } else {
+          setOpen(false);
+        }
+      }
+    };
+    const handleScroll = () => {
+      updatePopoverPosition();
     };
     const handleResize = () => {
-      updatePlacement();
+      updatePopoverPosition();
     };
+    
     window.addEventListener('mousedown', handlePointer);
     window.addEventListener('keydown', handleKey);
     window.addEventListener('resize', handleResize);
+    window.addEventListener('scroll', handleScroll, true);
+    
     return () => {
       window.removeEventListener('mousedown', handlePointer);
       window.removeEventListener('keydown', handleKey);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('scroll', handleScroll, true);
     };
-  }, [open]);
+  }, [open, activePanel]);
 
   const calendarCells = useMemo(
     () => buildCalendarCells(visibleMonth),
@@ -288,7 +370,6 @@ const DateField = ({
   const rootClassName = [
     'date-field',
     open ? 'is-open' : '',
-    `placement-${placement}`,
     className ?? ''
   ]
     .filter(Boolean)
@@ -326,7 +407,14 @@ const DateField = ({
         />
       </div>
       {open && (
-        <div className="date-field-popover" ref={popoverRef}>
+        <div 
+          className="date-field-popover" 
+          ref={popoverRef}
+          style={{
+            top: popoverPosition.top,
+            left: popoverPosition.left
+          }}
+        >
           <header className="date-field-header">
             <button
               type="button"
@@ -421,11 +509,232 @@ const DateField = ({
               )}
             </div>
           )}
-          <footer className="date-field-footer">
-            <button type="button" onClick={handleClear}>
+          
+          {/* Action buttons bar */}
+          <div className="date-field-actions">
+            {onRecurrenceChange && (
+              <button
+                type="button"
+                className={`date-field-action-btn ${recurrence && recurrence.length > 0 ? 'is-active' : ''}`}
+                onClick={() => setActivePanel(activePanel === 'repeat' ? 'none' : 'repeat')}
+              >
+                <span className="action-icon">🔄</span>
+                <span className="action-label">
+                  {recurrence && recurrence.length > 0 
+                    ? formatRecurrenceLabel(recurrence)
+                    : 'Repeat'}
+                </span>
+                <span className="action-chevron">{activePanel === 'repeat' ? '▾' : '▸'}</span>
+              </button>
+            )}
+            {onReminderChange && (
+              <button
+                type="button"
+                className={`date-field-action-btn ${reminderAt && new Date(reminderAt) > new Date() ? 'is-active' : ''}`}
+                onClick={() => setActivePanel(activePanel === 'reminder' ? 'none' : 'reminder')}
+              >
+                <span className="action-icon">🔔</span>
+                <span className="action-label">
+                  {reminderAt && new Date(reminderAt) > new Date()
+                    ? formatReminderLabel(reminderAt)
+                    : 'Remind me'}
+                </span>
+                <span className="action-chevron">{activePanel === 'reminder' ? '▾' : '▸'}</span>
+              </button>
+            )}
+            <button type="button" className="date-field-clear-btn" onClick={handleClear}>
               Clear
             </button>
-          </footer>
+          </div>
+
+          {/* Repeat Panel */}
+          {activePanel === 'repeat' && onRecurrenceChange && (
+            <div className="date-field-panel repeat-panel">
+              <div className="panel-header">
+                <span>Repeat Schedule</span>
+                <button type="button" className="panel-close" onClick={() => setActivePanel('none')}>✕</button>
+              </div>
+              
+              {/* Preset options */}
+              <div className="repeat-presets">
+                <button
+                  type="button"
+                  className={`repeat-preset ${repeatType === 'daily' ? 'is-selected' : ''}`}
+                  onClick={() => {
+                    setRepeatType('daily');
+                    onRecurrenceChange([...RECURRENCE_WEEKDAYS]);
+                  }}
+                >
+                  <span className="preset-icon">📅</span>
+                  <span>Daily</span>
+                </button>
+                <button
+                  type="button"
+                  className={`repeat-preset ${repeatType === 'weekdays' ? 'is-selected' : ''}`}
+                  onClick={() => {
+                    setRepeatType('weekdays');
+                    onRecurrenceChange(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+                  }}
+                >
+                  <span className="preset-icon">💼</span>
+                  <span>Weekdays</span>
+                </button>
+                <button
+                  type="button"
+                  className={`repeat-preset ${repeatType === 'weekly' ? 'is-selected' : ''}`}
+                  onClick={() => {
+                    setRepeatType('weekly');
+                    const todayName = RECURRENCE_WEEKDAYS[new Date().getDay()];
+                    onRecurrenceChange([todayName]);
+                  }}
+                >
+                  <span className="preset-icon">🗓️</span>
+                  <span>Weekly</span>
+                </button>
+                <button
+                  type="button"
+                  className={`repeat-preset ${repeatType === 'biweekly' ? 'is-selected' : ''}`}
+                  onClick={() => {
+                    setRepeatType('biweekly');
+                    const todayName = RECURRENCE_WEEKDAYS[new Date().getDay()];
+                    onRecurrenceChange([`biweekly:${todayName}`]);
+                  }}
+                >
+                  <span className="preset-icon">📆</span>
+                  <span>Bi-weekly</span>
+                </button>
+                <button
+                  type="button"
+                  className={`repeat-preset ${repeatType === 'monthly' ? 'is-selected' : ''}`}
+                  onClick={() => {
+                    setRepeatType('monthly');
+                    const dayOfMonth = new Date().getDate();
+                    onRecurrenceChange([`monthly:${dayOfMonth}`]);
+                  }}
+                >
+                  <span className="preset-icon">📅</span>
+                  <span>Monthly</span>
+                </button>
+                <button
+                  type="button"
+                  className={`repeat-preset ${repeatType === 'everyXDays' ? 'is-selected' : ''}`}
+                  onClick={() => {
+                    setRepeatType('everyXDays');
+                    onRecurrenceChange([`every:${everyXDays}`]);
+                  }}
+                >
+                  <span className="preset-icon">🔢</span>
+                  <span>Every X days</span>
+                </button>
+              </div>
+
+              {/* Every X days input */}
+              {repeatType === 'everyXDays' && (
+                <div className="repeat-interval">
+                  <span>Every</span>
+                  <input
+                    type="number"
+                    min="2"
+                    max="365"
+                    value={everyXDays}
+                    onChange={(e) => {
+                      const val = Math.max(2, Math.min(365, parseInt(e.target.value) || 2));
+                      setEveryXDays(val);
+                      onRecurrenceChange([`every:${val}`]);
+                    }}
+                    className="interval-input"
+                  />
+                  <span>days</span>
+                </div>
+              )}
+
+              {/* Custom weekday picker */}
+              {(repeatType === 'weekly' || repeatType === 'custom') && (
+                <div className="repeat-custom">
+                  <div className="custom-label">Select days:</div>
+                  <div className="weekday-picker">
+                    {RECURRENCE_WEEKDAYS.map((day) => {
+                      const isSelected = recurrence?.includes(day) ?? false;
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          className={`weekday-btn ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            setRepeatType('custom');
+                            const current = recurrence?.filter(d => !d.includes(':')) ?? [];
+                            const next = isSelected
+                              ? current.filter((d) => d !== day)
+                              : [...current, day];
+                            onRecurrenceChange(next.length > 0 ? next : null);
+                          }}
+                        >
+                          {day}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Clear button */}
+              {recurrence && recurrence.length > 0 && (
+                <button
+                  type="button"
+                  className="repeat-clear"
+                  onClick={() => {
+                    setRepeatType('custom');
+                    onRecurrenceChange(null);
+                  }}
+                >
+                  <span>❌</span>
+                  <span>Remove repeat</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Reminder Panel */}
+          {activePanel === 'reminder' && onReminderChange && (
+            <div className="date-field-panel reminder-panel">
+              <div className="panel-header">
+                <span>🔔 Set Reminder</span>
+                <button type="button" className="panel-close" onClick={() => setActivePanel('none')}>✕</button>
+              </div>
+              
+              <div className="reminder-options">
+                {REMINDER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    className="reminder-option"
+                    onClick={() => {
+                      const reminderTime = calculateReminderTime(opt.key, value);
+                      onReminderChange(reminderTime);
+                      setActivePanel('none');
+                    }}
+                  >
+                    <span className="reminder-icon">{opt.icon}</span>
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {reminderAt && new Date(reminderAt) > new Date() && (
+                <button
+                  type="button"
+                  className="reminder-clear"
+                  onClick={() => {
+                    onReminderChange(null);
+                    setActivePanel('none');
+                  }}
+                >
+                  <span>❌</span>
+                  <span>Remove reminder</span>
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -747,6 +1056,132 @@ const parseTimeSegment = (segment?: string) => {
     if (hours < 12) hours += 12;
   }
   return { hours, minutes };
+};
+
+// Reminder helper functions
+const calculateReminderTime = (option: string, dueDate?: string | null): string => {
+  const now = new Date();
+  switch (option) {
+    case '15min':
+      return new Date(now.getTime() + 15 * 60 * 1000).toISOString();
+    case '30min':
+      return new Date(now.getTime() + 30 * 60 * 1000).toISOString();
+    case '1hr':
+      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    case '3hr':
+      return new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();
+    case 'tomorrow9am': {
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+      return tomorrow.toISOString();
+    }
+    case 'tomorrow6pm': {
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(18, 0, 0, 0);
+      return tomorrow.toISOString();
+    }
+    case 'nextWeek': {
+      const nextWeek = new Date(now);
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      nextWeek.setHours(9, 0, 0, 0);
+      return nextWeek.toISOString();
+    }
+    case 'dueDate': {
+      // Use the task's due date if available, otherwise default to 1 hour from now
+      if (dueDate) {
+        return dueDate;
+      }
+      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    }
+    default:
+      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+  }
+};
+
+const formatReminderLabel = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+  if (diffMs < 0) {
+    return 'Passed';
+  }
+  if (diffHours < 1) {
+    const mins = Math.round(diffMs / (1000 * 60));
+    return `In ${mins}m`;
+  }
+  if (diffHours < 24) {
+    const hours = Math.round(diffHours);
+    if (hours === 1) return 'In 1 hour';
+    return `In ${hours}hrs`;
+  }
+  if (diffDays < 2) {
+    return `Tomorrow ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  if (diffDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  }
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: 'numeric' });
+};
+
+// Recurrence helper functions
+const deriveRepeatType = (recurrence?: string[]): RecurrenceType => {
+  if (!recurrence || recurrence.length === 0) return 'custom';
+  
+  // Check for special patterns
+  const first = recurrence[0];
+  if (first.startsWith('every:')) return 'everyXDays';
+  if (first.startsWith('monthly:')) return 'monthly';
+  if (first.startsWith('biweekly:')) return 'biweekly';
+  
+  // Check for preset patterns
+  if (recurrence.length === 7) return 'daily';
+  if (recurrence.length === 5 && 
+      !recurrence.includes('Sat') && 
+      !recurrence.includes('Sun')) return 'weekdays';
+  if (recurrence.length === 1 && RECURRENCE_WEEKDAYS.includes(recurrence[0] as typeof RECURRENCE_WEEKDAYS[number])) return 'weekly';
+  
+  return 'custom';
+};
+
+const formatRecurrenceLabel = (recurrence?: string[]): string => {
+  if (!recurrence || recurrence.length === 0) return 'Repeat';
+  
+  const first = recurrence[0];
+  
+  // Handle special patterns
+  if (first.startsWith('every:')) {
+    const days = parseInt(first.split(':')[1]);
+    return `Every ${days} days`;
+  }
+  if (first.startsWith('monthly:')) {
+    const day = parseInt(first.split(':')[1]);
+    return `Monthly (${day}${getOrdinalSuffix(day)})`;
+  }
+  if (first.startsWith('biweekly:')) {
+    const day = first.split(':')[1];
+    return `Bi-weekly (${day})`;
+  }
+  
+  // Handle preset patterns
+  if (recurrence.length === 7) return 'Daily';
+  if (recurrence.length === 5 && 
+      !recurrence.includes('Sat') && 
+      !recurrence.includes('Sun')) return 'Weekdays';
+  if (recurrence.length === 1) return `Weekly (${recurrence[0]})`;
+  if (recurrence.length === 2) return recurrence.join(', ');
+  
+  return `${recurrence.length} days`;
+};
+
+const getOrdinalSuffix = (n: number): string => {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
 };
 
 export default DateField;

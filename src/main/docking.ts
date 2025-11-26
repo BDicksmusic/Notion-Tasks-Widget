@@ -4,7 +4,7 @@ import type { DockEdge, DockState } from '../shared/types';
 const EDGE_THRESHOLD = 80;
 const COLLAPSED_VISIBLE_RATIO = 0.06;
 const COLLAPSED_THIN_RATIO = 0.016;
-const CAPTURE_HEIGHT_RATIO = 0.16;
+const CAPTURE_HEIGHT_RATIO = 0.28; // Increased to fit Quick Add form + bottom controls
 const TOP_EDGE_HORIZONTAL_OFFSET_RATIO = 0.35;
 const HANDLE_THICKNESS = 12;
 
@@ -168,14 +168,7 @@ export class DockingController {
       // Only update expandedBounds if we are in a "normal" state
       // i.e., not collapsed, not thin, and not in capture mode
       if (!this.state.collapsed && !this.isThin && !this.isCapture) {
-        const newBounds = this.window.getBounds();
-        // Don't update expandedBounds if the new height is smaller than current
-        // This prevents content changes (like focus mode) from shrinking the expanded size
-        // Only allow updates if height increases (user expanding) or width changes
-        if (newBounds.height >= this.expandedBounds.height || 
-            newBounds.width !== this.expandedBounds.width) {
-          this.expandedBounds = newBounds;
-        }
+        this.expandedBounds = this.window.getBounds();
       }
     });
   }
@@ -270,6 +263,7 @@ export class DockingController {
     this.expandedBounds = { ...this.expandedBounds, ...partial };
   }
 }
+
 
 
 

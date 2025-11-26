@@ -66,3 +66,4 @@ jobs:
           name: android-apk
           path: mobile/android/app/build/outputs/apk/debug/*.apk
 
+

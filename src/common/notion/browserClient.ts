@@ -8,6 +8,7 @@ import type {
   NotionCreatePayload,
   NotionSettings,
   Task,
+  TaskOrderOption,
   TaskStatusOption,
   TaskUpdatePayload,
   TimeLogEntry,
@@ -42,11 +43,15 @@ export class BrowserNotionClient {
   private timeLogSettings: TimeLogSettings | null = null;
   private cachedDataSourceId: string | null = null;
   private cachedStatusOptions: TaskStatusOption[] | null = null;
+  private cachedOrderOptions: TaskOrderOption[] | null = null;
+  private cachedOrderPropertyType: 'select' | 'status' | null = null;
 
   configureTasks(settings: NotionSettings) {
     this.taskSettings = settings;
     this.cachedDataSourceId = settings.dataSourceId ?? null;
     this.cachedStatusOptions = null;
+    this.cachedOrderOptions = null;
+    this.cachedOrderPropertyType = null;
   }
 
   configureWriting(settings: WritingSettings) {
@@ -268,6 +273,22 @@ export class BrowserNotionClient {
       };
     }
 
+    if (
+      Object.prototype.hasOwnProperty.call(updates, 'orderValue') &&
+      settings.orderProperty
+    ) {
+      const metadata = await this.getOrderPropertyMetadata();
+      if (metadata?.type === 'select') {
+        properties[settings.orderProperty] = updates.orderValue
+          ? { select: { name: updates.orderValue } }
+          : { select: null };
+      } else if (metadata?.type === 'status') {
+        properties[settings.orderProperty] = updates.orderValue
+          ? { status: { name: updates.orderValue } }
+          : { status: null };
+      }
+    }
+
     if (!Object.keys(properties).length) {
       throw new Error('No updates specified');
     }
@@ -315,6 +336,11 @@ export class BrowserNotionClient {
     }
 
     return this.cachedStatusOptions ?? [];
+  }
+
+  async getOrderOptions(): Promise<TaskOrderOption[]> {
+    const metadata = await this.getOrderPropertyMetadata();
+    return metadata?.options ?? [];
   }
 
   async createWritingEntry(payload: WritingEntryPayload): Promise<void> {
@@ -380,7 +406,7 @@ export class BrowserNotionClient {
     });
   }
 
-  async createTimeLogEntry(payload: TimeLogEntryPayload): Promise<void> {
+  async createTimeLogEntry(payload: TimeLogEntryPayload): Promise<TimeLogEntry> {
     const settings = this.assertTimeLogSettings();
     const clientApiKey = settings.apiKey?.trim()
       ? settings.apiKey
@@ -449,13 +475,33 @@ export class BrowserNotionClient {
       };
     }
 
-    await this.request<PageObjectResponse>(clientApiKey, '/pages', {
+    const response = await this.request<PageObjectResponse>(clientApiKey, '/pages', {
       method: 'POST',
       body: {
         parent: { database_id: databaseId },
         properties
       }
     });
+
+    let durationMinutes = payload.sessionLengthMinutes ?? null;
+    if (!durationMinutes && payload.startTime && payload.endTime) {
+      const start = new Date(payload.startTime).getTime();
+      const end = new Date(payload.endTime).getTime();
+      if (!Number.isNaN(start) && !Number.isNaN(end) && end >= start) {
+        durationMinutes = Math.round((end - start) / (1000 * 60));
+      }
+    }
+
+    return {
+      id: response.id,
+      startTime: payload.startTime ?? null,
+      endTime: payload.endTime ?? null,
+      durationMinutes,
+      title: payload.taskTitle ?? null,
+      taskId: payload.taskId,
+      taskTitle: payload.taskTitle ?? null,
+      status: payload.status ?? null
+    };
   }
 
   async getActiveTimeLogEntry(taskId: string) {
@@ -766,6 +812,65 @@ export class BrowserNotionClient {
     return this.normalizeId(raw);
   }
 
+  private async getOrderPropertyMetadata(): Promise<{
+    type: 'select' | 'status';
+    options: TaskOrderOption[];
+  } | null> {
+    const settings = this.assertTaskSettings();
+    if (!settings.orderProperty) {
+      return null;
+    }
+    if (this.cachedOrderOptions && this.cachedOrderPropertyType) {
+      return {
+        type: this.cachedOrderPropertyType,
+        options: this.cachedOrderOptions ?? []
+      };
+    }
+
+    const database = await this.request<any>(
+      settings.apiKey,
+      `/databases/${this.getDatabaseId(settings.databaseId)}`,
+      { method: 'GET' }
+    );
+    const property = database.properties?.[settings.orderProperty];
+
+    if (property?.type === 'select') {
+      const options: TaskOrderOption[] = property.select.options.map(
+        (option: any) => ({
+          id: option.id,
+          name: option.name,
+          color: option.color
+        })
+      );
+      this.cachedOrderOptions = options;
+      this.cachedOrderPropertyType = 'select';
+      return {
+        type: 'select',
+        options
+      };
+    }
+
+    if (property?.type === 'status') {
+      const options: TaskOrderOption[] = property.status.options.map(
+        (option: any) => ({
+          id: option.id,
+          name: option.name,
+          color: option.color
+        })
+      );
+      this.cachedOrderOptions = options;
+      this.cachedOrderPropertyType = 'status';
+      return {
+        type: 'status',
+        options
+      };
+    }
+
+    this.cachedOrderOptions = [];
+    this.cachedOrderPropertyType = null;
+    return null;
+  }
+
   private async getDataSourceId(settings: NotionSettings): Promise<string> {
     if (this.cachedDataSourceId) return this.cachedDataSourceId;
     if (settings.dataSourceId) {
@@ -836,4 +941,5 @@ export class BrowserNotionClient {
     return (await response.json()) as T;
   }
 }
+
 

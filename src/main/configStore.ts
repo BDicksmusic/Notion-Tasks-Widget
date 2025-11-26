@@ -2,11 +2,17 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type {
   AppPreferences,
+  ChatbotSettings,
+  ContactsSettings,
+  FeatureToggles,
   NotionSettings,
+  ProjectsSettings,
+  SavedView,
   TimeLogSettings,
   WidgetConfig,
   WritingSettings
 } from '../shared/types';
+import { extractDatabaseId } from '../shared/utils/notionUrl';
 
 const CONFIG_FILENAME = 'notion-widget.config.json';
 const CONFIG_VERSION = 2;
@@ -41,8 +47,24 @@ export function getTimeLogSettings() {
   return config.timeLog;
 }
 
+export function getProjectsSettings() {
+  return config.projects;
+}
+
+export function getContactsSettings() {
+  return config.contacts;
+}
+
+export function getChatbotSettings() {
+  return config.chatbot;
+}
+
 export function getAppPreferences() {
   return config.app;
+}
+
+export function getFeatureToggles() {
+  return config.features;
 }
 
 export async function updateSettings(
@@ -84,6 +106,39 @@ export async function updateTimeLogSettings(
   return config.timeLog;
 }
 
+export async function updateProjectsSettings(
+  next: ProjectsSettings
+): Promise<ProjectsSettings> {
+  config = {
+    ...config,
+    projects: normalizeProjectsSettings(next)
+  };
+  await persistConfig();
+  return config.projects;
+}
+
+export async function updateContactsSettings(
+  next: ContactsSettings
+): Promise<ContactsSettings> {
+  config = {
+    ...config,
+    contacts: normalizeContactsSettings(next)
+  };
+  await persistConfig();
+  return config.contacts;
+}
+
+export async function updateChatbotSettings(
+  next: ChatbotSettings
+): Promise<ChatbotSettings> {
+  config = {
+    ...config,
+    chatbot: normalizeChatbotSettings(next)
+  };
+  await persistConfig();
+  return config.chatbot;
+}
+
 export async function updateAppPreferences(
   next: AppPreferences
 ): Promise<AppPreferences> {
@@ -95,13 +150,88 @@ export async function updateAppPreferences(
   return config.app;
 }
 
+export async function updateFeatureToggles(
+  next: FeatureToggles
+): Promise<FeatureToggles> {
+  config = {
+    ...config,
+    features: normalizeFeatureToggles(next)
+  };
+  await persistConfig();
+  return config.features;
+}
+
+export function getSavedViews(): SavedView[] {
+  return config.savedViews ?? [];
+}
+
+export async function saveView(
+  view: Omit<SavedView, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }
+): Promise<SavedView> {
+  const now = new Date().toISOString();
+  const existingViews = config.savedViews ?? [];
+  
+  let savedView: SavedView;
+  if (view.id) {
+    // Update existing view
+    const existingIndex = existingViews.findIndex((v) => v.id === view.id);
+    if (existingIndex >= 0) {
+      savedView = {
+        ...existingViews[existingIndex],
+        ...view,
+        id: view.id,
+        updatedAt: now
+      };
+      existingViews[existingIndex] = savedView;
+    } else {
+      // ID provided but not found, create new
+      savedView = {
+        ...view,
+        id: view.id,
+        createdAt: now,
+        updatedAt: now
+      };
+      existingViews.push(savedView);
+    }
+  } else {
+    // Create new view
+    savedView = {
+      ...view,
+      id: `view-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      createdAt: now,
+      updatedAt: now
+    };
+    existingViews.push(savedView);
+  }
+  
+  config = {
+    ...config,
+    savedViews: existingViews
+  };
+  await persistConfig();
+  return savedView;
+}
+
+export async function deleteView(viewId: string): Promise<void> {
+  const existingViews = config.savedViews ?? [];
+  config = {
+    ...config,
+    savedViews: existingViews.filter((v) => v.id !== viewId)
+  };
+  await persistConfig();
+}
+
 function createDefaultConfig(): WidgetConfig {
   return {
     version: CONFIG_VERSION,
     tasks: normalizeTaskSettings(loadTaskDefaults()),
     writing: normalizeWritingSettings(loadWritingDefaults()),
     timeLog: normalizeTimeLogSettings(loadTimeLogDefaults()),
-    app: normalizeAppPreferences(loadAppDefaults())
+    projects: normalizeProjectsSettings(loadProjectsDefaults()),
+    contacts: normalizeContactsSettings(loadContactsDefaults()),
+    chatbot: normalizeChatbotSettings(loadChatbotDefaults()),
+    app: normalizeAppPreferences(loadAppDefaults()),
+    features: normalizeFeatureToggles(loadFeatureDefaults())
   };
 }
 
@@ -148,9 +278,25 @@ function migrateConfig(raw: unknown): WidgetConfig {
         ...defaults.timeLog,
         ...(next.timeLog ?? {})
       }),
+      projects: normalizeProjectsSettings({
+        ...defaults.projects,
+        ...(next.projects ?? {})
+      }),
+      contacts: normalizeContactsSettings({
+        ...defaults.contacts,
+        ...(next.contacts ?? {})
+      }),
+      chatbot: normalizeChatbotSettings({
+        ...defaults.chatbot,
+        ...(next.chatbot ?? {})
+      }),
       app: normalizeAppPreferences({
         ...defaults.app,
         ...(next.app ?? {})
+      }),
+      features: normalizeFeatureToggles({
+        ...defaults.features,
+        ...(next.features ?? {})
       })
     };
   }
@@ -162,9 +308,13 @@ function migrateConfig(raw: unknown): WidgetConfig {
         ...defaults.tasks,
         ...(raw as Partial<NotionSettings>)
       }),
-      writing: defaults.writing,
-      timeLog: defaults.timeLog,
-      app: defaults.app
+      writing: normalizeWritingSettings(defaults.writing),
+      timeLog: normalizeTimeLogSettings(defaults.timeLog),
+      projects: normalizeProjectsSettings(defaults.projects),
+      contacts: normalizeContactsSettings(defaults.contacts),
+      chatbot: normalizeChatbotSettings(defaults.chatbot),
+      app: normalizeAppPreferences(defaults.app),
+      features: normalizeFeatureToggles(defaults.features)
     };
   }
 
@@ -179,8 +329,12 @@ async function persistConfig() {
 }
 
 function normalizeTaskSettings(next: NotionSettings): NotionSettings {
+  // Extract database ID from URL if provided
+  const databaseId = next.databaseId ? extractDatabaseId(next.databaseId) : '';
+  
   const normalized: NotionSettings = {
     ...next,
+    databaseId,
     statusPresets: Array.isArray(next.statusPresets)
       ? next.statusPresets.map((entry) => entry.trim()).filter(Boolean)
       : []
@@ -240,6 +394,15 @@ function normalizeTaskSettings(next: NotionSettings): NotionSettings {
       normalized.estimatedLengthProperty.trim();
   }
 
+  if (normalized.orderProperty) {
+    normalized.orderProperty = normalized.orderProperty.trim();
+  }
+
+  if (normalized.projectRelationProperty) {
+    normalized.projectRelationProperty =
+      normalized.projectRelationProperty.trim();
+  }
+
   if (!normalized.sessionLengthProperty) {
     normalized.sessionLengthProperty = 'Sess. Length';
   }
@@ -262,10 +425,13 @@ function normalizeWritingSettings(next: WritingSettings): WritingSettings {
     needsWritingConfigPersist = true;
   }
 
+  // Extract database ID from URL if provided
+  const databaseId = rest.databaseId ? extractDatabaseId(rest.databaseId) : '';
+  
   return {
     ...rest,
     apiKey: rest.apiKey?.trim() || undefined,
-    databaseId: rest.databaseId?.trim() ?? '',
+    databaseId,
     titleProperty: rest.titleProperty?.trim() || 'Name',
     summaryProperty: rest.summaryProperty?.trim() || undefined,
     tagsProperty: rest.tagsProperty?.trim() || undefined,
@@ -276,10 +442,13 @@ function normalizeWritingSettings(next: WritingSettings): WritingSettings {
 }
 
 function normalizeTimeLogSettings(next: TimeLogSettings): TimeLogSettings {
+  // Extract database ID from URL if provided
+  const databaseId = next.databaseId ? extractDatabaseId(next.databaseId) : '';
+  
   return {
     ...next,
     apiKey: next.apiKey?.trim() || undefined,
-    databaseId: next.databaseId?.trim() ?? '',
+    databaseId,
     taskProperty: next.taskProperty?.trim() || undefined,
     statusProperty: next.statusProperty?.trim() || undefined,
     startTimeProperty: next.startTimeProperty?.trim() || undefined,
@@ -353,7 +522,12 @@ function loadTaskDefaults(): NotionSettings {
     estimatedLengthProperty: envDefault(
       'NOTION_TASK_ESTIMATE_PROP',
       'Est. Length'
-    )
+    ),
+    orderProperty: envDefault('NOTION_TASK_ORDER_PROP', '').trim(),
+    projectRelationProperty: envDefault(
+      'NOTION_TASK_PROJECT_RELATION_PROP',
+      ''
+    ).trim()
   };
 }
 
@@ -374,11 +548,162 @@ function loadTimeLogDefaults(): TimeLogSettings {
   return {
     apiKey: process.env.NOTION_TIME_LOG_API_KEY ?? process.env.NOTION_API_KEY,
     databaseId: envDefault('NOTION_TIME_LOG_DATABASE_ID', '12d8cc9f36f180849cc6d39db3826ac6'),
-    taskProperty: process.env.NOTION_TIME_LOG_TASK_PROP,
-    statusProperty: process.env.NOTION_TIME_LOG_STATUS_PROP,
-    startTimeProperty: process.env.NOTION_TIME_LOG_START_TIME_PROP,
+    taskProperty: envDefault('NOTION_TIME_LOG_TASK_PROP', 'Task'),
+    statusProperty: envDefault('NOTION_TIME_LOG_STATUS_PROP', 'Status'),
+    startTimeProperty: envDefault('NOTION_TIME_LOG_START_TIME_PROP', 'Date'),
     endTimeProperty: process.env.NOTION_TIME_LOG_END_TIME_PROP,
-    titleProperty: envDefault('NOTION_TIME_LOG_TITLE_PROP', 'Name')
+    titleProperty: envDefault('NOTION_TIME_LOG_TITLE_PROP', 'Name'),
+    startStatusValue: envDefault('NOTION_TIME_LOG_START_STATUS', 'Start'),
+    endStatusValue: envDefault('NOTION_TIME_LOG_END_STATUS', 'End')
+  };
+}
+
+function normalizeProjectsSettings(next: ProjectsSettings): ProjectsSettings {
+  // Extract database ID from URL if provided
+  const databaseId = next.databaseId ? extractDatabaseId(next.databaseId) : '';
+  
+  return {
+    ...next,
+    apiKey: next.apiKey?.trim() || undefined,
+    databaseId,
+    titleProperty: next.titleProperty?.trim() || 'Name',
+    statusProperty: next.statusProperty?.trim() || 'Status', // Default to 'Status' if not set
+    descriptionProperty: next.descriptionProperty?.trim() || undefined,
+    startDateProperty: next.startDateProperty?.trim() || undefined,
+    endDateProperty: next.endDateProperty?.trim() || undefined,
+    tagsProperty: next.tagsProperty?.trim() || undefined,
+    actionsRelationProperty: next.actionsRelationProperty?.trim() || undefined,
+    statusPresets: Array.isArray(next.statusPresets)
+      ? next.statusPresets.map((entry) => entry.trim()).filter(Boolean)
+      : [],
+    completedStatus: next.completedStatus?.trim() || 'Done',
+    cachedStatusOptions: Array.isArray(next.cachedStatusOptions) 
+      ? next.cachedStatusOptions 
+      : undefined
+  };
+}
+
+function loadProjectsDefaults(): ProjectsSettings {
+  return {
+    apiKey: process.env.NOTION_PROJECTS_API_KEY ?? process.env.NOTION_API_KEY,
+    databaseId: envDefault('NOTION_PROJECTS_DATABASE_ID', 'e78e95ea6b7c456caa88b5b2a7cbd74f'),
+    titleProperty: envDefault('NOTION_PROJECTS_TITLE_PROP', 'Name'),
+    statusProperty: envDefault('NOTION_PROJECTS_STATUS_PROP', 'Status'), // Default to 'Status'
+    descriptionProperty: process.env.NOTION_PROJECTS_DESCRIPTION_PROP,
+    startDateProperty: process.env.NOTION_PROJECTS_START_DATE_PROP,
+    endDateProperty: process.env.NOTION_PROJECTS_END_DATE_PROP,
+    tagsProperty: process.env.NOTION_PROJECTS_TAGS_PROP,
+    actionsRelationProperty: process.env.NOTION_PROJECTS_ACTIONS_PROP ?? 'Actions',
+    statusPresets: parseList(envDefault('NOTION_PROJECTS_STATUS_PRESETS', 'Not started,In progress,Done')),
+    completedStatus: envDefault('NOTION_PROJECTS_COMPLETED_STATUS', 'Done'),
+    cachedStatusOptions: undefined
+  };
+}
+
+function normalizeContactsSettings(next: ContactsSettings): ContactsSettings {
+  const databaseId = next.databaseId ? extractDatabaseId(next.databaseId) : '';
+
+  return {
+    ...next,
+    apiKey: next.apiKey?.trim() || undefined,
+    databaseId,
+    nameProperty: next.nameProperty?.trim() || 'Name',
+    emailProperty: next.emailProperty?.trim() || 'Email',
+    phoneProperty: next.phoneProperty?.trim() || 'Phone',
+    companyProperty: next.companyProperty?.trim() || 'Company',
+    roleProperty: next.roleProperty?.trim() || 'Role',
+    notesProperty: next.notesProperty?.trim() || 'Notes',
+    projectsRelationProperty:
+      next.projectsRelationProperty?.trim() || 'Projects'
+  };
+}
+
+function loadContactsDefaults(): ContactsSettings {
+  return {
+    apiKey: process.env.NOTION_CONTACTS_API_KEY ?? process.env.NOTION_API_KEY,
+    databaseId: envDefault('NOTION_CONTACTS_DATABASE_ID', ''),
+    nameProperty: envDefault('NOTION_CONTACTS_NAME_PROP', 'Name'),
+    emailProperty: envDefault('NOTION_CONTACTS_EMAIL_PROP', 'Email'),
+    phoneProperty: envDefault('NOTION_CONTACTS_PHONE_PROP', 'Phone'),
+    companyProperty: envDefault('NOTION_CONTACTS_COMPANY_PROP', 'Company'),
+    roleProperty: envDefault('NOTION_CONTACTS_ROLE_PROP', 'Role'),
+    notesProperty: envDefault('NOTION_CONTACTS_NOTES_PROP', 'Notes'),
+    projectsRelationProperty: envDefault(
+      'NOTION_CONTACTS_PROJECTS_PROP',
+      'Projects'
+    )
+  };
+}
+
+function normalizeChatbotSettings(next: ChatbotSettings): ChatbotSettings {
+  const provider: ChatbotSettings['preferredProvider'] =
+    next.preferredProvider === 'anthropic' ? 'anthropic' : 'openai';
+  const speechInputMode: ChatbotSettings['speechInputMode'] =
+    next.speechInputMode === 'whisper'
+      ? 'whisper'
+      : next.speechInputMode === 'hybrid'
+        ? 'hybrid'
+        : 'browser';
+  const summarySyncMode: ChatbotSettings['summarySyncMode'] =
+    next.summarySyncMode === 'notion'
+      ? 'notion'
+      : next.summarySyncMode === 'both'
+        ? 'both'
+        : 'local';
+
+  return {
+    openaiApiKey: next.openaiApiKey?.trim() || undefined,
+    anthropicApiKey: next.anthropicApiKey?.trim() || undefined,
+    preferredProvider: provider,
+    speechInputMode,
+    summarySyncMode,
+    summaryDatabaseId: next.summaryDatabaseId?.trim() || undefined,
+    summaryNotificationsEnabled:
+      next.summaryNotificationsEnabled === undefined
+        ? true
+        : Boolean(next.summaryNotificationsEnabled),
+    enableContinuousSummary:
+      next.enableContinuousSummary === undefined
+        ? true
+        : Boolean(next.enableContinuousSummary),
+    webSpeechLanguage: next.webSpeechLanguage?.trim() || 'en-US',
+    whisperModel: next.whisperModel?.trim() || 'whisper-1'
+  };
+}
+
+function loadChatbotDefaults(): ChatbotSettings {
+  const preferredProvider =
+    process.env.CHATBOT_PROVIDER?.toLowerCase() === 'anthropic'
+      ? 'anthropic'
+      : 'openai';
+  const speechModeEnv = process.env.CHATBOT_SPEECH_MODE?.toLowerCase();
+  const summarySyncEnv = process.env.CHATBOT_SUMMARY_SYNC_MODE?.toLowerCase();
+
+  return {
+    openaiApiKey:
+      process.env.CHATBOT_OPENAI_API_KEY ??
+      process.env.OPENAI_API_KEY ??
+      undefined,
+    anthropicApiKey:
+      process.env.CHATBOT_ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_API_KEY ?? undefined,
+    preferredProvider,
+    speechInputMode:
+      speechModeEnv === 'whisper'
+        ? 'whisper'
+        : speechModeEnv === 'hybrid'
+          ? 'hybrid'
+          : 'browser',
+    summarySyncMode:
+      summarySyncEnv === 'both'
+        ? 'both'
+        : summarySyncEnv === 'notion'
+          ? 'notion'
+          : 'local',
+    summaryDatabaseId: process.env.CHATBOT_SUMMARY_DATABASE_ID ?? undefined,
+    summaryNotificationsEnabled: envFlag('CHATBOT_SUMMARY_NOTIFICATIONS', true),
+    enableContinuousSummary: envFlag('CHATBOT_CONTINUOUS_SUMMARY', true),
+    webSpeechLanguage: process.env.CHATBOT_SPEECH_LANGUAGE ?? 'en-US',
+    whisperModel: process.env.CHATBOT_WHISPER_MODEL ?? 'whisper-1'
   };
 }
 
@@ -395,6 +720,97 @@ function loadAppDefaults(): AppPreferences {
   };
 }
 
+function loadFeatureDefaults(): FeatureToggles {
+  return {
+    // Core modules - all enabled by default for full experience
+    enableTimeTracking: true,
+    enableEisenhowerMatrix: true,
+    enableProjects: true,
+    enableWriting: true,
+    enableChatbot: true,
+    enableRecurrence: true,
+    enableReminders: true,
+    enableSubtasks: true,
+    enableDeadlineTypes: true,
+
+    // Task properties - all shown by default
+    showMainEntry: true,
+    showSessionLength: true,
+    showEstimatedLength: true,
+    showPriorityOrder: true,
+
+    // Views - all enabled by default
+    showTaskListView: true,
+    showMatrixView: true,
+    showKanbanView: true,
+    showCalendarView: true,
+    showGanttView: true,
+    showTimeLogView: true,
+
+    // Quick add options - all shown by default
+    quickAddShowDeadlineToggle: true,
+    quickAddShowMatrixPicker: true,
+    quickAddShowProjectPicker: true,
+    quickAddShowNotes: true,
+    quickAddShowDragToPlace: true,
+
+    // Interface options - all shown by default
+    showStatusFilters: true,
+    showMatrixFilters: true,
+    showDayFilters: true,
+    showGroupingControls: true,
+    showSortControls: true,
+    showSearchBar: true,
+    compactTaskRows: false
+  };
+}
+
+function normalizeFeatureToggles(next: Partial<FeatureToggles>): FeatureToggles {
+  const defaults = loadFeatureDefaults();
+  return {
+    // Core modules
+    enableTimeTracking: next.enableTimeTracking ?? defaults.enableTimeTracking,
+    enableEisenhowerMatrix: next.enableEisenhowerMatrix ?? defaults.enableEisenhowerMatrix,
+    enableProjects: next.enableProjects ?? defaults.enableProjects,
+    enableWriting: next.enableWriting ?? defaults.enableWriting,
+    enableChatbot: next.enableChatbot ?? defaults.enableChatbot,
+    enableRecurrence: next.enableRecurrence ?? defaults.enableRecurrence,
+    enableReminders: next.enableReminders ?? defaults.enableReminders,
+    enableSubtasks: next.enableSubtasks ?? defaults.enableSubtasks,
+    enableDeadlineTypes: next.enableDeadlineTypes ?? defaults.enableDeadlineTypes,
+
+    // Task properties
+    showMainEntry: next.showMainEntry ?? defaults.showMainEntry,
+    showSessionLength: next.showSessionLength ?? defaults.showSessionLength,
+    showEstimatedLength: next.showEstimatedLength ?? defaults.showEstimatedLength,
+    showPriorityOrder: next.showPriorityOrder ?? defaults.showPriorityOrder,
+
+    // Views
+    showTaskListView: next.showTaskListView ?? defaults.showTaskListView,
+    showMatrixView: next.showMatrixView ?? defaults.showMatrixView,
+    showKanbanView: next.showKanbanView ?? defaults.showKanbanView,
+    showCalendarView: next.showCalendarView ?? defaults.showCalendarView,
+    showGanttView: next.showGanttView ?? defaults.showGanttView,
+    showTimeLogView: next.showTimeLogView ?? defaults.showTimeLogView,
+
+    // Quick add
+    quickAddShowDeadlineToggle: next.quickAddShowDeadlineToggle ?? defaults.quickAddShowDeadlineToggle,
+    quickAddShowMatrixPicker: next.quickAddShowMatrixPicker ?? defaults.quickAddShowMatrixPicker,
+    quickAddShowProjectPicker: next.quickAddShowProjectPicker ?? defaults.quickAddShowProjectPicker,
+    quickAddShowNotes: next.quickAddShowNotes ?? defaults.quickAddShowNotes,
+    quickAddShowDragToPlace: next.quickAddShowDragToPlace ?? defaults.quickAddShowDragToPlace,
+
+    // Interface
+    showStatusFilters: next.showStatusFilters ?? defaults.showStatusFilters,
+    showMatrixFilters: next.showMatrixFilters ?? defaults.showMatrixFilters,
+    showDayFilters: next.showDayFilters ?? defaults.showDayFilters,
+    showGroupingControls: next.showGroupingControls ?? defaults.showGroupingControls,
+    showSortControls: next.showSortControls ?? defaults.showSortControls,
+    showSearchBar: next.showSearchBar ?? defaults.showSearchBar,
+    compactTaskRows: next.compactTaskRows ?? defaults.compactTaskRows
+  };
+}
+
 function isWidgetConfig(value: unknown): value is Partial<WidgetConfig> {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
@@ -402,7 +818,9 @@ function isWidgetConfig(value: unknown): value is Partial<WidgetConfig> {
     'tasks' in candidate ||
     'writing' in candidate ||
     'timeLog' in candidate ||
+    'projects' in candidate ||
     'app' in candidate ||
+    'features' in candidate ||
     'version' in candidate
   );
 }

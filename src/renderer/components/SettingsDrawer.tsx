@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { widgetBridge } from '@shared/platform';
-import type { AppPreferences, DockEdge, DockState, UpdateInfo, UpdateStatus } from '@shared/types';
+import type { AppPreferences, DockEdge, DockState, ImportProgress, UpdateInfo, UpdateStatus } from '@shared/types';
 
 export type DrawerFeedback = {
   kind: 'success' | 'error';
@@ -51,6 +51,7 @@ const SettingsDrawer = ({
   onToggleNotifications,
   onToggleSounds,
   onToggleAutoRefresh,
+  onTogglePreventMinimalDuringSession,
   onPreviewNotification,
   feedback,
   showControlCenterButton = true
@@ -61,6 +62,15 @@ const SettingsDrawer = ({
   const [isChecking, setIsChecking] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<string>('1.0.0');
+  
+  // Import state
+  const [importProgress, setImportProgress] = useState<ImportProgress>({
+    status: 'idle',
+    tasksImported: 0,
+    pagesProcessed: 0,
+    currentPage: 0
+  });
+  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     // Get app version
@@ -76,7 +86,7 @@ const SettingsDrawer = ({
     });
 
     // Listen for update status changes
-    const unsubscribe = widgetBridge.onUpdateStatusChange(({ status, info }) => {
+    const unsubscribeUpdate = widgetBridge.onUpdateStatusChange(({ status, info }) => {
       setUpdateStatus(status);
       setUpdateInfo(info);
       if (status === 'downloading') {
@@ -88,7 +98,21 @@ const SettingsDrawer = ({
       }
     });
 
-    return unsubscribe;
+    // Get initial import progress
+    widgetBridge.getImportProgress().then(setImportProgress).catch(() => {
+      // Fallback
+    });
+
+    // Listen for import progress changes
+    const unsubscribeImport = widgetBridge.onImportProgress((progress) => {
+      setImportProgress(progress);
+      setIsImporting(progress.status === 'running');
+    });
+
+    return () => {
+      unsubscribeUpdate();
+      unsubscribeImport();
+    };
   }, []);
 
   const handleCheckForUpdates = async () => {
@@ -99,10 +123,11 @@ const SettingsDrawer = ({
       setUpdateInfo(result.info);
     } catch (error) {
       console.error('Failed to check for updates:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       setUpdateStatus('error');
       setUpdateInfo({
         version: 'unknown',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: errorMessage || 'Failed to check for updates. Make sure you have an internet connection and the GitHub repository is configured correctly.'
       });
     } finally {
       setIsChecking(false);
@@ -129,6 +154,30 @@ const SettingsDrawer = ({
       widgetBridge.installUpdate();
     } catch (error) {
       console.error('Failed to install update:', error);
+    }
+  };
+
+  const handleStartImport = async () => {
+    setIsImporting(true);
+    try {
+      await widgetBridge.performInitialImport();
+    } catch (error) {
+      console.error('Failed to start import:', error);
+      setIsImporting(false);
+    }
+  };
+
+  const handleResetImport = async () => {
+    try {
+      await widgetBridge.resetImport();
+      setImportProgress({
+        status: 'idle',
+        tasksImported: 0,
+        pagesProcessed: 0,
+        currentPage: 0
+      });
+    } catch (error) {
+      console.error('Failed to reset import:', error);
     }
   };
 
@@ -305,6 +354,115 @@ const SettingsDrawer = ({
                 >
                   Preview notification
                 </button>
+              </div>
+            </div>
+          </section>
+          <section className="drawer-section">
+            <div className="drawer-section-header">
+              <h3>Data Import</h3>
+              <p>Import all your tasks from Notion. This ensures you have a complete local copy.</p>
+            </div>
+            <div className="drawer-grid two-column">
+              <div className="full-span">
+                {importProgress.status === 'idle' && (
+                  <div style={{ marginBottom: '12px', padding: '8px', background: 'rgba(107, 114, 128, 0.1)', borderRadius: '6px', fontSize: '13px' }}>
+                    Ready to import tasks from Notion.
+                  </div>
+                )}
+                {importProgress.status === 'running' && (
+                  <div style={{ marginBottom: '12px', padding: '8px', background: 'rgba(59, 130, 246, 0.1)', borderRadius: '6px', fontSize: '13px' }}>
+                    <div style={{ marginBottom: '4px', fontWeight: 500 }}>
+                      Importing... {importProgress.tasksImported} tasks
+                    </div>
+                    <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                      {importProgress.message || `Page ${importProgress.currentPage}`}
+                    </div>
+                    <div style={{ marginTop: '8px', height: '4px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div 
+                        style={{ 
+                          height: '100%', 
+                          width: '100%', 
+                          background: 'var(--accent-color, #3b82f6)', 
+                          animation: 'pulse 1.5s ease-in-out infinite'
+                        }} 
+                      />
+                    </div>
+                  </div>
+                )}
+                {importProgress.status === 'paused' && (
+                  <div style={{ marginBottom: '12px', padding: '8px', background: 'rgba(234, 179, 8, 0.1)', borderRadius: '6px', fontSize: '13px' }}>
+                    <div style={{ marginBottom: '4px', fontWeight: 500, color: 'var(--warning-color, #eab308)' }}>
+                      Import paused
+                    </div>
+                    <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                      {importProgress.message || 'Will retry automatically...'}
+                    </div>
+                    <div style={{ marginTop: '4px', fontSize: '12px' }}>
+                      Progress: {importProgress.tasksImported} tasks ({importProgress.pagesProcessed} pages)
+                    </div>
+                  </div>
+                )}
+                {importProgress.status === 'completed' && (
+                  <div style={{ marginBottom: '12px', padding: '8px', background: 'rgba(34, 197, 94, 0.1)', borderRadius: '6px', fontSize: '13px' }}>
+                    <div style={{ marginBottom: '4px', fontWeight: 500, color: 'var(--success-color, #22c55e)' }}>
+                      ✓ Import complete!
+                    </div>
+                    <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                      {importProgress.tasksImported} tasks imported from {importProgress.pagesProcessed} pages
+                    </div>
+                  </div>
+                )}
+                {importProgress.status === 'error' && (
+                  <div style={{ marginBottom: '12px', padding: '8px', background: 'rgba(239, 68, 68, 0.1)', borderRadius: '6px', fontSize: '13px' }}>
+                    <div style={{ marginBottom: '4px', fontWeight: 500, color: 'var(--error-color, #ef4444)' }}>
+                      Import failed
+                    </div>
+                    <div style={{ fontSize: '12px', opacity: 0.8 }}>
+                      {importProgress.error || 'Unknown error'}
+                    </div>
+                  </div>
+                )}
+                <div className="drawer-actions full-span" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {(importProgress.status === 'idle' || importProgress.status === 'completed' || importProgress.status === 'error') && (
+                    <button
+                      type="button"
+                      className="pill ghost"
+                      onClick={handleStartImport}
+                      disabled={isImporting}
+                    >
+                      {importProgress.status === 'completed' ? 'Re-import all tasks' : 'Import all tasks'}
+                    </button>
+                  )}
+                  {importProgress.status === 'paused' && (
+                    <button
+                      type="button"
+                      className="pill ghost"
+                      onClick={handleStartImport}
+                      disabled={isImporting}
+                    >
+                      Resume import
+                    </button>
+                  )}
+                  {importProgress.status === 'running' && (
+                    <button
+                      type="button"
+                      className="pill ghost"
+                      disabled
+                    >
+                      Importing...
+                    </button>
+                  )}
+                  {(importProgress.status === 'completed' || importProgress.status === 'paused' || importProgress.status === 'error') && (
+                    <button
+                      type="button"
+                      className="pill ghost"
+                      onClick={handleResetImport}
+                      style={{ opacity: 0.7 }}
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </section>

@@ -4,10 +4,12 @@ declare global {
   interface Window {
     widgetAPI: WidgetAPI;
     settingsAPI: SettingsAPI;
+    webkitSpeechRecognition?: typeof SpeechRecognition;
   }
 }
 
 export {};
+
 
 
 

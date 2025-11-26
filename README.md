@@ -41,6 +41,41 @@ npm run build        # Electron main + renderer bundles
 npm start            # Launches the packaged Electron app
 ```
 
+## Notion MCP server
+
+The repository now ships with a lightweight [Model Context Protocol](https://modelcontextprotocol.io/)
+server that exposes the configured Notion databases (tasks, time logs, and projects)
+so that MCP-compatible tooling can inspect or query the same data the widget uses.
+
+1. Ensure your `.env` (or environment) contains the API key plus any database/property IDs
+   that the widget normally requires (`NOTION_DATABASE_ID`, `NOTION_TIME_LOG_DATABASE_ID`,
+   `NOTION_PROJECTS_DATABASE_ID`, etc.).
+2. Start the server over stdio:
+
+   ```bash
+   npm run mcp:notion
+   ```
+
+   The process will remain attached to stdio and can be consumed by any MCP client/inspector.
+   The server automatically reads the latest Control Center configuration
+   (`notion-widget.config.json` under `%APPDATA%/NotionTasksWidget/` on Windows,
+   `~/Library/Application Support/NotionTasksWidget/` on macOS, etc.), so it always
+   reflects the IDs and property names you set in the UI—no extra `.env` wrangling.
+
+### Available tools & resources
+
+- **Resources**
+  - `notion://tasks` – JSON snapshot of the tasks database
+  - `notion://time-logs` – JSON snapshot of the time log database
+  - `notion://projects` – JSON snapshot of the projects database
+- **Tools**
+  - `list-tasks` (optional `status`, `limit`)
+  - `list-time-logs` (optional `taskId`, `status`, `limit`)
+  - `list-projects` (optional `status`, `limit`)
+  - `describe-configured-databases`
+
+All tool responses are returned as JSON text payloads so they can be copied into other systems.
+
 ### Mobile build quick start
 
 The Capacitor runtime reuses the same React renderer inside an Android WebView and stores Notion credentials/preferences via the `@capacitor/preferences` plugin:
@@ -124,6 +159,27 @@ Preferences live in the new App Preferences card and are enforced by the main pr
 | `npm run mobile:run` | Builds + deploys to the default Android target via Capacitor |
 | `npm run build:app` | Full Electron builder pipeline (portable Win target) |
 | `npm run typecheck` | Global TypeScript type check across renderer/shared |
+| `npm run verify:sync` | CLI check that hits Notion directly, ensuring API/database access and listing the open tasks returned by the current filters |
+
+### Verifying Notion connectivity
+
+Run `npm run verify:sync` whenever you suspect the widget isn’t receiving new actions.  
+The script:
+
+1. Loads the Control Center credentials (or `.env`) so it’s always in sync with the app.
+2. Verifies the API key and database permissions.
+3. Queries Notion in 10-item pages until it finds tasks whose status does **not** match the configured “completed” value (defaults to ✅).
+4. Prints each open task title + status so you can compare the CLI results with what the widget renders.
+
+If the script lists the tasks you expect but the UI still looks wrong, the issue is in the local cache or renderer filters rather than Notion connectivity.
+
+## Notion backup database
+
+- The Electron main process now mirrors the live SQLite store into `backups/notion-backup.sqlite` inside this folder, so Dropbox/OneDrive can keep the Notion cache under source control.
+- Set `NOTION_WIDGET_BACKUP_PATH` to override the destination (folder or explicit `.sqlite` file). By default the file lives under `<repo>/backups/notion-backup.sqlite`.
+- The backup job runs immediately on launch and repeats every five minutes; it uses SQLite's native `backup` API so writes are crash safe.
+- To manually create or reset the backup schema without launching the app, run `npm run db:prepare-backup` (after ensuring `better-sqlite3` has been rebuilt for your Node runtime if necessary).
+- The generated database contains the same tables as the primary store (`tasks`, `time_logs`, `writing_entries`, `projects`, `sync_queue`, and `sync_state`) and can be opened with any SQLite browser as a Notion backup.
 
 ## Android Build
 

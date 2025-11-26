@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { settingsBridge, widgetBridge } from '@shared/platform';
-import type { DockState, NotionSettings, WritingSettings, TimeLogSettings } from '@shared/types';
+import type { DockState, NotionSettings, WritingSettings, TimeLogSettings, ProjectsSettings } from '@shared/types';
+import { extractDatabaseId } from '@shared/utils/notionUrl';
 
 type Feedback = {
   kind: 'success' | 'error';
@@ -10,36 +11,76 @@ type Feedback = {
 const widgetAPI = widgetBridge;
 const settingsAPI = settingsBridge;
 
+const TASK_SHORTCUTS = [
+  { keys: '↑ / ↓', description: 'Move selection in task list' },
+  { keys: 'Enter', description: 'Toggle focus on selected task' },
+  { keys: 'Shift + Enter', description: 'Complete/undo selected task' },
+  { keys: 'Cmd/Ctrl + O', description: 'Open selected task in Notion' },
+  {
+    keys: 'Cmd/Ctrl + Shift + P',
+    description: 'Pop selected task into a floating window'
+  }
+];
+
+const FULLSCREEN_SHORTCUTS = [
+  { keys: 'Cmd/Ctrl + \\', description: 'Toggle navigation sidebar' },
+  { keys: 'Cmd/Ctrl + Shift + \\', description: 'Toggle header visibility' },
+  { keys: 'Cmd/Ctrl + 1-4', description: 'Switch to Tasks / Projects / Calendar / Writing' },
+  { keys: 'Alt + 1-4', description: 'Toggle panels in current view (based on order)' },
+  { keys: '[ / ]', description: 'Navigate to previous / next view' },
+  { keys: 'H', description: 'Toggle header' },
+  { keys: 'B', description: 'Toggle sidebar' },
+  { keys: 'F', description: 'Toggle filters panel' },
+  { keys: 'S', description: 'Toggle sort panel' },
+  { keys: 'G', description: 'Toggle grouping panel' },
+  { keys: 'N', description: 'Toggle notes panel' },
+  { keys: 'Q', description: 'Toggle quick add panel' },
+  { keys: 'D', description: 'Cycle day filter (All → Today → Week)' },
+  { keys: 'T', description: 'Jump to today (in Calendar view)' },
+  { keys: 'P', description: 'Exit project workspace' },
+  { keys: '← / →', description: 'Navigate calendar (in Calendar view)' },
+  { keys: 'Escape', description: 'Close panels / exit modes' },
+  { keys: 'Cmd/Ctrl + R', description: 'Refresh tasks' },
+  { keys: 'Cmd/Ctrl + N', description: 'New task (focus quick add)' },
+  { keys: 'Cmd/Ctrl + F', description: 'Focus search' },
+  { keys: 'Cmd/Ctrl + ,', description: 'Open settings' }
+];
+
 const SettingsApp = () => {
   const [taskSettings, setTaskSettings] = useState<NotionSettings | null>(null);
   const [writingSettings, setWritingSettings] = useState<WritingSettings | null>(
     null
   );
   const [timeLogSettings, setTimeLogSettings] = useState<TimeLogSettings | null>(null);
+  const [projectsSettings, setProjectsSettings] = useState<ProjectsSettings | null>(null);
   const [dockState, setDockState] = useState<DockState | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [taskSaving, setTaskSaving] = useState(false);
   const [writingSaving, setWritingSaving] = useState(false);
   const [timeLogSaving, setTimeLogSaving] = useState(false);
+  const [projectsSaving, setProjectsSaving] = useState(false);
   const [taskFeedback, setTaskFeedback] = useState<Feedback | null>(null);
   const [writingFeedback, setWritingFeedback] = useState<Feedback | null>(null);
   const [timeLogFeedback, setTimeLogFeedback] = useState<Feedback | null>(null);
+  const [projectsFeedback, setProjectsFeedback] = useState<Feedback | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
       try {
-        const [tasks, writing, timeLog, dock] = await Promise.all([
+        const [tasks, writing, timeLog, projects, dock] = await Promise.all([
           settingsAPI.getTaskSettings(),
           settingsAPI.getWritingSettings(),
           settingsAPI.getTimeLogSettings(),
+          settingsAPI.getProjectsSettings(),
           widgetAPI.getDockState()
         ]);
         if (!cancelled) {
           setTaskSettings(tasks);
           setWritingSettings(writing);
           setTimeLogSettings(timeLog);
+          setProjectsSettings(projects);
           setDockState(dock ?? null);
           setLoading(false);
         }
@@ -70,7 +111,13 @@ const SettingsApp = () => {
 
   const handleTaskFieldChange = useCallback(
     (field: keyof NotionSettings, value: string) => {
-      setTaskSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
+      // Auto-extract database ID from URL if it's the databaseId field
+      if (field === 'databaseId') {
+        const extracted = extractDatabaseId(value);
+        setTaskSettings((prev) => (prev ? { ...prev, [field]: extracted } : prev));
+      } else {
+        setTaskSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
+      }
     },
     []
   );
@@ -104,7 +151,13 @@ const SettingsApp = () => {
 
   const handleWritingFieldChange = useCallback(
     (field: keyof WritingSettings, value: string) => {
-      setWritingSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
+      // Auto-extract database ID from URL if it's the databaseId field
+      if (field === 'databaseId') {
+        const extracted = extractDatabaseId(value);
+        setWritingSettings((prev) => (prev ? { ...prev, [field]: extracted } : prev));
+      } else {
+        setWritingSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
+      }
     },
     []
   );
@@ -137,7 +190,13 @@ const SettingsApp = () => {
 
   const handleTimeLogFieldChange = useCallback(
     (field: keyof TimeLogSettings, value: string) => {
-      setTimeLogSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
+      // Auto-extract database ID from URL if it's the databaseId field
+      if (field === 'databaseId') {
+        const extracted = extractDatabaseId(value);
+        setTimeLogSettings((prev) => (prev ? { ...prev, [field]: extracted } : prev));
+      } else {
+        setTimeLogSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
+      }
     },
     []
   );
@@ -165,6 +224,43 @@ const SettingsApp = () => {
       setTimeLogSaving(false);
     }
   }, [timeLogSettings]);
+
+  const handleProjectsFieldChange = useCallback(
+    (field: keyof ProjectsSettings, value: string) => {
+      // Auto-extract database ID from URL if it's the databaseId field
+      if (field === 'databaseId') {
+        const extracted = extractDatabaseId(value);
+        setProjectsSettings((prev) => (prev ? { ...prev, [field]: extracted } : prev));
+      } else {
+        setProjectsSettings((prev) => (prev ? { ...prev, [field]: value } : prev));
+      }
+    },
+    []
+  );
+
+  const handleProjectsSave = useCallback(async () => {
+    if (!projectsSettings) return;
+    try {
+      setProjectsSaving(true);
+      setProjectsFeedback(null);
+      const saved = await settingsAPI.updateProjectsSettings(projectsSettings);
+      setProjectsSettings(saved);
+      setProjectsFeedback({
+        kind: 'success',
+        message: 'Projects settings saved'
+      });
+    } catch (err) {
+      setProjectsFeedback({
+        kind: 'error',
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Unable to save projects settings'
+      });
+    } finally {
+      setProjectsSaving(false);
+    }
+  }, [projectsSettings]);
 
   const handleToggleWidget = useCallback(() => {
     if (!dockState) {
@@ -265,15 +361,19 @@ const SettingsApp = () => {
                   />
                 </label>
                 <label className="field">
-                  Database ID
+                  Database ID or URL
                   <input
                     type="text"
                     value={taskSettings.databaseId}
                     onChange={(event) =>
                       handleTaskFieldChange('databaseId', event.target.value)
                     }
+                    placeholder="Paste database ID or full Notion URL"
                     required
                   />
+                  <span className="field-hint">
+                    You can paste the full Notion database URL - the ID will be extracted automatically
+                  </span>
                 </label>
                 <label className="field">
                   Data source ID
@@ -442,6 +542,37 @@ const SettingsApp = () => {
                     }
                   />
                 </label>
+                <label className="field">
+                  Priority order property
+                  <input
+                    type="text"
+                    value={taskSettings.orderProperty ?? ''}
+                    onChange={(event) =>
+                      handleTaskFieldChange('orderProperty', event.target.value)
+                    }
+                    placeholder="Priority Order"
+                  />
+                  <span className="field-hint">
+                    Select property used for the drag-to-prioritize queue.
+                  </span>
+                </label>
+                <label className="field">
+                  Projects relation property
+                  <input
+                    type="text"
+                    value={taskSettings.projectRelationProperty ?? ''}
+                    onChange={(event) =>
+                      handleTaskFieldChange(
+                        'projectRelationProperty',
+                        event.target.value
+                      )
+                    }
+                    placeholder="Relation to Projects database"
+                  />
+                  <span className="field-hint">
+                    Required to show project action counts and filters.
+                  </span>
+                </label>
               </div>
               <label className="field">
                 Custom status options (fallback)
@@ -465,6 +596,42 @@ const SettingsApp = () => {
               </div>
             </form>
           )}
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div>
+              <h2>Task Widget Shortcuts</h2>
+              <p>These shortcuts work in the desktop task view.</p>
+            </div>
+          </div>
+          <ul className="shortcut-list">
+            {TASK_SHORTCUTS.map((shortcut) => (
+              <li key={shortcut.keys} className="shortcut-row">
+                <span className="shortcut-keys">{shortcut.keys}</span>
+                <span className="shortcut-description">
+                  {shortcut.description}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div>
+              <h2>Fullscreen Dashboard Shortcuts</h2>
+              <p>These shortcuts work in the fullscreen dashboard view.</p>
+            </div>
+          </div>
+          <ul className="shortcut-list">
+            {FULLSCREEN_SHORTCUTS.map((shortcut) => (
+              <li key={shortcut.keys} className="shortcut-row">
+                <span className="shortcut-keys">{shortcut.keys}</span>
+                <span className="shortcut-description">
+                  {shortcut.description}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
         <section className="settings-card">
           <div className="settings-card-header">
@@ -499,15 +666,19 @@ const SettingsApp = () => {
                   />
                 </label>
                 <label className="field">
-                  Database ID
+                  Database ID or URL
                   <input
                     type="text"
                     value={writingSettings.databaseId}
                     onChange={(event) =>
                       handleWritingFieldChange('databaseId', event.target.value)
                     }
+                    placeholder="Paste database ID or full Notion URL"
                     required
                   />
+                  <span className="field-hint">
+                    You can paste the full Notion database URL - the ID will be extracted automatically
+                  </span>
                 </label>
                 <label className="field">
                   Title property
@@ -620,15 +791,19 @@ const SettingsApp = () => {
                   />
                 </label>
                 <label className="field">
-                  Database ID
+                  Database ID or URL
                   <input
                     type="text"
                     value={timeLogSettings.databaseId}
                     onChange={(event) =>
                       handleTimeLogFieldChange('databaseId', event.target.value)
                     }
+                    placeholder="Paste database ID or full Notion URL"
                     required
                   />
+                  <span className="field-hint">
+                    You can paste the full Notion database URL - the ID will be extracted automatically
+                  </span>
                 </label>
                 <label className="field">
                   Title property
@@ -694,6 +869,128 @@ const SettingsApp = () => {
               <div className="form-actions">
                 <button type="submit" disabled={timeLogSaving}>
                   {timeLogSaving ? 'Saving…' : 'Save time tracking settings'}
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+        <section className="settings-card">
+          <div className="settings-card-header">
+            <div>
+              <h2>Projects</h2>
+              <p>Configure the projects database and properties for project management.</p>
+            </div>
+            {projectsFeedback && (
+              <p className={`feedback ${projectsFeedback.kind}`}>
+                {projectsFeedback.message}
+              </p>
+            )}
+          </div>
+          {projectsSettings && (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                handleProjectsSave();
+              }}
+              className="settings-form"
+            >
+              <div className="field-grid">
+                <label className="field">
+                  API key (optional)
+                  <input
+                    type="password"
+                    value={projectsSettings.apiKey ?? ''}
+                    onChange={(event) =>
+                      handleProjectsFieldChange('apiKey', event.target.value)
+                    }
+                    placeholder="Defaults to task API key"
+                  />
+                </label>
+                <label className="field">
+                  Database ID or URL
+                  <input
+                    type="text"
+                    value={projectsSettings.databaseId}
+                    onChange={(event) =>
+                      handleProjectsFieldChange('databaseId', event.target.value)
+                    }
+                    placeholder="Paste database ID or full Notion URL"
+                    required
+                  />
+                  <span className="field-hint">
+                    You can paste the full Notion database URL - the ID will be extracted automatically
+                  </span>
+                </label>
+                <label className="field">
+                  Title property
+                  <input
+                    type="text"
+                    value={projectsSettings.titleProperty ?? ''}
+                    onChange={(event) =>
+                      handleProjectsFieldChange('titleProperty', event.target.value)
+                    }
+                    placeholder="Name"
+                  />
+                </label>
+                <label className="field">
+                  Status property
+                  <input
+                    type="text"
+                    value={projectsSettings.statusProperty ?? ''}
+                    onChange={(event) =>
+                      handleProjectsFieldChange('statusProperty', event.target.value)
+                    }
+                    placeholder="Status"
+                  />
+                </label>
+                <label className="field">
+                  Description property
+                  <input
+                    type="text"
+                    value={projectsSettings.descriptionProperty ?? ''}
+                    onChange={(event) =>
+                      handleProjectsFieldChange('descriptionProperty', event.target.value)
+                    }
+                    placeholder="Description"
+                  />
+                </label>
+                <label className="field">
+                  Start date property
+                  <input
+                    type="text"
+                    value={projectsSettings.startDateProperty ?? ''}
+                    onChange={(event) =>
+                      handleProjectsFieldChange('startDateProperty', event.target.value)
+                    }
+                    placeholder="Start Date"
+                  />
+                </label>
+                <label className="field">
+                  End date property
+                  <input
+                    type="text"
+                    value={projectsSettings.endDateProperty ?? ''}
+                    onChange={(event) =>
+                      handleProjectsFieldChange('endDateProperty', event.target.value)
+                    }
+                    placeholder="End Date"
+                  />
+                </label>
+                <label className="field">
+                  Tags property
+                  <input
+                    type="text"
+                    value={projectsSettings.tagsProperty ?? ''}
+                    onChange={(event) =>
+                      handleProjectsFieldChange('tagsProperty', event.target.value)
+                    }
+                    placeholder="Tags"
+                  />
+                </label>
+              </div>
+              <div className="form-actions">
+                <button type="submit" disabled={projectsSaving}>
+                  {projectsSaving ? 'Saving…' : 'Save projects settings'}
                 </button>
               </div>
             </form>

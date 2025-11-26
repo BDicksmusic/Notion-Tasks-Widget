@@ -1,6 +1,15 @@
-import { useEffect, useState } from 'react';
-import type { MouseEvent as ReactMouseEvent } from 'react';
-import type { Task, TaskStatusOption, TaskUpdatePayload } from '@shared/types';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import type {
+  MouseEvent as ReactMouseEvent,
+  DragEvent as ReactDragEvent
+} from 'react';
+import type {
+  Project,
+  Task,
+  TaskOrderOption,
+  TaskStatusOption,
+  TaskUpdatePayload
+} from '@shared/types';
 import {
   getMatrixClass,
   matrixOptions,
@@ -11,6 +20,7 @@ import {
 import DateField from './DateField';
 import { getStatusColorClass } from '../utils/statusColors';
 import type { GroupingOption, TaskGroup } from '../utils/sorting';
+import MassEditToolbar from './MassEditToolbar';
 
 const POP_OUT_INTERACTIVE_SELECTOR = [
   'button',
@@ -21,6 +31,15 @@ const POP_OUT_INTERACTIVE_SELECTOR = [
   'a'
 ].join(', ');
 
+export type TaskShortcutAction =
+  | { type: 'session'; taskId: string }
+  | { type: 'notes'; taskId: string };
+
+export interface TaskShortcutSignal {
+  id: number;
+  action: TaskShortcutAction;
+}
+
 interface Props {
   tasks: Task[];
   loading: boolean;
@@ -28,7 +47,10 @@ interface Props {
   statusOptions: TaskStatusOption[];
   manualStatuses: string[];
   completedStatus?: string;
-  onUpdateTask(taskId: string, updates: TaskUpdatePayload): Promise<void>;
+  onUpdateTask(
+    taskId: string,
+    updates: TaskUpdatePayload
+  ): Promise<Task | void>;
   emptyMessage?: string;
   grouping?: GroupingOption;
   groups?: TaskGroup[];
@@ -44,11 +66,52 @@ interface Props {
   formatEndTime?: (date: Date) => string;
   isCountingDown?: (taskId: string) => boolean;
   startCountdown?: (taskId: string, minutes: number) => void;
+  extendCountdown?: (taskId: string, minutes: number) => void;
   onStopSession?: (taskId: string) => void;
   onFocusTask?: (taskId: string | null) => void;
   focusTaskId?: string | null;
   isFocusMode?: boolean;
+  orderOptions?: TaskOrderOption[];
+  selectedTaskId?: string | null;
+  onSelectTask?: (taskId: string) => void;
+  manualOrderingEnabled?: boolean;
+  onManualReorder?: (payload: {
+    sourceId: string;
+    targetId: string | '__end';
+    position: 'above' | 'below';
+  }) => void;
+  onInspectTask?: (taskId: string) => void;
+  onHoverTask?: (taskId: string | null) => void;
+  shortcutSignal?: TaskShortcutSignal | null;
+  onShortcutHandled?: (id: number) => void;
+  enableExternalDrag?: boolean;
+  onTaskDragStart?: (task: Task, event: ReactDragEvent<HTMLElement>) => void;
+  onTaskDragEnd?: () => void;
+  projects?: Project[];
+  onAddSubtask?: (parentTaskId: string, title: string) => Promise<Task | void>;
 }
+
+const NOTION_COLOR_MAP: Record<
+  string,
+  {
+    bg: string;
+    text: string;
+  }
+> = {
+  default: { bg: 'rgba(148, 163, 184, 0.25)', text: '#e2e8f0' },
+  gray: { bg: 'rgba(148, 163, 184, 0.35)', text: '#f8fafc' },
+  brown: { bg: 'rgba(120, 53, 15, 0.4)', text: '#fff7ed' },
+  orange: { bg: 'rgba(249, 115, 22, 0.4)', text: '#fff7ed' },
+  yellow: { bg: 'rgba(234, 179, 8, 0.45)', text: '#1f2937' },
+  green: { bg: 'rgba(34, 197, 94, 0.35)', text: '#ecfdf5' },
+  blue: { bg: 'rgba(59, 130, 246, 0.35)', text: '#dbeafe' },
+  purple: { bg: 'rgba(147, 51, 234, 0.35)', text: '#f3e8ff' },
+  pink: { bg: 'rgba(236, 72, 153, 0.35)', text: '#fdf4ff' },
+  red: { bg: 'rgba(239, 68, 68, 0.35)', text: '#fee2e2' }
+};
+
+const getOrderBadgeStyle = (token?: string) =>
+  NOTION_COLOR_MAP[token ?? 'default'] ?? NOTION_COLOR_MAP.default;
 
 type CompletionVariant = 'complete' | 'undo';
 
@@ -108,7 +171,21 @@ const TaskList = ({
   onStopSession,
   onFocusTask,
   focusTaskId,
-  isFocusMode
+  isFocusMode,
+  orderOptions = [],
+  selectedTaskId,
+  onSelectTask,
+  manualOrderingEnabled,
+  onManualReorder,
+  onInspectTask,
+  onHoverTask,
+  shortcutSignal,
+  onShortcutHandled,
+  enableExternalDrag,
+  onTaskDragStart,
+  onTaskDragEnd,
+  projects = [],
+  onAddSubtask
 }: Props) => {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [customStatusDrafts, setCustomStatusDrafts] = useState<
@@ -129,6 +206,116 @@ const TaskList = ({
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(() => Date.now());
   const [loggedTimes, setLoggedTimes] = useState<Record<string, number>>({});
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [dragPreview, setDragPreview] = useState<{
+    targetId: string | '__end';
+    position: 'above' | 'below';
+  } | null>(null);
+  const [groupDropTarget, setGroupDropTarget] = useState<string | null>(null);
+  const [expandedProjectPicker, setExpandedProjectPicker] = useState<string | null>(null);
+  const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
+  const [subtaskCache, setSubtaskCache] = useState<Record<string, Task[]>>({});
+  const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  
+  // Multi-select state
+  const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
+  const [lastClickedTaskId, setLastClickedTaskId] = useState<string | null>(null);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [focusedTaskIndex, setFocusedTaskIndex] = useState<number>(-1);
+  // Anchor index is where the selection started (for rubber-band selection)
+  const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number>(-1);
+  
+  const manualOrderingActive = Boolean(manualOrderingEnabled && onManualReorder);
+  const hasGroups = grouping !== 'none' && Boolean(groups?.length);
+  const orderOptionMap = useMemo(() => {
+    const map = new Map<string, { index: number; color?: string }>();
+    orderOptions.forEach((option, index) => {
+      map.set(option.name.toLowerCase(), { index, color: option.color });
+    });
+    return map;
+  }, [orderOptions]);
+
+  // Project lookup map for efficient name resolution
+  const projectMap = useMemo(() => {
+    const map = new Map<string, Project>();
+    projects.forEach((project) => {
+      map.set(project.id, project);
+    });
+    return map;
+  }, [projects]);
+
+  // Get project names for a task
+  const getTaskProjects = useCallback((task: Task) => {
+    if (!task.projectIds || task.projectIds.length === 0) return [];
+    return task.projectIds
+      .map((id) => projectMap.get(id))
+      .filter((p): p is Project => Boolean(p));
+  }, [projectMap]);
+
+  // Open projects only (for dropdown)
+  const openProjects = useMemo(() => {
+    // Filter to show only projects that seem active (have title, not marked completed)
+    return projects.filter((p) => p.title);
+  }, [projects]);
+
+  const getTaskRowElement = useCallback((taskId: string) => {
+    if (typeof document === 'undefined') return null;
+    return document.querySelector<HTMLElement>(
+      `.task-row[data-task-id="${taskId}"]`
+    );
+  }, []);
+
+  const focusTaskField = useCallback(
+    (taskId: string, selector: string, defer = false) => {
+      const focus = () => {
+        const row = getTaskRowElement(taskId);
+        const element = row?.querySelector<HTMLElement>(selector);
+        if (!element || typeof (element as HTMLElement).focus !== 'function') {
+          return;
+        }
+        (element as HTMLElement).focus();
+        if (
+          element instanceof HTMLInputElement ||
+          element instanceof HTMLTextAreaElement
+        ) {
+          try {
+            element.select();
+          } catch {
+            // Ignore selection errors
+          }
+        }
+      };
+      if (defer) {
+        if (typeof window === 'undefined') return;
+        window.setTimeout(focus, 30);
+      } else {
+        focus();
+      }
+    },
+    [getTaskRowElement]
+  );
+
+  const focusSessionInput = useCallback(
+    (taskId: string, defer = false) => {
+      focusTaskField(taskId, '[data-task-session-input="true"]', defer);
+    },
+    [focusTaskField]
+  );
+
+  const focusNotesTextarea = useCallback(
+    (taskId: string, defer = false) => {
+      focusTaskField(taskId, '[data-task-notes-input="true"]', defer);
+    },
+    [focusTaskField]
+  );
+
+  useEffect(() => {
+    if (!manualOrderingActive) {
+      setDraggingTaskId(null);
+      setDragPreview(null);
+    }
+  }, [manualOrderingActive]);
   const formatMinutes = (minutes?: number | null) => {
     if (minutes === undefined || minutes === null || Number.isNaN(minutes)) {
       return '';
@@ -189,6 +376,17 @@ const TaskList = ({
     void fetchLoggedTimes();
   }, [tasks]);
 
+  useEffect(() => {
+    if (!selectedTaskId || !onScrollToCenter) return;
+    if (typeof document === 'undefined') return;
+    const element = document.querySelector<HTMLElement>(
+      `.task-row[data-task-id="${selectedTaskId}"]`
+    );
+    if (element) {
+      onScrollToCenter(element);
+    }
+  }, [selectedTaskId, onScrollToCenter]);
+
   // Update countdown display every second
   const [timerNow, setTimerNow] = useState(() => Date.now());
   useEffect(() => {
@@ -239,6 +437,375 @@ const TaskList = ({
     } finally {
       setUpdatingId((current) => (current === taskId ? null : current));
     }
+  };
+
+  const isInteractiveDragTarget = (target: EventTarget | null) => {
+    if (!(target instanceof Element)) return false;
+    return Boolean(
+      target.closest('.task-drag-handle') ||
+        target.closest(POP_OUT_INTERACTIVE_SELECTOR)
+    );
+  };
+
+  const handleDragStart =
+    (taskId: string) => (event: React.DragEvent<HTMLElement>) => {
+      if (!manualOrderingActive) return;
+      if (isInteractiveDragTarget(event.target)) {
+        event.preventDefault();
+        return;
+      }
+      setDraggingTaskId(taskId);
+      setDragPreview(null);
+      event.dataTransfer?.setData('text/plain', taskId);
+      event.dataTransfer?.setDragImage(event.currentTarget, 0, 0);
+    };
+
+  const handleDragEnd = () => {
+    setDraggingTaskId(null);
+    setDragPreview(null);
+  };
+
+  const handleDragOverRow =
+    (taskId: string) => (event: React.DragEvent<HTMLElement>) => {
+      if (
+        !manualOrderingActive ||
+        !draggingTaskId ||
+        draggingTaskId === taskId
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const position =
+        event.clientY - rect.top < rect.height / 2 ? 'above' : 'below';
+      setDragPreview({ targetId: taskId, position });
+    };
+
+  const handleDropOnRow =
+    (taskId: string) => (event: React.DragEvent<HTMLElement>) => {
+      if (!manualOrderingActive || !draggingTaskId || !onManualReorder) return;
+      event.preventDefault();
+      const preview =
+        dragPreview && dragPreview.targetId === taskId
+          ? dragPreview.position
+          : 'below';
+      onManualReorder({
+        sourceId: draggingTaskId,
+        targetId: taskId,
+        position: preview
+      });
+      setDraggingTaskId(null);
+      setDragPreview(null);
+    };
+
+  const handleListDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!manualOrderingActive || !draggingTaskId) return;
+    event.preventDefault();
+    if (!tasks.length) {
+      setDragPreview({ targetId: '__end', position: 'below' });
+      return;
+    }
+    const lastTaskId = tasks[tasks.length - 1].id;
+    setDragPreview({ targetId: lastTaskId, position: 'below' });
+  };
+
+  const handleListDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!manualOrderingActive || !draggingTaskId || !onManualReorder) return;
+    event.preventDefault();
+    onManualReorder({
+      sourceId: draggingTaskId,
+      targetId: '__end',
+      position: 'below'
+    });
+    setDraggingTaskId(null);
+    setDragPreview(null);
+  };
+
+  // Multi-select handlers
+  const allVisibleTaskIds = useMemo((): string[] => {
+    if (hasGroups && groups) {
+      return groups.flatMap((group) => group.tasks.map((t) => t.id));
+    }
+    return tasks.map((t) => t.id);
+  }, [tasks, groups, hasGroups]);
+
+  const getAllVisibleTaskIds = useCallback((): string[] => {
+    return allVisibleTaskIds;
+  }, [allVisibleTaskIds]);
+
+  const handleTaskClick = useCallback((
+    event: ReactMouseEvent<HTMLElement>,
+    taskId: string
+  ) => {
+    const allIds = getAllVisibleTaskIds();
+    const taskIndex = allIds.indexOf(taskId);
+    
+    if (event.shiftKey && lastClickedTaskId) {
+      // Shift+Click: Range selection - rubber band from anchor to clicked task
+      const anchorIndex = selectionAnchorIndex !== -1 
+        ? selectionAnchorIndex 
+        : allIds.indexOf(lastClickedTaskId);
+      const currentIndex = taskIndex;
+      
+      if (anchorIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(anchorIndex, currentIndex);
+        const end = Math.max(anchorIndex, currentIndex);
+        const rangeIds = allIds.slice(start, end + 1);
+        
+        setMultiSelectMode(true);
+        setFocusedTaskIndex(currentIndex);
+        // Use rubber-band selection (replace, don't add)
+        setMultiSelectedIds(new Set(rangeIds));
+      }
+    } else if (event.ctrlKey || event.metaKey) {
+      // Ctrl/Cmd+Click: Toggle selection - enter multi-select mode
+      // This sets a new anchor at the clicked task
+      setMultiSelectMode(true);
+      setFocusedTaskIndex(taskIndex);
+      setSelectionAnchorIndex(taskIndex);
+      setMultiSelectedIds((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(taskId)) {
+          newSet.delete(taskId);
+        } else {
+          newSet.add(taskId);
+        }
+        return newSet;
+      });
+      setLastClickedTaskId(taskId);
+    } else {
+      // Regular click: Clear multi-select mode and select single
+      if (multiSelectMode || multiSelectedIds.size > 0) {
+        setMultiSelectedIds(new Set());
+        setMultiSelectMode(false);
+      }
+      setLastClickedTaskId(taskId);
+      setFocusedTaskIndex(taskIndex);
+      setSelectionAnchorIndex(taskIndex); // Set anchor for next Shift+Click
+      onSelectTask?.(taskId);
+    }
+  }, [lastClickedTaskId, selectionAnchorIndex, getAllVisibleTaskIds, multiSelectedIds.size, multiSelectMode, onSelectTask]);
+
+  const handleClearMultiSelection = useCallback(() => {
+    setMultiSelectedIds(new Set());
+    setLastClickedTaskId(null);
+    setMultiSelectMode(false);
+    setFocusedTaskIndex(-1);
+    setSelectionAnchorIndex(-1);
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    const allIds = getAllVisibleTaskIds();
+    setMultiSelectedIds(new Set(allIds));
+    setMultiSelectMode(true);
+  }, [getAllVisibleTaskIds]);
+
+  const handleMassUpdate = useCallback(async (updates: TaskUpdatePayload) => {
+    const selectedIds = Array.from(multiSelectedIds);
+    // Update all selected tasks
+    await Promise.all(
+      selectedIds.map((taskId) => onUpdateTask(taskId, updates))
+    );
+  }, [multiSelectedIds, onUpdateTask]);
+
+  // Enter multi-select mode via drag handle
+  const handleEnterMultiSelectMode = useCallback((taskId: string, event: ReactMouseEvent<HTMLElement>) => {
+    event.stopPropagation();
+    
+    const allIds = allVisibleTaskIds;
+    const taskIndex = allIds.indexOf(taskId);
+    
+    setMultiSelectMode(true);
+    setFocusedTaskIndex(taskIndex);
+    setSelectionAnchorIndex(taskIndex); // Set anchor for rubber-band selection
+    setLastClickedTaskId(taskId);
+    
+    // Add the task to selection
+    setMultiSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(taskId);
+      return newSet;
+    });
+  }, [allVisibleTaskIds]);
+
+  // Handle keyboard navigation for multi-select
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as Element;
+      const isInInput = target.closest('input, textarea, [contenteditable]');
+      
+      // Escape to clear selection
+      if (event.key === 'Escape' && (multiSelectedIds.size > 0 || multiSelectMode)) {
+        handleClearMultiSelection();
+        return;
+      }
+      
+      // Ctrl/Cmd+A to select all
+      if ((event.ctrlKey || event.metaKey) && event.key === 'a' && !isInInput) {
+        event.preventDefault();
+        handleSelectAll();
+        return;
+      }
+      
+      // Shift+Arrow for multi-select navigation (rubber-band selection)
+      if (event.shiftKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp') && !isInInput) {
+        event.preventDefault();
+        
+        const allIds = allVisibleTaskIds;
+        if (allIds.length === 0) return;
+        
+        // Determine current focus position
+        let currentIndex = focusedTaskIndex;
+        let anchorIndex = selectionAnchorIndex;
+        
+        // If no anchor set, establish it from current position
+        if (anchorIndex === -1) {
+          if (selectedTaskId) {
+            anchorIndex = allIds.indexOf(selectedTaskId);
+          }
+          if (anchorIndex === -1) {
+            anchorIndex = event.key === 'ArrowDown' ? 0 : allIds.length - 1;
+          }
+          // Set the anchor - this is where the selection started
+          setSelectionAnchorIndex(anchorIndex);
+          currentIndex = anchorIndex;
+        }
+        
+        if (currentIndex === -1) {
+          currentIndex = anchorIndex;
+        }
+        
+        // Calculate new focus index
+        const newIndex = event.key === 'ArrowDown'
+          ? Math.min(currentIndex + 1, allIds.length - 1)
+          : Math.max(currentIndex - 1, 0);
+        
+        if (newIndex === currentIndex) return;
+        
+        const taskId = allIds[newIndex];
+        if (!taskId) return;
+        
+        // Enter multi-select mode
+        setMultiSelectMode(true);
+        setFocusedTaskIndex(newIndex);
+        setLastClickedTaskId(taskId);
+        
+        // Rubber-band selection: select ONLY tasks between anchor and new focus
+        const start = Math.min(anchorIndex, newIndex);
+        const end = Math.max(anchorIndex, newIndex);
+        const rangeIds = allIds.slice(start, end + 1);
+        
+        setMultiSelectedIds(new Set(rangeIds));
+        
+        // Scroll the task into view
+        const taskElement = document.querySelector<HTMLElement>(
+          `.task-row[data-task-id="${taskId}"]`
+        );
+        if (taskElement && onScrollToCenter) {
+          onScrollToCenter(taskElement);
+        } else if (taskElement) {
+          taskElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+        return;
+      }
+      
+      // Regular arrow keys (without shift) - navigate focus
+      if ((event.key === 'ArrowDown' || event.key === 'ArrowUp') && !isInInput && !event.shiftKey) {
+        event.preventDefault();
+        
+        const allIds = allVisibleTaskIds;
+        if (allIds.length === 0) return;
+        
+        let currentIndex = selectedTaskId ? allIds.indexOf(selectedTaskId) : -1;
+        if (currentIndex === -1) {
+          currentIndex = event.key === 'ArrowDown' ? -1 : allIds.length;
+        }
+        
+        const newIndex = event.key === 'ArrowDown'
+          ? Math.min(currentIndex + 1, allIds.length - 1)
+          : Math.max(currentIndex - 1, 0);
+        
+        const taskId = allIds[newIndex];
+        if (taskId) {
+          onSelectTask?.(taskId);
+          setFocusedTaskIndex(newIndex);
+          
+          const taskElement = document.querySelector<HTMLElement>(
+            `.task-row[data-task-id="${taskId}"]`
+          );
+          if (taskElement && onScrollToCenter) {
+            onScrollToCenter(taskElement);
+          } else if (taskElement) {
+            taskElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    multiSelectedIds.size,
+    multiSelectMode,
+    handleClearMultiSelection,
+    handleSelectAll,
+    allVisibleTaskIds,
+    focusedTaskIndex,
+    selectionAnchorIndex,
+    selectedTaskId,
+    onSelectTask,
+    onScrollToCenter
+  ]);
+
+  const handleDragOverZone =
+    (targetId: string | '__end', position: 'above' | 'below') =>
+    (event: React.DragEvent<HTMLElement>) => {
+      if (!manualOrderingActive || !draggingTaskId) return;
+      event.preventDefault();
+      setDragPreview({ targetId, position });
+    };
+
+  const handleDropOnZone =
+    (targetId: string | '__end', position: 'above' | 'below') =>
+    (event: React.DragEvent<HTMLElement>) => {
+      if (!manualOrderingActive || !draggingTaskId || !onManualReorder) return;
+      event.preventDefault();
+      onManualReorder({
+        sourceId: draggingTaskId,
+        targetId,
+        position
+      });
+      setDraggingTaskId(null);
+      setDragPreview(null);
+    };
+
+  const shouldShowDropZones = manualOrderingActive && Boolean(draggingTaskId);
+
+  const renderDropZone = (
+    key: string,
+    targetId: string | '__end',
+    position: 'above' | 'below',
+    label?: string
+  ) => {
+    if (!shouldShowDropZones) return null;
+    const isActive =
+      dragPreview?.targetId === targetId && dragPreview?.position === position;
+    const message =
+      targetId === '__end'
+        ? 'Drop to move to the end'
+        : position === 'above'
+          ? `Drop above ${label ?? 'this task'}`
+          : `Drop below ${label ?? 'this task'}`;
+    return (
+      <div
+        key={key}
+        className={`task-drop-zone ${isActive ? 'is-active' : ''}`}
+        onDragOver={handleDragOverZone(targetId, position)}
+        onDrop={handleDropOnZone(targetId, position)}
+      >
+        <span className="drop-zone-label">{message}</span>
+      </div>
+    );
   };
 
   const toggleNotes = (taskId: string, currentValue?: string, taskElement?: HTMLElement) => {
@@ -476,6 +1043,65 @@ const TaskList = ({
     }
   };
 
+  const runSessionShortcut = useCallback(
+    (taskId: string) => {
+      if (!tasks.some((task) => task.id === taskId)) return;
+      if (!expandedSessionTimer[taskId]) {
+        const taskElement = getTaskRowElement(taskId) ?? undefined;
+        toggleSessionTimer(taskId, taskElement);
+        focusSessionInput(taskId, true);
+        return;
+      }
+      const rawValue = sessionInputs[taskId]?.value ?? '';
+      const numericValue = parseFloat(rawValue);
+      if (!rawValue || Number.isNaN(numericValue) || numericValue <= 0) {
+        focusSessionInput(taskId);
+        return;
+      }
+      void handleStartSession(taskId);
+    },
+    [
+      expandedSessionTimer,
+      focusSessionInput,
+      getTaskRowElement,
+      handleStartSession,
+      sessionInputs,
+      tasks,
+      toggleSessionTimer
+    ]
+  );
+
+  const runNotesShortcut = useCallback(
+    (taskId: string) => {
+      const task = tasks.find((entry) => entry.id === taskId);
+      if (!task) return;
+      if (!expandedNotes[taskId]) {
+        const taskElement = getTaskRowElement(taskId) ?? undefined;
+        toggleNotes(taskId, task.mainEntry, taskElement);
+        focusNotesTextarea(taskId, true);
+        return;
+      }
+      focusNotesTextarea(taskId);
+    },
+    [
+      expandedNotes,
+      focusNotesTextarea,
+      getTaskRowElement,
+      tasks,
+      toggleNotes
+    ]
+  );
+
+  useEffect(() => {
+    if (!shortcutSignal) return;
+    if (shortcutSignal.action.type === 'session') {
+      runSessionShortcut(shortcutSignal.action.taskId);
+    } else if (shortcutSignal.action.type === 'notes') {
+      runNotesShortcut(shortcutSignal.action.taskId);
+    }
+    onShortcutHandled?.(shortcutSignal.id);
+  }, [shortcutSignal, onShortcutHandled, runNotesShortcut, runSessionShortcut]);
+
   const handleSaveEstimatedLength = async (taskId: string) => {
     const input = estimateInputs[taskId];
     const numericValue = parseFloat(input?.value ?? '');
@@ -556,7 +1182,6 @@ const TaskList = ({
       ? statusOptions
       : manualStatuses.map((name) => ({ id: name, name }));
 
-  const hasGroups = grouping !== 'none' && Boolean(groups?.length);
   const isTaskActive = (task: Task) =>
     task.status === '⌚' || Boolean(isCountingDown?.(task.id));
   const ungroupedActiveTasks = !hasGroups
@@ -670,17 +1295,136 @@ const TaskList = ({
 
         const isSessionActive = isTaskActive(task);
         const isFocusedTask = focusTaskId === task.id;
+        const isSelected = selectedTaskId === task.id;
+        const isMultiSelected = multiSelectedIds.has(task.id);
+        const allIds = allVisibleTaskIds;
+        const taskIndex = allIds.indexOf(task.id);
+        const isKeyboardFocused = multiSelectMode && focusedTaskIndex === taskIndex;
+        const dragIndicatorClass =
+          manualOrderingActive && dragPreview?.targetId === task.id
+            ? dragPreview.position === 'above'
+              ? 'drag-over-above'
+              : 'drag-over-below'
+            : '';
+        const isBeingDragged = draggingTaskId === task.id;
+        // Allow external drag for cross-window functionality (must be defined before use in rowClasses)
+        const allowExternalDrag = Boolean(enableExternalDrag && onTaskDragStart);
+        const hasSubtasks = task.subtaskProgress && task.subtaskProgress.total > 0;
+        const isSubtask = Boolean(task.parentTaskId);
+        const rowClasses = [
+          'task-row',
+          isSessionActive ? 'has-active-session' : '',
+          isFocusedTask ? 'is-focused-task' : '',
+          isSelected ? 'is-selected' : '',
+          isMultiSelected ? 'is-multi-selected' : '',
+          isKeyboardFocused ? 'is-keyboard-focused' : '',
+          manualOrderingActive || allowExternalDrag ? 'is-draggable' : '',
+          isBeingDragged ? 'is-being-dragged' : '',
+          dragIndicatorClass,
+          hasSubtasks ? 'has-subtasks' : '',
+          isSubtask ? 'is-subtask' : ''
+        ]
+          .filter(Boolean)
+          .join(' ');
+        const orderMeta = task.orderValue
+          ? orderOptionMap.get(task.orderValue.toLowerCase())
+          : undefined;
+        const orderDisplayNumber = orderMeta ? orderMeta.index + 1 : null;
+        const orderBadgeColors = orderMeta
+          ? getOrderBadgeStyle(orderMeta.color)
+          : null;
+        
+        // Create a combined drag handler that supports both manual ordering AND cross-window drag
+        const dragStartHandler = (event: ReactDragEvent<HTMLElement>) => {
+          // Always set cross-window data for external drops
+          if (event.dataTransfer && allowExternalDrag) {
+            event.dataTransfer.setData('application/x-task-id', task.id);
+            event.dataTransfer.setData('text/plain', task.title ?? task.id);
+            event.dataTransfer.effectAllowed = 'move';
+            // Start cross-window drag
+            onTaskDragStart?.(task, event);
+          }
+          // Also handle internal manual ordering if enabled
+          if (manualOrderingActive) {
+            handleDragStart(task.id)(event);
+          }
+        };
+        
+        const dragEndHandler = () => {
+          if (manualOrderingActive) {
+            handleDragEnd();
+          }
+          if (allowExternalDrag) {
+            onTaskDragEnd?.();
+          }
+        };
         
         return (
-          <article
-            key={task.id}
-            className={`task-row ${isSessionActive ? 'has-active-session' : ''} ${
-              isFocusedTask ? 'is-focused-task' : ''
-            }`}
+          <Fragment key={task.id}>
+            {renderDropZone(`${task.id}-drop-above`, task.id, 'above', task.title)}
+            <article
+            className={rowClasses}
+            data-task-id={task.id}
+            onPointerEnter={() => onHoverTask?.(task.id)}
+            onPointerLeave={() => onHoverTask?.(null)}
             onDoubleClickCapture={handleRowDoubleClickCapture}
+            draggable={manualOrderingActive || allowExternalDrag}
+            onDragStart={manualOrderingActive || allowExternalDrag ? dragStartHandler : undefined}
+            onDragEnd={manualOrderingActive || allowExternalDrag ? dragEndHandler : undefined}
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              handleTaskClick(event as unknown as ReactMouseEvent<HTMLElement>, task.id);
+            }}
+            onDragOver={
+              manualOrderingActive ? handleDragOverRow(task.id) : undefined
+            }
+            onDrop={
+              manualOrderingActive ? handleDropOnRow(task.id) : undefined
+            }
           >
             <div className="task-row-header">
               <div className="task-header-left">
+                {/* Multi-select checkbox - only visible in multi-select mode */}
+                {multiSelectMode && (
+                  <input
+                    type="checkbox"
+                    className="task-multi-checkbox is-visible"
+                    checked={isMultiSelected}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      setMultiSelectedIds((prev) => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(task.id)) {
+                          newSet.delete(task.id);
+                        } else {
+                          newSet.add(task.id);
+                        }
+                        return newSet;
+                      });
+                      setLastClickedTaskId(task.id);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Select task"
+                  />
+                )}
+                <button
+                  type="button"
+                  className={`task-drag-handle ${multiSelectMode ? 'in-multi-select' : ''}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    // Enter multi-select mode
+                    handleEnterMultiSelectMode(task.id, event);
+                  }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    // Double-click opens inspector
+                    onInspectTask?.(task.id);
+                  }}
+                  aria-label={multiSelectMode ? "Select task" : "Select task (double-click to inspect)"}
+                  title={multiSelectMode ? "Click to toggle selection" : "Click to select, double-click to inspect"}
+                >
+                  ⋮⋮
+                </button>
                 <button
                   type="button"
                   className={`complete-toggle ${
@@ -703,6 +1447,21 @@ const TaskList = ({
                     />
                   )}
                 </button>
+                {orderDisplayNumber && (
+                  <span
+                    className="task-order-badge"
+                    style={
+                      orderBadgeColors
+                        ? {
+                            backgroundColor: orderBadgeColors.bg,
+                            color: orderBadgeColors.text
+                          }
+                        : undefined
+                    }
+                  >
+                    #{orderDisplayNumber}
+                  </span>
+                )}
                 {editingTitleId === task.id ? (
                   <input
                     className="task-title-input editing"
@@ -741,6 +1500,18 @@ const TaskList = ({
                 )}
               </div>
               <div className="task-header-right">
+                {/* Recurrence indicator (visual only, editing is in DateField) */}
+                {task.recurrence && task.recurrence.length > 0 && (
+                  <span className="recurrence-indicator" title={`Repeats: ${task.recurrence.join(', ')}`}>
+                    🔄
+                  </span>
+                )}
+                {/* Reminder indicator (visual only, editing is in DateField) */}
+                {task.reminderAt && new Date(task.reminderAt) > new Date() && (
+                  <span className="reminder-indicator" title={`Reminder at ${new Date(task.reminderAt).toLocaleString()}`}>
+                    🔔
+                  </span>
+                )}
                 <button
                   type="button"
                   aria-label="Toggle deadline hardness"
@@ -765,6 +1536,47 @@ const TaskList = ({
                 >
                   {task.hardDeadline ? 'Hard Deadline' : 'Soft Deadline'}
                 </button>
+                {/* Subtask progress indicator - show if task has subtaskProgress OR if we have cached subtasks */}
+                {(() => {
+                  const cachedSubtasks = subtaskCache[task.id] || [];
+                  const hasSubtasksFromProgress = task.subtaskProgress && task.subtaskProgress.total > 0;
+                  const hasSubtasksFromCache = cachedSubtasks.length > 0;
+                  
+                  if (!hasSubtasksFromProgress && !hasSubtasksFromCache) return null;
+                  
+                  // Calculate progress from cache if available, otherwise use task.subtaskProgress
+                  const total = hasSubtasksFromCache ? cachedSubtasks.length : (task.subtaskProgress?.total ?? 0);
+                  const completed = hasSubtasksFromCache 
+                    ? cachedSubtasks.filter(s => {
+                        const status = (s.normalizedStatus || s.status || '').toLowerCase();
+                        return status === 'done' || status.includes('complete');
+                      }).length
+                    : (task.subtaskProgress?.completed ?? 0);
+                  const allDone = total > 0 && completed === total;
+                  
+                  return (
+                    <button
+                      type="button"
+                      className={`subtask-progress-pill ${allDone ? 'all-done' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const isExpanded = expandedSubtasks[task.id];
+                        setExpandedSubtasks(prev => ({ ...prev, [task.id]: !isExpanded }));
+                        
+                        // Fetch subtasks if not cached and expanding
+                        if (!isExpanded && !subtaskCache[task.id]) {
+                          window.widgetAPI.getSubtasks(task.id).then(subtasks => {
+                            setSubtaskCache(prev => ({ ...prev, [task.id]: subtasks }));
+                          });
+                        }
+                      }}
+                      title={`${completed} of ${total} subtasks done`}
+                    >
+                      <span className="subtask-count">{completed}/{total}</span>
+                      <span className="subtask-chevron">{expandedSubtasks[task.id] ? '▾' : '▸'}</span>
+                    </button>
+                  );
+                })()}
               </div>
             </div>
             <div className="task-properties-row">
@@ -788,6 +1600,14 @@ const TaskList = ({
                     ariaLabel="Due date"
                     inputClassName="pill-input"
                     placeholder="Due date"
+                    recurrence={task.recurrence}
+                    onRecurrenceChange={(recurrence) => {
+                      void handleUpdate(task.id, { recurrence });
+                    }}
+                    reminderAt={task.reminderAt}
+                    onReminderChange={(reminderAt) => {
+                      void handleUpdate(task.id, { reminderAt });
+                    }}
                   />
                 </div>
                 <div className="property-item status-item">
@@ -951,20 +1771,20 @@ const TaskList = ({
                   className="task-notes-toggle"
                   onClick={(e) => {
                     const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
-                    toggleNotes(task.id, task.mainEntry, taskRow);
+                    toggleTrackingData(task.id, taskRow);
                   }}
                 >
-                  {task.mainEntry ? 'View notes' : 'Add notes…'}
+                  Tracking data
                 </button>
                 <button
                   type="button"
                   className="task-notes-toggle"
                   onClick={(e) => {
                     const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
-                    toggleTrackingData(task.id, taskRow);
+                    toggleNotes(task.id, task.mainEntry, taskRow);
                   }}
                 >
-                  Tracking data
+                  {task.mainEntry ? 'View notes' : 'Add notes…'}
                 </button>
                 {task.url && (
                   <a
@@ -978,34 +1798,180 @@ const TaskList = ({
                 )}
               </div>
             </div>
-            {expandedNotes[task.id] && (
-              <div className="task-notes">
-                <textarea
-                  value={noteDrafts[task.id] ?? task.mainEntry ?? ''}
-                  onChange={(event) =>
-                    handleNoteChange(task.id, event.target.value)
-                  }
-                  onBlur={(event) =>
-                    void commitNoteChange(
-                      task.id,
-                      event.target.value,
-                      task.mainEntry
-                    )
-                  }
-                  placeholder="Write context for this entry…"
-                  disabled={isUpdating}
-                />
-                <p className="task-notes-hint">Maps to "Main Entry"</p>
-                <button
-                  type="button"
-                  className="task-notes-collapse"
-                  onClick={() => closeNotes(task.id)}
-                  title="Collapse notes"
-                >
-                  ↖
-                </button>
-              </div>
-            )}
+            {/* Project & Tags row - subtle footer */}
+            {(() => {
+              const taskProjects = getTaskProjects(task);
+              const hasProjects = taskProjects.length > 0;
+              const isPickerOpen = expandedProjectPicker === task.id;
+              // Placeholder for tags - will be implemented later
+              const taskTags: string[] = [];
+              
+              return (
+                <div className="task-project-row">
+                  <div className="task-project-row-left">
+                    {hasProjects ? (
+                      <button
+                        type="button"
+                        className="task-project-label"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedProjectPicker(isPickerOpen ? null : task.id);
+                        }}
+                        title="Change project"
+                      >
+                        <span className="project-icon">📁</span>
+                        <span className="project-name">
+                          {taskProjects.map((p) => p.title || 'Untitled').join(', ')}
+                        </span>
+                        <span className="project-chevron">{isPickerOpen ? '▾' : '▸'}</span>
+                      </button>
+                    ) : openProjects.length > 0 ? (
+                      <button
+                        type="button"
+                        className="task-project-label task-project-add"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedProjectPicker(isPickerOpen ? null : task.id);
+                        }}
+                        title="Add to project"
+                      >
+                        <span className="project-icon">+</span>
+                        <span className="project-name">Add to project</span>
+                      </button>
+                    ) : null}
+                    
+                    {isPickerOpen && openProjects.length > 0 && (
+                      <>
+                        <div 
+                          className="task-project-picker-backdrop"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedProjectPicker(null);
+                          }}
+                        />
+                        <div className="task-project-picker">
+                          <button
+                            type="button"
+                            className={`project-option ${!hasProjects ? 'is-selected' : ''}`}
+                            onClick={() => {
+                              void handleUpdate(task.id, { projectIds: null });
+                              setExpandedProjectPicker(null);
+                            }}
+                          >
+                            No project
+                          </button>
+                          {openProjects.map((project) => {
+                            const isSelected = task.projectIds?.includes(project.id);
+                            return (
+                              <button
+                                key={project.id}
+                                type="button"
+                                className={`project-option ${isSelected ? 'is-selected' : ''}`}
+                                onClick={() => {
+                                  void handleUpdate(task.id, { projectIds: [project.id] });
+                                  setExpandedProjectPicker(null);
+                                }}
+                              >
+                                {project.title || 'Untitled'}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* Tags section - placeholder for future implementation */}
+                  <div className="task-project-row-right">
+                    {taskTags.length > 0 && (
+                      <div className="task-tags">
+                        {taskTags.map((tag, idx) => (
+                          <span key={idx} className="task-tag">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Add subtask button/form */}
+                    {onAddSubtask && (
+                      <div className="add-subtask-container">
+                        {addingSubtaskFor === task.id ? (
+                          <form
+                            className="add-subtask-form"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (newSubtaskTitle.trim()) {
+                                void onAddSubtask(task.id, newSubtaskTitle.trim()).then((newTask) => {
+                                  if (newTask) {
+                                    // Update the subtask cache
+                                    setSubtaskCache(prev => ({
+                                      ...prev,
+                                      [task.id]: [...(prev[task.id] || []), newTask]
+                                    }));
+                                    // Auto-expand subtasks
+                                    setExpandedSubtasks(prev => ({ ...prev, [task.id]: true }));
+                                  }
+                                });
+                                setNewSubtaskTitle('');
+                                setAddingSubtaskFor(null);
+                              }
+                            }}
+                          >
+                            <input
+                              type="text"
+                              className="add-subtask-input"
+                              placeholder="Subtask title..."
+                              value={newSubtaskTitle}
+                              onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                  e.stopPropagation();
+                                  setNewSubtaskTitle('');
+                                  setAddingSubtaskFor(null);
+                                }
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                            <button
+                              type="submit"
+                              className="add-subtask-submit"
+                              disabled={!newSubtaskTitle.trim()}
+                            >
+                              Add
+                            </button>
+                            <button
+                              type="button"
+                              className="add-subtask-cancel"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNewSubtaskTitle('');
+                                setAddingSubtaskFor(null);
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </form>
+                        ) : (
+                          <button
+                            type="button"
+                            className="add-subtask-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAddingSubtaskFor(task.id);
+                            }}
+                            title="Add subtask"
+                          >
+                            <span className="add-subtask-icon">+</span>
+                            <span className="add-subtask-label">Add subtask</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
             {expandedTrackingData[task.id] && (
               <div className="task-notes">
                 {(() => {
@@ -1024,12 +1990,18 @@ const TaskList = ({
                   const totalMinutes = loggedMinutes + currentSessionMinutes;
                   const sessionCount = entries.length;
                   const estimatedMinutes = task.estimatedLengthMinutes ?? null;
+                  const goalMinutes = task.trackingGoalMinutes ?? null;
+                  const hasSubtasks = task.subtaskProgress && task.subtaskProgress.total > 0;
                   
                   // Calculate remaining time
                   let calculatedRemaining: number | null = null;
                   if (estimatedMinutes != null) {
                     calculatedRemaining = Math.max(0, estimatedMinutes - totalMinutes);
                   }
+                  
+                  // Goal progress calculation
+                  const goalProgress = goalMinutes ? Math.min(1, totalMinutes / goalMinutes) : null;
+                  const isGoalExceeded = goalMinutes && totalMinutes > goalMinutes;
                   
                   const formatDateTime = (dateString: string | null | undefined) => {
                     if (!dateString) return 'N/A';
@@ -1052,7 +2024,11 @@ const TaskList = ({
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                             <span style={{ opacity: 0.7 }}>Total tracked:</span>
-                            <span>{formatMinutes(totalMinutes)}</span>
+                            <span style={{ fontWeight: 600 }}>{formatMinutes(totalMinutes)}</span>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span style={{ opacity: 0.7 }}>Today's session:</span>
+                            <span style={{ color: '#86efac' }}>{currentSessionMinutes > 0 ? formatMinutes(currentSessionMinutes) : 'None active'}</span>
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                             <span style={{ opacity: 0.7 }}>Remaining:</span>
@@ -1062,7 +2038,29 @@ const TaskList = ({
                             <span style={{ opacity: 0.7 }}>Sessions:</span>
                             <span>{sessionCount}</span>
                           </div>
+                          {hasSubtasks && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '6px', marginTop: '4px' }}>
+                              <span style={{ opacity: 0.7 }}>Subtasks:</span>
+                              <span>{task.subtaskProgress?.completed}/{task.subtaskProgress?.total} complete</span>
+                            </div>
+                          )}
                         </div>
+                        
+                        {/* Goal progress bar */}
+                        {goalMinutes && goalProgress !== null && (
+                          <div style={{ marginTop: '12px' }}>
+                            <div className="tracking-goal-label">
+                              <span>Goal: {formatMinutes(goalMinutes)}</span>
+                              <span>{Math.round(goalProgress * 100)}%</span>
+                            </div>
+                            <div className="tracking-goal-bar">
+                              <div 
+                                className={`tracking-goal-progress ${isGoalExceeded ? 'exceeded' : ''}`}
+                                style={{ width: `${Math.min(100, goalProgress * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
                       </div>
                       
                       {entries.length > 0 && (
@@ -1117,6 +2115,45 @@ const TaskList = ({
                 })()}
               </div>
             )}
+            {expandedNotes[task.id] && (
+              <div className="task-notes">
+                <textarea
+                  data-task-notes-input="true"
+                  value={noteDrafts[task.id] ?? task.mainEntry ?? ''}
+                  onChange={(event) =>
+                    handleNoteChange(task.id, event.target.value)
+                  }
+                  onBlur={(event) =>
+                    void commitNoteChange(
+                      task.id,
+                      event.target.value,
+                      task.mainEntry
+                    )
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && event.shiftKey) {
+                      event.preventDefault();
+                      const value = event.currentTarget.value;
+                      void (async () => {
+                        await commitNoteChange(task.id, value, task.mainEntry);
+                        closeNotes(task.id);
+                      })();
+                    }
+                  }}
+                  placeholder="Write context for this entry…"
+                  disabled={isUpdating}
+                />
+                <p className="task-notes-hint">Maps to "Main Entry"</p>
+                <button
+                  type="button"
+                  className="task-notes-collapse"
+                  onClick={() => closeNotes(task.id)}
+                  title="Collapse notes"
+                >
+                  ↖
+                </button>
+              </div>
+            )}
             {expandedSessionTimer[task.id] && (
               <div className="task-notes">
                 {isCountingDown?.(task.id) && getRemainingTime && task.sessionLengthMinutes ? (
@@ -1137,12 +2174,19 @@ const TaskList = ({
                 ) : null}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <input
+                    data-task-session-input="true"
                     type="number"
                     min="0.5"
                     step="0.5"
                     placeholder="0"
                     value={sessionInputs[task.id]?.value ?? ''}
                     onChange={(e) => handleSessionInputChange(task.id, e.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' && event.shiftKey) {
+                        event.preventDefault();
+                        void handleStartSession(task.id);
+                      }
+                    }}
                     style={{
                       width: '60px',
                       padding: '4px 6px',
@@ -1280,6 +2324,33 @@ const TaskList = ({
                   </button>
                 </div>
                 <p className="task-notes-hint">Plan how long you expect this to take</p>
+                
+                {/* Auto-fill toggle */}
+                <label 
+                  style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px', 
+                    marginTop: '12px',
+                    fontSize: '0.85em',
+                    color: 'var(--notion-text-muted)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={task.autoFillEstimatedTime ?? false}
+                    onChange={(e) => {
+                      void handleUpdate(task.id, { autoFillEstimatedTime: e.target.checked });
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <span>Auto-fill time on completion</span>
+                </label>
+                <p className="task-notes-hint" style={{ marginTop: '4px', fontSize: '0.75em' }}>
+                  When enabled, automatically log estimated time when task is completed (if no time was tracked today)
+                </p>
+                
                 <button
                   type="button"
                   className="task-notes-collapse"
@@ -1354,7 +2425,72 @@ const TaskList = ({
                 </div>
               </div>
             )}
+            {/* Collapsible subtask list */}
+            {expandedSubtasks[task.id] && ((task.subtaskProgress && task.subtaskProgress.total > 0) || (subtaskCache[task.id] && subtaskCache[task.id].length > 0)) && (
+              <div className="subtask-list-container">
+                <div className="subtask-list-header">
+                  {(() => {
+                    const cachedSubtasks = subtaskCache[task.id] || [];
+                    const total = cachedSubtasks.length > 0 ? cachedSubtasks.length : (task.subtaskProgress?.total ?? 0);
+                    const completed = cachedSubtasks.length > 0 
+                      ? cachedSubtasks.filter(s => {
+                          const status = (s.normalizedStatus || s.status || '').toLowerCase();
+                          return status === 'done' || status.includes('complete');
+                        }).length
+                      : (task.subtaskProgress?.completed ?? 0);
+                    return <span>Subtasks ({completed}/{total})</span>;
+                  })()}
+                  <button
+                    type="button"
+                    className="task-notes-collapse"
+                    onClick={() => setExpandedSubtasks(prev => ({ ...prev, [task.id]: false }))}
+                    title="Collapse subtasks"
+                  >
+                    ↖
+                  </button>
+                </div>
+                <div className="subtask-list-body">
+                  {subtaskCache[task.id] ? (
+                    subtaskCache[task.id].map((subtask) => (
+                      <div 
+                        key={subtask.id} 
+                        className={`subtask-item ${subtask.status === completedStatus ? 'is-complete' : ''}`}
+                      >
+                        <button
+                          type="button"
+                          className={`complete-toggle ${subtask.status === completedStatus ? 'is-complete' : ''}`}
+                          onClick={() => {
+                            const newStatus = subtask.status === completedStatus 
+                              ? (availableStatusOptions.find(opt => opt.name !== completedStatus)?.name ?? '')
+                              : completedStatus;
+                            void onUpdateTask(subtask.id, { status: newStatus });
+                            // Update cache
+                            setSubtaskCache(prev => ({
+                              ...prev,
+                              [task.id]: prev[task.id]?.map(s => 
+                                s.id === subtask.id ? { ...s, status: newStatus } : s
+                              ) ?? []
+                            }));
+                          }}
+                          disabled={isUpdating}
+                          title={subtask.status === completedStatus ? 'Mark as to-do' : 'Mark as complete'}
+                        />
+                        <span className="subtask-title">{subtask.title}</span>
+                        {subtask.dueDate && (
+                          <span className="subtask-date">
+                            {new Date(subtask.dueDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="subtask-loading">Loading subtasks...</div>
+                  )}
+                </div>
+              </div>
+            )}
           </article>
+          </Fragment>
         );
       };
 
@@ -1365,18 +2501,123 @@ const TaskList = ({
     }));
   };
 
+  // Handle dropping a task onto a group header (inline function to avoid hook order issues)
+  const handleGroupDrop = async (groupId: string, event: ReactDragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setGroupDropTarget(null);
+    
+    // Get the dragged task
+    const taskId = event.dataTransfer.getData('application/x-task-id');
+    const draggedTask = taskId ? tasks.find((t) => t.id === taskId) : draggingTaskId ? tasks.find((t) => t.id === draggingTaskId) : null;
+    
+    if (!draggedTask || !grouping || grouping === 'none') return;
+    
+    // Determine what updates to apply based on grouping type
+    let updates: TaskUpdatePayload = {};
+    
+    switch (grouping) {
+      case 'dueDate': {
+        if (groupId === 'no-date') {
+          updates.dueDate = null;
+        } else {
+          // groupId is a date string like "2025-11-25"
+          const parts = groupId.split('-').map(Number);
+          if (parts.length === 3) {
+            const dropDate = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
+            updates.dueDate = dropDate.toISOString();
+          }
+        }
+        break;
+      }
+      case 'status': {
+        // Map normalized status back to emoji status
+        const statusMap: Record<string, string> = {
+          'todo': '📋',
+          'in-progress': '🔥',
+          'waiting': '⏳',
+          'blocked': '🚫',
+          'review': '👀',
+          'done': '✅',
+          'cancelled': '🗑️'
+        };
+        const newStatus = statusMap[groupId] || groupId;
+        updates.status = newStatus;
+        break;
+      }
+      case 'priority': {
+        // Map priority ID to urgent/important flags
+        switch (groupId) {
+          case 'do-now':
+            updates.urgent = true;
+            updates.important = true;
+            break;
+          case 'deep-work':
+            updates.urgent = false;
+            updates.important = true;
+            break;
+          case 'delegate':
+            updates.urgent = true;
+            updates.important = false;
+            break;
+          case 'trash':
+            updates.urgent = false;
+            updates.important = false;
+            break;
+        }
+        break;
+      }
+    }
+    
+    if (Object.keys(updates).length > 0) {
+      try {
+        await onUpdateTask(draggedTask.id, updates);
+      } catch (error) {
+        console.error('Failed to update task on group drop', error);
+      }
+    }
+    
+    // Clean up drag state
+    if (manualOrderingActive) {
+      handleDragEnd();
+    }
+  };
+  
+  const handleGroupDragOver = (groupId: string, event: ReactDragEvent<HTMLElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    setGroupDropTarget(groupId);
+  };
+  
+  const handleGroupDragLeave = (groupId: string) => {
+    setGroupDropTarget((prev) => (prev === groupId ? null : prev));
+  };
+
   const renderGroup = (group: TaskGroup) => {
     const collapsed = collapsedGroups[group.id] ?? true;
+    const isDropTarget = groupDropTarget === group.id;
+    
     return (
       <section
         key={group.id}
-        className={`task-group ${collapsed ? 'is-collapsed' : ''}`}
+        className={`task-group ${collapsed ? 'is-collapsed' : ''} ${isDropTarget ? 'is-drop-target' : ''}`}
+        onDragOver={(e) => handleGroupDragOver(group.id, e)}
+        onDragLeave={() => handleGroupDragLeave(group.id)}
+        onDrop={(e) => handleGroupDrop(group.id, e)}
       >
-        <button
-          type="button"
-          className="task-group-header"
+        <div
+          className={`task-group-header ${isDropTarget ? 'is-drop-target' : ''}`}
           onClick={() => toggleGroup(group.id)}
+          role="button"
+          tabIndex={0}
           aria-expanded={!collapsed}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              toggleGroup(group.id);
+            }
+          }}
         >
           <div className="task-group-header-text">
             <span className="task-group-title">{group.label}</span>
@@ -1390,7 +2631,12 @@ const TaskList = ({
             <span className="task-group-count">{group.tasks.length}</span>
             <span className="task-group-chevron" aria-hidden="true"></span>
           </div>
-        </button>
+          {isDropTarget && (
+            <div className="group-drop-indicator">
+              Drop to move here
+            </div>
+          )}
+        </div>
         {!collapsed && (
           <div className="task-group-body">
             {group.tasks.map((task) => renderTask(task))}
@@ -1401,25 +2647,41 @@ const TaskList = ({
   };
 
   return (
-    <div
-      ref={scrollContainerRef}
-      className={`task-list ${hasGroups ? 'with-groups' : ''}`}
-    >
-      {hasGroups && groups ? (
-        groups.map((group) => renderGroup(group))
-      ) : (
-        <>
-          {ungroupedActiveTasks.length > 0 && (
-            <div className="task-active-stack">
-              {ungroupedActiveTasks.map((task) => renderTask(task))}
-            </div>
-          )}
-          {ungroupedInactiveTasks.map((task) => renderTask(task))}
-        </>
+    <>
+      {multiSelectMode && (
+        <MassEditToolbar
+          selectedCount={multiSelectedIds.size}
+          statusOptions={availableStatusOptions}
+          onMassUpdate={handleMassUpdate}
+          onClearSelection={handleClearMultiSelection}
+          onSelectAll={handleSelectAll}
+          totalCount={tasks.length}
+        />
       )}
-    </div>
+      <div
+        ref={scrollContainerRef}
+        className={`task-list ${hasGroups ? 'with-groups' : ''} ${multiSelectMode ? 'in-multi-select-mode' : ''} ${draggingTaskId ? 'is-dragging' : ''}`}
+        onDragOver={manualOrderingActive ? handleListDragOver : undefined}
+        onDrop={manualOrderingActive ? handleListDrop : undefined}
+      >
+        {hasGroups && groups ? (
+          groups.map((group) => renderGroup(group))
+        ) : (
+          <>
+            {ungroupedActiveTasks.length > 0 && (
+              <div className="task-active-stack">
+                {ungroupedActiveTasks.map((task) => renderTask(task))}
+              </div>
+            )}
+            {ungroupedInactiveTasks.map((task) => renderTask(task))}
+          </>
+        )}
+        {renderDropZone('drop-end', '__end', 'below')}
+      </div>
+    </>
   );
 };
 
 export default TaskList;
+
 

@@ -4,15 +4,24 @@ import { mapStatusToFilterValue } from '@shared/statusFilters';
 
 type TaskProperty = PageObjectResponse['properties'][string];
 
+// Debug logging flag - enable via --debug-status flag or DEBUG_STATUS env var
+const DEBUG_STATUS_EXTRACTION = 
+  (typeof process !== 'undefined' && (
+    process.argv?.includes('--debug-status') || 
+    process.env?.DEBUG_STATUS === 'true'
+  )) ?? false;
+
 export function mapPageToTask(
   page: PageObjectResponse,
   settings: NotionSettings
 ): Task {
   const properties = page.properties ?? {};
   const title = extractTitle(properties[settings.titleProperty]);
-  const status = extractStatus(properties[settings.statusProperty]);
-  const normalizedStatus =
-    mapStatusToFilterValue(status) ?? status?.trim().toLowerCase();
+  
+  // Enhanced status extraction with debugging
+  const statusProp = properties[settings.statusProperty];
+  const status = extractStatus(statusProp, settings.statusProperty, DEBUG_STATUS_EXTRACTION);
+  const normalizedStatus = mapStatusToFilterValue(status);
   const { start: dueDate, end: dueDateEnd } = extractDateRange(
     properties[settings.dateProperty]
   );
@@ -28,6 +37,27 @@ export function mapPageToTask(
   const estimatedLengthProperty = settings.estimatedLengthProperty
     ? properties[settings.estimatedLengthProperty]
     : undefined;
+  const projectRelationProperty = settings.projectRelationProperty
+    ? properties[settings.projectRelationProperty]
+    : undefined;
+  const orderPropertyName = settings.orderProperty?.trim();
+  const orderProperty = orderPropertyName
+    ? properties[orderPropertyName]
+    : undefined;
+  const orderSelect = extractSelectOption(orderProperty);
+
+  // Extract recurrence (multi-select weekdays)
+  const recurrenceProperty = settings.recurrenceProperty
+    ? properties[settings.recurrenceProperty]
+    : undefined;
+  const recurrence = extractMultiSelect(recurrenceProperty);
+
+  // Extract parent task relation (for subtasks)
+  const parentTaskProperty = settings.parentTaskProperty
+    ? properties[settings.parentTaskProperty]
+    : undefined;
+  const parentTaskIds = extractRelationIds(parentTaskProperty);
+  const parentTaskId = parentTaskIds && parentTaskIds.length > 0 ? parentTaskIds[0] : undefined;
 
   return {
     id: page.id,
@@ -45,7 +75,14 @@ export function mapPageToTask(
     ),
     mainEntry: extractRichText(mainEntryProperty),
     sessionLengthMinutes: extractNumber(sessionLengthProperty),
-    estimatedLengthMinutes: extractNumber(estimatedLengthProperty)
+    estimatedLengthMinutes: extractNumber(estimatedLengthProperty),
+    orderValue: orderSelect?.name ?? null,
+    orderColor: orderSelect?.color ?? null,
+    projectIds: extractRelationIds(projectRelationProperty),
+    // Recurring task fields
+    recurrence: recurrence && recurrence.length > 0 ? recurrence : undefined,
+    // Subtask fields
+    parentTaskId
   };
 }
 
@@ -54,17 +91,44 @@ function extractTitle(property: TaskProperty) {
   return property.title.map((segment) => segment.plain_text).join('');
 }
 
-function extractStatus(property: TaskProperty) {
-  if (!property) return undefined;
+function extractStatus(
+  property: TaskProperty,
+  propertyName?: string,
+  debug = false
+): string | undefined {
+  if (!property) {
+    if (debug) {
+      console.log(`[TaskMapper] Status property "${propertyName}" not found in page properties`);
+    }
+    return undefined;
+  }
+
+  if (debug) {
+    console.log(`[TaskMapper] Status property "${propertyName}" type: ${property.type}`, 
+      JSON.stringify(property).substring(0, 200));
+  }
 
   if (property.type === 'status') {
-    return property.status?.name ?? undefined;
+    const statusValue = property.status?.name ?? undefined;
+    if (debug && !statusValue) {
+      console.log(`[TaskMapper] Status property is 'status' type but value is null/undefined`);
+    }
+    return statusValue;
   }
 
   if (property.type === 'select') {
-    return property.select?.name ?? undefined;
+    const selectValue = property.select?.name ?? undefined;
+    if (debug && !selectValue) {
+      console.log(`[TaskMapper] Status property is 'select' type but value is null/undefined`);
+    }
+    return selectValue;
   }
 
+  // Handle unexpected property types
+  if (debug) {
+    console.warn(`[TaskMapper] Status property "${propertyName}" has unexpected type: ${property.type}`);
+  }
+  
   return undefined;
 }
 
@@ -116,4 +180,30 @@ function extractNumber(property: TaskProperty | undefined) {
   }
   return undefined;
 }
+
+function extractRelationIds(property: TaskProperty | undefined) {
+  if (!property || property.type !== 'relation') {
+    return null;
+  }
+  return property.relation.map((entry) => entry.id);
+}
+
+function extractSelectOption(property: TaskProperty | undefined) {
+  if (!property) return null;
+  if (property.type === 'select') {
+    return property.select;
+  }
+  if (property.type === 'status') {
+    return property.status;
+  }
+  return null;
+}
+
+function extractMultiSelect(property: TaskProperty | undefined): string[] | null {
+  if (!property || property.type !== 'multi_select') {
+    return null;
+  }
+  return property.multi_select.map((option) => option.name);
+}
+
 

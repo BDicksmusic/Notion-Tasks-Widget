@@ -1,0 +1,580 @@
+/* Calendar Widget Styles */
+/* Two-panel layout: Task list + Month calendar */
+
+/* ========================================
+   Shell & Surface
+   ======================================== */
+
+.calendar-widget-shell {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 0;
+  background: transparent;
+}
+
+.calendar-widget-surface {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--notion-bg);
+  border: 1px solid var(--notion-border);
+  border-radius: var(--radius-lg);
+  box-shadow: rgba(15, 15, 15, 0.1) 0px 0px 0px 1px, rgba(15, 15, 15, 0.2) 0px 3px 6px, rgba(15, 15, 15, 0.4) 0px 9px 24px;
+  -webkit-app-region: drag;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Drag strip for window movement */
+.calendar-drag-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  -webkit-app-region: drag;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ========================================
+   Two-Panel Layout
+   ======================================== */
+
+.calendar-widget-layout {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+
+/* ========================================
+   Left Panel: Task List
+   ======================================== */
+
+.calendar-tasks-panel {
+  width: 320px;
+  min-width: 280px;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--notion-border);
+  background: var(--notion-bg);
+}
+
+.calendar-tasks-header {
+  flex-shrink: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--notion-border);
+  -webkit-app-region: drag;
+}
+
+.calendar-tasks-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--notion-text);
+}
+
+.calendar-tasks-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+}
+
+.calendar-tasks-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--notion-text-muted);
+  font-size: 14px;
+  text-align: center;
+  gap: 8px;
+}
+
+.calendar-tasks-empty .empty-icon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.calendar-tasks-empty p {
+  margin: 0;
+}
+
+/* ========================================
+   Right Panel: Calendar Grid
+   ======================================== */
+
+.calendar-grid-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* ========================================
+   Header - Month Navigation
+   ======================================== */
+
+.calendar-widget-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--notion-border);
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: 1;
+}
+
+.calendar-month-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--notion-text);
+  text-align: center;
+}
+
+.calendar-nav-btn {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--notion-border);
+  border-radius: 4px;
+  color: var(--notion-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  -webkit-app-region: no-drag;
+}
+
+.calendar-nav-btn:hover {
+  background: var(--notion-bg-hover);
+  color: var(--notion-text);
+}
+
+/* ========================================
+   Calendar Grid Container
+   ======================================== */
+
+.calendar-grid-container {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.calendar-loading,
+.calendar-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--notion-text-muted);
+  font-size: 14px;
+}
+
+.calendar-error {
+  color: var(--notion-red);
+}
+
+.calendar-full-grid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ========================================
+   Weekday Header
+   ======================================== */
+
+.calendar-weekday-header {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  background: var(--notion-bg-secondary);
+  border-bottom: 1px solid var(--notion-border);
+  flex-shrink: 0;
+}
+
+.calendar-weekday {
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--notion-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ========================================
+   Calendar Grid Body
+   ======================================== */
+
+.calendar-grid-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  overflow: hidden;
+}
+
+/* ========================================
+   Calendar Grid Cell
+   ======================================== */
+
+.calendar-grid-cell {
+  border-right: 1px solid var(--notion-border);
+  border-bottom: 1px solid var(--notion-border);
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  transition: background 150ms ease;
+  overflow: hidden;
+  position: relative;
+  cursor: pointer;
+}
+
+.calendar-grid-cell:nth-child(7n) {
+  border-right: none;
+}
+
+.calendar-grid-cell:hover {
+  background: var(--notion-bg-hover);
+}
+
+.calendar-grid-cell.is-other-month {
+  opacity: 0.4;
+}
+
+.calendar-grid-cell.is-today {
+  background: rgba(35, 131, 226, 0.08);
+}
+
+.calendar-grid-cell.is-selected {
+  background: rgba(35, 131, 226, 0.15);
+  outline: 2px solid var(--notion-blue);
+  outline-offset: -2px;
+}
+
+.calendar-grid-cell.is-drop-target {
+  background: rgba(168, 85, 247, 0.15);
+  outline: 2px solid #a855f7;
+  outline-offset: -2px;
+}
+
+/* ========================================
+   Cell Header
+   ======================================== */
+
+.calendar-cell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+  flex-shrink: 0;
+}
+
+.calendar-cell-date {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--notion-text-muted);
+  line-height: 1;
+}
+
+.calendar-cell-date.today-badge {
+  background: var(--notion-blue);
+  color: white;
+  padding: 2px 5px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.calendar-cell-count {
+  font-size: 9px;
+  color: var(--notion-text-muted);
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 4px;
+  border-radius: 8px;
+}
+
+/* ========================================
+   Cell Content - Task Chips
+   ======================================== */
+
+.calendar-cell-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  padding: 0 2px;
+}
+
+/* Task chips on calendar */
+.calendar-task-chip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  background: var(--notion-bg-secondary);
+  border-radius: 3px;
+  font-size: 10px;
+  cursor: grab;
+  white-space: nowrap;
+  overflow: hidden;
+  border-left: 2px solid var(--notion-blue);
+  transition: background 150ms ease;
+}
+
+.calendar-task-chip:hover {
+  background: var(--notion-bg-active);
+}
+
+.calendar-task-chip:active {
+  cursor: grabbing;
+}
+
+.calendar-task-chip.is-complete {
+  opacity: 0.5;
+  border-left-color: #22c55e;
+}
+
+.calendar-task-chip.is-complete .calendar-task-title {
+  text-decoration: line-through;
+}
+
+.calendar-task-chip.is-hard {
+  border-left-color: #ef4444;
+}
+
+.calendar-task-chip.is-urgent-important {
+  border-left-color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.calendar-task-chip.is-overdue {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.calendar-task-chip.is-overdue:hover {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.calendar-task-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--notion-text);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.calendar-task-more {
+  font-size: 9px;
+  color: var(--notion-text-muted);
+  padding: 1px 4px;
+  cursor: pointer;
+}
+
+.calendar-task-more:hover {
+  color: var(--notion-blue);
+}
+
+/* ========================================
+   Timeline Scrubber / Navigation Bar
+   ======================================== */
+
+.calendar-timeline-scrubber {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--notion-border);
+  background: var(--notion-bg-secondary);
+}
+
+.timeline-nav-btn {
+  padding: 5px 10px;
+  background: var(--notion-bg);
+  border: 1px solid var(--notion-border);
+  border-radius: 4px;
+  color: var(--notion-text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  white-space: nowrap;
+}
+
+.timeline-nav-btn:hover {
+  background: var(--notion-bg-hover);
+  color: var(--notion-text);
+}
+
+.timeline-today-btn {
+  padding: 5px 12px;
+  background: var(--notion-blue);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.timeline-today-btn:hover {
+  background: #4f46e5;
+}
+
+/* ========================================
+   Resize Handles
+   ======================================== */
+
+.calendar-widget-surface .resize-handle {
+  position: absolute;
+  -webkit-app-region: no-drag;
+}
+
+.calendar-widget-surface .resize-handle.edge-left {
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  cursor: ew-resize;
+}
+
+.calendar-widget-surface .resize-handle.edge-right {
+  right: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 4px;
+  cursor: ew-resize;
+}
+
+.calendar-widget-surface .resize-handle.edge-top {
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 4px;
+  cursor: ns-resize;
+}
+
+.calendar-widget-surface .resize-handle.edge-bottom {
+  bottom: 0;
+  left: 8px;
+  right: 8px;
+  height: 4px;
+  cursor: ns-resize;
+}
+
+.calendar-widget-surface .resize-handle.corner {
+  width: 10px;
+  height: 10px;
+}
+
+.calendar-widget-surface .resize-handle.corner.top-left {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.calendar-widget-surface .resize-handle.corner.top-right {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.calendar-widget-surface .resize-handle.corner.bottom-left {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+.calendar-widget-surface .resize-handle.corner.bottom-right {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+
+/* ========================================
+   Collapsed State
+   ======================================== */
+
+.calendar-widget-shell.is-collapsed .calendar-widget-surface {
+  opacity: 0.8;
+}
+
+/* ========================================
+   Docking position styles
+   ======================================== */
+
+.calendar-widget-shell.dock-left .calendar-widget-surface {
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.calendar-widget-shell.dock-right .calendar-widget-surface {
+  border-right: none;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.calendar-widget-shell.dock-top .calendar-widget-surface {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+/* ========================================
+   Scrollbar styling
+   ======================================== */
+
+.calendar-tasks-content::-webkit-scrollbar,
+.calendar-grid-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.calendar-tasks-content::-webkit-scrollbar-track,
+.calendar-grid-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.calendar-tasks-content::-webkit-scrollbar-thumb,
+.calendar-grid-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.calendar-tasks-content::-webkit-scrollbar-thumb:hover,
+.calendar-grid-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ========================================
+   TaskList overrides for calendar context
+   ======================================== */
+
+.calendar-tasks-content .task-list {
+  padding: 0;
+}
+
+.calendar-tasks-content .task-row {
+  margin: 0;
+}

@@ -1,25 +1,40 @@
 {
   "name": "notion-tasks-widget",
   "private": true,
-  "version": "1.0.0",
+  "version": "0.6.0",
   "description": "Electron-based floating widget for viewing and adding Notion tasks",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/BDicksmusic/Notion-Tasks-Widget.git"
+  },
   "main": "dist/main/main/main.js",
   "scripts": {
     "dev": "cross-env NODE_ENV=development concurrently -k \"npm:dev:main\" \"npm:dev:renderer\" \"npm:dev:electron\"",
     "dev:main": "concurrently \"tsc --project tsconfig.main.json --watch\" \"tsc-alias -p tsconfig.main.json -w\"",
+    "watch:main": "node scripts/watch-main.js",
     "dev:renderer": "vite dev --config vite.config.ts --port 5174",
     "dev:electron": "wait-on dist/main/main/main.js dist/main/main/preload.js tcp:5174 && cross-env VITE_DEV_SERVER_URL=http://localhost:5174 electron .",
     "build": "rimraf dist/main dist/renderer && npm run build:main && npm run build:renderer",
-    "build:main": "tsc --project tsconfig.main.json && tsc-alias -p tsconfig.main.json",
+    "build:main": "node scripts/build-main.js",
+    "build:main:dev": "tsc --project tsconfig.main.json && tsc-alias -p tsconfig.main.json",
     "build:renderer": "vite build --config vite.config.ts",
     "build:mobile": "vite build --config vite.mobile.config.ts",
     "mobile:sync": "npm run build:mobile && npx cap sync android",
     "mobile:run": "npm run build:mobile && npx cap run android",
     "mobile:open": "npx cap open android",
-    "build:app": "npm run build && electron-builder --win portable",
+    "build:app": "npm run build && electron-builder --win",
+    "build:portable": "npm run build && electron-builder --win portable",
+    "release": "npm run build && electron-builder --win --publish always",
     "start": "cross-env NODE_ENV=production electron .",
-    "typecheck": "tsc --noEmit --project tsconfig.json",
-    "generate-icons": "node scripts/generate-icons.js"
+    "start:reset": "cross-env NODE_ENV=production electron . --reset-import",
+    "mcp:notion": "tsx src/mcp/notionServer.ts",
+    "typecheck": "tsc --noEmit --project tsconfig.renderer.json",
+    "generate-icons": "node scripts/generate-icons.js",
+    "db:prepare-backup": "tsx scripts/create-backup-db.ts",
+    "verify:sync": "tsx scripts/verify-notion-sync.ts",
+    "import:tasks": "tsx scripts/import-all-tasks.ts",
+    "setup:postgres": "tsx scripts/setup-postgres.ts",
+    "sync:postgres": "tsx scripts/sync-tasks-postgres.ts"
   },
   "build": {
     "appId": "com.notiontasks.widget",
@@ -28,30 +43,44 @@
       "dist/main/**/*",
       "dist/renderer/**/*",
       "package.json",
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/bindings/**/*",
+      "node_modules/file-uri-to-path/**/*",
       "!dist/win-unpacked/**/*",
       "!dist/*.exe",
       "!dist/*.7z"
     ],
     "asarUnpack": [
-      "**/node_modules/micromark-util-encode/**/*",
-      "**/node_modules/**/micromark-util-encode/**/*",
-      "**/node_modules/micromark-util-decode-string/**/*",
-      "**/node_modules/**/micromark-util-decode-string/**/*",
-      "**/node_modules/micromark-util-sanitize-uri/**/*",
-      "**/node_modules/**/micromark-util-sanitize-uri/**/*",
-      "**/node_modules/micromark-util-symbol/**/*",
-      "**/node_modules/**/micromark-util-symbol/**/*",
-      "**/node_modules/decode-named-character-reference/**/*",
-      "**/node_modules/**/decode-named-character-reference/**/*"
+      "**/node_modules/better-sqlite3/**/*"
     ],
     "directories": {
       "buildResources": "build"
     },
     "win": {
       "target": [
-        "portable"
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
       ],
-      "icon": "icon.ico"
+      "icon": "icon.ico",
+      "executableName": "Notion Tasks Widget",
+      "legalTrademarks": "",
+      "publisherName": "Notion Tasks Widget"
+    },
+    "extraMetadata": {
+      "name": "Notion Tasks Widget",
+      "description": "Notion Tasks Widget"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "installerHeaderIcon": "icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Notion Tasks Widget"
     },
     "publish": {
       "provider": "github",
@@ -66,7 +95,12 @@
     "@capacitor/android": "^7.4.4",
     "@capacitor/core": "^7.4.4",
     "@capacitor/preferences": "^7.0.2",
-    "@notionhq/client": "^5.4.0",
+    "@huggingface/transformers": "^3.8.0",
+    "@modelcontextprotocol/sdk": "^1.22.0",
+    "@notionhq/client": "^2.2.17",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node-fetch": "^2.6.13",
+    "better-sqlite3": "^12.4.6",
     "decode-named-character-reference": "^1.2.0",
     "dotenv": "^17.2.3",
     "electron-updater": "^6.6.2",
@@ -76,6 +110,8 @@
     "micromark-util-encode": "^2.0.1",
     "micromark-util-sanitize-uri": "^2.0.1",
     "micromark-util-symbol": "^2.0.1",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.16.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "rehype-raw": "^7.0.0",
@@ -87,13 +123,16 @@
     "slate": "^0.100.0",
     "slate-history": "^0.100.0",
     "slate-react": "^0.100.0",
+    "undici": "^6.22.0",
     "unified": "^11.0.5",
-    "unist-util-visit": "^5.0.0"
+    "unist-util-visit": "^5.0.0",
+    "zod": "^4.1.13"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.4",
     "@types/mdast": "^4.0.3",
     "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
     "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",
     "@types/unist": "^3.0.2",
@@ -103,10 +142,12 @@
     "cross-env": "^10.1.0",
     "electron": "^39.2.2",
     "electron-builder": "^25.1.8",
+    "esbuild": "^0.27.0",
     "rimraf": "^6.1.2",
     "sharp": "^0.33.0",
     "to-ico": "^1.1.5",
     "tsc-alias": "^1.8.16",
+    "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",
     "wait-on": "^9.0.3"

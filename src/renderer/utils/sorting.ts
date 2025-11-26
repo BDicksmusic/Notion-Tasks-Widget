@@ -1,4 +1,4 @@
-import type { Task } from '@shared/types';
+import type { Task, Project } from '@shared/types';
 import {
   STATUS_FILTERS,
   mapStatusToFilterValue,
@@ -12,7 +12,7 @@ import {
 export type SortProperty = 'dueDate' | 'status' | 'priority';
 export type SortDirection = 'asc' | 'desc';
 
-export type GroupingOption = 'none' | 'dueDate' | 'status' | 'priority';
+export type GroupingOption = 'none' | 'dueDate' | 'status' | 'priority' | 'project';
 
 export interface SortRule {
   id: string;
@@ -119,6 +119,8 @@ export const getGroupingLabel = (grouping: GroupingOption) => {
       return 'Status';
     case 'priority':
       return 'Priority';
+    case 'project':
+      return 'Project';
     case 'none':
     default:
       return 'No grouping';
@@ -143,10 +145,61 @@ export const sortTasks = (tasks: Task[], rules: SortRule[]): Task[] => {
 
 export const groupTasks = (
   tasks: Task[],
-  grouping: GroupingOption
+  grouping: GroupingOption,
+  projects?: Project[]
 ): TaskGroup[] => {
   if (grouping === 'none') {
     return [];
+  }
+
+  // Special handling for project grouping
+  if (grouping === 'project') {
+    const projectMap = new Map<string, Project>();
+    projects?.forEach(p => projectMap.set(p.id, p));
+    
+    const map = new Map<string, TaskGroup>();
+    
+    // Create groups for each project that has tasks
+    tasks.forEach((task) => {
+      const projectIds = task.projectIds ?? [];
+      
+      if (projectIds.length === 0) {
+        // Task has no project
+        if (!map.has('no-project')) {
+          map.set('no-project', {
+            id: 'no-project',
+            label: 'No Project',
+            tasks: []
+          });
+        }
+        map.get('no-project')!.tasks.push(task);
+      } else {
+        // Task can belong to multiple projects - add to each
+        projectIds.forEach(projectId => {
+          const project = projectMap.get(projectId);
+          const label = project?.title || 'Unknown Project';
+          
+          if (!map.has(projectId)) {
+            map.set(projectId, {
+              id: projectId,
+              label,
+              tasks: []
+            });
+          }
+          map.get(projectId)!.tasks.push(task);
+        });
+      }
+    });
+    
+    // Sort groups alphabetically, with "No Project" at the end
+    const groups = Array.from(map.values());
+    groups.sort((a, b) => {
+      if (a.id === 'no-project') return 1;
+      if (b.id === 'no-project') return -1;
+      return a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    });
+    
+    return groups;
   }
 
   const map = new Map<string, TaskGroup>();
@@ -376,5 +429,6 @@ export const isGroupingOption = (value: unknown): value is GroupingOption =>
   value === 'none' ||
   value === 'dueDate' ||
   value === 'status' ||
-  value === 'priority';
+  value === 'priority' ||
+  value === 'project';
 

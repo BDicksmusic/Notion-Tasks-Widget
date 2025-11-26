@@ -4,30 +4,53 @@ import { app, BrowserWindow, ipcMain, shell, screen, globalShortcut } from 'elec
 import dotenv from 'dotenv';
 import { DockingController } from './docking';
 import {
-  addTask,
-  createTimeLogEntry,
-  createWritingEntry,
-  getActiveTimeLogEntry,
-  getTotalLoggedTime,
-  getAllTimeLogEntries,
-  getAllTimeLogs,
-  updateTimeLogEntry,
-  deleteTimeLogEntry,
-  getTasks,
+  getTasks as fetchTasksDirectly,
   getStatusOptions,
+  getOrderOptions,
+  getProjectStatusOptions,
+  fetchProjectStatusOptionsFromNotion,
+  getProjects as fetchNotionProjects,
+  getContacts as fetchContactsFromNotion,
+  refreshContacts as refreshContactsFromNotion,
   setNotionSettings,
+  setProjectsSettings,
+  setContactsSettings,
   setTimeLogSettings,
   setWritingSettings,
-  updateTask
+  isNotionConnected,
+  getNotionSettingsSnapshot
 } from './services/notion';
+import { initializeDatabase } from './db/database';
+import { startDatabaseBackupRoutine } from './db/backupService';
+import { syncEngine } from './services/syncEngine';
+import {
+  createLocalTask,
+  listTasks as listStoredTasks,
+  updateLocalTask,
+  importTasksFromJson,
+  getTaskCount,
+  buildSubtaskRelationships,
+  getSubtasks
+} from './db/repositories/taskRepository';
 import type {
   AppPreferences,
+  ChatbotSettings,
+  ContactsSettings,
+  CrossWindowDragState,
+  CrossWindowDropPayload,
   DockEdge,
+  FeatureToggles,
   NotionCreatePayload,
   NotionSettings,
   NotificationPreviewPayload,
+  Project,
+  ProjectsSettings,
   ResizeDirection,
+  SavedView,
+  SpeechTranscriptionRequest,
+  Task,
   TaskUpdatePayload,
+  TimeLogEntry,
   TimeLogEntryPayload,
   TimeLogSettings,
   TimeLogUpdatePayload,
@@ -35,12 +58,58 @@ import type {
   WritingSettings
 } from '../shared/types';
 import {
+  createLocalTimeLogEntry,
+  deleteLocalTimeLogEntry,
+  getActiveEntryForTask,
+  getTotalLoggedMinutes,
+  getTodayLoggedMinutes,
+  getAggregatedTimeData,
+  listTimeLogs,
+  listTimeLogsForTask,
+  updateLocalTimeLogEntry,
+  type AggregatedTimeData
+} from './db/repositories/timeLogRepository';
+import { calculateNextOccurrence, isRecurringTask } from '../shared/utils/recurrence';
+import { createLocalWritingEntry } from './db/repositories/writingRepository';
+import { 
+  listProjects as listCachedProjects, 
+  upsertProject,
+  createLocalProject,
+  updateLocalProject,
+  deleteLocalProject,
+  getProject,
+  type CreateLocalProjectPayload 
+} from './db/repositories/projectRepository';
+import {
+  initializeAllDefaultStatuses,
+  listLocalTaskStatuses,
+  listLocalProjectStatuses,
+  createLocalTaskStatus,
+  createLocalProjectStatus,
+  updateLocalTaskStatus,
+  deleteLocalTaskStatus,
+  mergeNotionTaskStatuses,
+  mergeNotionProjectStatuses,
+  getCombinedTaskStatuses
+} from './db/repositories/localStatusRepository';
+import {
+  deleteView,
   getAppPreferences,
+  getChatbotSettings,
+  getFeatureToggles,
+  getSavedViews,
   getSettings,
+  getProjectsSettings,
+  getContactsSettings,
   getTimeLogSettings,
   getWritingSettings,
   initConfigStore,
+  saveView,
   updateAppPreferences as persistAppPreferences,
+  updateChatbotSettings as persistChatbotSettings,
+  updateFeatureToggles as persistFeatureToggles,
+  updateProjectsSettings as persistProjectsSettings,
+  updateContactsSettings as persistContactsSettingsConfig,
   updateSettings as persistSettings,
   updateTimeLogSettings as persistTimeLogSettings,
   updateWritingSettings as persistWritingSettings
@@ -58,6 +127,8 @@ import {
   getUpdateStatus,
   onUpdateStatusChange
 } from './services/updater';
+import { transcribeWithWhisper } from './services/speechService';
+import { getStatusDiagnostics, getDetailedStatusDiagnostics } from './services/statusDiagnostics';
 
 dotenv.config();
 console.log('Notion env check', {
@@ -86,6 +157,7 @@ const MAIN_ALWAYS_ON_TOP_LEVEL: AlwaysOnTopLevel =
 const AUX_ALWAYS_ON_TOP_LEVEL: AlwaysOnTopLevel =
   process.platform === 'darwin' ? 'floating' : 'pop-up-menu';
 
+let stopBackupRoutine: (() => void) | null = null;
 const resolvedCachePath = prepareStoragePaths();
 console.log('Electron cache path set to', resolvedCachePath);
 
@@ -126,9 +198,33 @@ let mainWindow: BrowserWindow | null = null;
 let settingsWindow: BrowserWindow | null = null;
 let widgetSettingsWindow: BrowserWindow | null = null;
 let fullScreenWindow: BrowserWindow | null = null;
+let calendarWindow: BrowserWindow | null = null;
 // Docking disabled for now while we debug.
 let docking: DockingController | null = null;
+let calendarDocking: DockingController | null = null;
 const taskWindows = new Set<BrowserWindow>();
+
+// Cross-window drag state management
+let crossWindowDragState: CrossWindowDragState = {
+  task: null,
+  sourceWindow: null,
+  isDragging: false
+};
+
+// Focus stack - allows multiple tasks in focus mode
+let focusStack: string[] = [];
+
+function broadcastCrossWindowDragState() {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('crossWindowDrag:stateChanged', crossWindowDragState);
+  });
+}
+
+function broadcastFocusStack() {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('focusStack:changed', focusStack);
+  });
+}
 
 function applyAlwaysOnTop(
   target: BrowserWindow | null,
@@ -262,15 +358,15 @@ const createSettingsWindow = async () => {
 
   console.log('Creating new settingsWindow');
   settingsWindow = new BrowserWindow({
-    width: 860,
-    height: 720,
-    minWidth: 720,
-    minHeight: 560,
+    width: 1200,
+    height: 800,
+    minWidth: 900,
+    minHeight: 600,
     resizable: true,
     show: false,
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#0b0d17',
+    backgroundColor: '#0d1117',
     alwaysOnTop: true,
     webPreferences: {
       preload: preloadPath,
@@ -331,15 +427,15 @@ const createWidgetSettingsWindow = async () => {
   }
 
   widgetSettingsWindow = new BrowserWindow({
-    width: 620,
+    width: 960,
     height: 720,
-    minWidth: 520,
+    minWidth: 640,
     minHeight: 520,
     resizable: true,
     frame: false,
     show: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#0b0d17',
+    backgroundColor: '#0d1117',
     alwaysOnTop: true,
     webPreferences: {
       preload: preloadPath,
@@ -459,6 +555,22 @@ const createTaskWindow = async (taskId: string) => {
     }
   );
 
+  // Register ready-to-show handler BEFORE loading content to avoid race condition
+  taskWindow.once('ready-to-show', () => {
+    console.log('Task window ready', taskId);
+    taskWindow.show();
+    taskWindow.focus();
+  });
+
+  // Fallback: force show after timeout if ready-to-show doesn't fire
+  setTimeout(() => {
+    if (!taskWindow.isDestroyed() && !taskWindow.isVisible()) {
+      console.warn('Force showing task window', taskId);
+      taskWindow.show();
+      taskWindow.focus();
+    }
+  }, 1500);
+
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     const url = new URL(`${process.env.VITE_DEV_SERVER_URL}/task.html`);
     url.searchParams.set('taskId', taskId);
@@ -469,20 +581,6 @@ const createTaskWindow = async (taskId: string) => {
       query: { taskId }
     });
   }
-
-  taskWindow.once('ready-to-show', () => {
-    console.log('Task window ready', taskId);
-    taskWindow.show();
-    taskWindow.focus();
-  });
-
-  setTimeout(() => {
-    if (!taskWindow.isDestroyed() && !taskWindow.isVisible()) {
-      console.warn('Force showing task window', taskId);
-      taskWindow.show();
-      taskWindow.focus();
-    }
-  }, 1500);
 
   return taskWindow;
 };
@@ -509,7 +607,7 @@ const createFullScreenWindow = async () => {
     resizable: true,
     skipTaskbar: false,
     alwaysOnTop: false,
-    backgroundColor: '#0b0d17',
+    backgroundColor: '#191919',
     show: false,
     center: true,
     webPreferences: {
@@ -532,36 +630,17 @@ const createFullScreenWindow = async () => {
         errorDescription,
         validatedURL
       });
-      // Show window even if load failed
-      if (fullScreenWindow && !fullScreenWindow.isVisible()) {
-        fullScreenWindow.show();
-        fullScreenWindow.focus();
-      }
     }
   );
 
-  try {
-    if (isDev && process.env.VITE_DEV_SERVER_URL) {
-      const url = `${process.env.VITE_DEV_SERVER_URL}/fullscreen.html`;
-      console.log('Loading full-screen URL:', url);
-      await fullScreenWindow.loadURL(url);
-    } else {
-      const filePath = path.join(rendererDist, 'fullscreen.html');
-      console.log('Loading full-screen file:', filePath);
-      if (!fs.existsSync(filePath)) {
-        console.error('Full-screen HTML file not found at:', filePath);
-        throw new Error(`Full-screen HTML file not found at: ${filePath}`);
-      }
-      await fullScreenWindow.loadFile(filePath);
-    }
-  } catch (err) {
-    console.error('Failed to load full-screen window content:', err);
-    // Show window even if load failed so user can see the error
-    if (fullScreenWindow && !fullScreenWindow.isVisible()) {
-      fullScreenWindow.show();
-      fullScreenWindow.focus();
-    }
-    throw err; // Re-throw so the handler can catch it
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    const url = `${process.env.VITE_DEV_SERVER_URL}/fullscreen.html`;
+    console.log('Loading full-screen URL:', url);
+    await fullScreenWindow.loadURL(url);
+  } else {
+    const filePath = path.join(rendererDist, 'fullscreen.html');
+    console.log('Loading full-screen file:', filePath);
+    await fullScreenWindow.loadFile(filePath);
   }
 
   fullScreenWindow.once('ready-to-show', () => {
@@ -570,21 +649,159 @@ const createFullScreenWindow = async () => {
     fullScreenWindow?.focus();
   });
 
-  // Fallback: ensure window shows after a delay even if ready-to-show didn't fire
   setTimeout(() => {
-    if (fullScreenWindow && !fullScreenWindow.isVisible()) {
-      console.log('Force showing full-screen window (fallback)');
+    if (fullScreenWindow && !fullScreenWindow.isDestroyed() && !fullScreenWindow.isVisible()) {
+      console.warn('Force showing full-screen window after timeout');
       fullScreenWindow.show();
       fullScreenWindow.focus();
     }
-  }, 1000);
+  }, 1500);
 
   return fullScreenWindow;
 };
 
+const createCalendarWindow = async () => {
+  if (calendarWindow) {
+    if (calendarWindow.isMinimized()) {
+      calendarWindow.restore();
+    }
+    calendarWindow.focus();
+    return calendarWindow;
+  }
+
+  const initialPreferences = getAppPreferences();
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+  // Default size - larger for tasks + calendar layout
+  const defaultWidth = 900;
+  const defaultHeight = 700;
+
+  // Position centered on screen
+  const x = Math.round((screenWidth - defaultWidth) / 2);
+  const y = Math.round((screenHeight - defaultHeight) / 2);
+
+  calendarWindow = new BrowserWindow({
+    width: defaultWidth,
+    height: defaultHeight,
+    minWidth: 600,
+    minHeight: 500,
+    x,
+    y,
+    frame: false,
+    transparent: true,
+    resizable: true,
+    alwaysOnTop: initialPreferences.alwaysOnTop,
+    skipTaskbar: false,
+    titleBarStyle: 'hidden',
+    backgroundColor: '#00000000',
+    show: false,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: true
+    }
+  });
+
+  console.log('Calendar window created');
+  calendarDocking = new DockingController(calendarWindow);
+
+  calendarWindow.on('closed', () => {
+    calendarWindow = null;
+    calendarDocking = null;
+  });
+
+  calendarWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error('Calendar window failed to load', {
+      errorCode,
+      errorDescription,
+      validatedURL
+    });
+  });
+
+  calendarWindow.webContents.on('did-finish-load', () => {
+    console.log('Calendar window renderer finished loading');
+    if (calendarWindow && !calendarWindow.isVisible()) {
+      calendarWindow.show();
+    }
+  });
+
+  calendarWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    console.log('Loading calendar window from dev server');
+    await calendarWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}/calendar.html`);
+  } else {
+    const entryFile = path.join(rendererDist, 'calendar.html');
+    console.log('Loading calendar window file', entryFile);
+    await calendarWindow.loadFile(entryFile);
+  }
+
+  applyAlwaysOnTop(calendarWindow, initialPreferences.alwaysOnTop, {
+    manageWorkspaces: true
+  });
+
+  const forceShowTimeout = setTimeout(() => {
+    if (calendarWindow && !calendarWindow.isDestroyed() && !calendarWindow.isVisible()) {
+      console.warn('Force showing calendar window after timeout');
+      calendarWindow.show();
+      calendarDocking?.snapToEdge('right');
+    }
+  }, 2500);
+
+  calendarWindow.on('show', () => {
+    clearTimeout(forceShowTimeout);
+  });
+
+  calendarWindow.once('ready-to-show', () => {
+    calendarWindow?.show();
+    calendarDocking?.snapToEdge('right');
+    if (!initialPreferences.pinWidget) {
+      setTimeout(() => calendarDocking?.collapse(), 900);
+    }
+  });
+
+  return calendarWindow;
+};
+
 app.whenReady().then(async () => {
   const userData = app.getPath('userData');
+  const db = initializeDatabase(userData);
+  stopBackupRoutine = startDatabaseBackupRoutine(db);
   await initConfigStore(userData);
+
+  // Check for imported tasks JSON file and load into SQLite
+  const importJsonPath = path.join(userData, 'imported-tasks.json');
+  const taskCountBefore = getTaskCount();
+  console.log(`[Startup] Current tasks in database: ${taskCountBefore}`);
+  
+  // Also log projects count
+  const projectsCount = listCachedProjects().length;
+  console.log(`[Startup] Current projects in database: ${projectsCount}`);
+
+  // Initialize default statuses (LOCAL-FIRST: these are the primary source of truth)
+  initializeAllDefaultStatuses();
+  
+  const statusDiagnostics = getStatusDiagnostics();
+  console.log('[Startup] Task status summary:', statusDiagnostics.tasks);
+  console.log('[Startup] Project status summary:', statusDiagnostics.projects);
+  console.log('[Startup] Local task statuses:', listLocalTaskStatuses().map(s => s.name).join(', '));
+  console.log('[Startup] Local project statuses:', listLocalProjectStatuses().map(s => s.name).join(', '));
+  
+  if (fs.existsSync(importJsonPath)) {
+    console.log('[Startup] Found imported tasks file, loading into database...');
+    const imported = importTasksFromJson(importJsonPath);
+    if (imported > 0) {
+      console.log(`[Startup] Imported ${imported} tasks from JSON file`);
+    }
+  }
+  
+  const taskCountAfter = getTaskCount();
+  console.log(`[Startup] Tasks in database after import check: ${taskCountAfter}`);
 
   const taskSettings = getSettings();
   let needsCredentialBootstrap = false;
@@ -600,6 +817,41 @@ app.whenReady().then(async () => {
 
   setWritingSettings(getWritingSettings());
   setTimeLogSettings(getTimeLogSettings());
+  setProjectsSettings(getProjectsSettings());
+  setContactsSettings(getContactsSettings());
+  
+  // Check for --reset-import flag to clear import state before starting
+  if (process.argv.includes('--reset-import')) {
+    console.log('[Startup] --reset-import flag detected, resetting import state...');
+    syncEngine.resetImport();
+  }
+  
+  syncEngine.start();
+  syncEngine.on('task-updated', (task: Task) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('tasks:updated', task);
+    });
+  });
+  syncEngine.on('timeLog-updated', (entry: TimeLogEntry) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('timeLog:updated', entry);
+    });
+  });
+  syncEngine.on('projects-updated', (projects: Project[]) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('projects:updated', projects);
+    });
+  });
+  syncEngine.on('status', (status) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('sync:status-changed', status);
+    });
+  });
+  syncEngine.on('import-progress', (progress) => {
+    BrowserWindow.getAllWindows().forEach((window) => {
+      window.webContents.send('import:progress', progress);
+    });
+  });
   applyAppPreferences(getAppPreferences());
   await createWindow();
   syncWindowPreferences(getAppPreferences());
@@ -619,12 +871,22 @@ app.whenReady().then(async () => {
   }
 
   // Register global shortcut for full-screen window (Ctrl+F or Cmd+F)
-  const shortcut = process.platform === 'darwin' ? 'Command+F' : 'Control+F';
-  globalShortcut.register(shortcut, async () => {
+  const fullscreenShortcut = process.platform === 'darwin' ? 'Command+F' : 'Control+F';
+  globalShortcut.register(fullscreenShortcut, async () => {
     try {
       await createFullScreenWindow();
     } catch (error) {
       console.error('Error opening full-screen window via shortcut', error);
+    }
+  });
+  
+  // Register global shortcut for calendar widget (Ctrl+K or Cmd+K)
+  const calendarShortcut = process.platform === 'darwin' ? 'Command+K' : 'Control+K';
+  globalShortcut.register(calendarShortcut, async () => {
+    try {
+      await createCalendarWindow();
+    } catch (error) {
+      console.error('Error opening calendar window via shortcut', error);
     }
   });
 });
@@ -639,20 +901,133 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('before-quit', () => {
+  stopBackupRoutine?.();
+  stopBackupRoutine = null;
+});
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
 
-ipcMain.handle('tasks:fetch', async () => getTasks());
+ipcMain.handle('tasks:fetch', async () => {
+  // Return cached tasks IMMEDIATELY - this is why we have a local database!
+  // The sync engine handles background updates, so tasks appear instantly
+  const cached = listStoredTasks();
+  const settings = getSettings();
+  
+  // Build subtask relationships to enrich parent tasks with subtaskIds and progress
+  const { parentTasks, subtaskMap } = buildSubtaskRelationships(cached, settings.completedStatus);
+  
+  // Combine parent tasks with subtasks, keeping subtasks in the list for filtering
+  // but with parentTaskId set so the UI can organize them
+  const allTasks = [
+    ...parentTasks,
+    ...Array.from(subtaskMap.values()).flat()
+  ];
+  
+  console.log(
+    `[IPC] tasks:fetch returning ${allTasks.length} tasks (${parentTasks.length} parents, ${subtaskMap.size} parents with subtasks)`
+  );
+  
+  // Return ALL tasks - filtering happens in the UI layer, not here
+  // This ensures the local database is the single source of truth
+  return allTasks;
+});
+
+ipcMain.handle('tasks:getSubtasks', async (_event, parentTaskId: string) => {
+  return getSubtasks(parentTaskId);
+});
 ipcMain.handle('tasks:add', async (_event, payload: NotionCreatePayload) =>
-  addTask(payload)
+  createLocalTask(payload)
 );
 ipcMain.handle(
   'tasks:update',
   async (_event, taskId: string, updates: TaskUpdatePayload) => {
-    const updated = await updateTask(taskId, updates);
+    // Get current task state before update to check for recurring completion
+    const allTasks = listStoredTasks();
+    const currentTask = allTasks.find(t => t.id === taskId);
+    const settings = getSettings();
+    const completedStatus = settings.completedStatus;
+    const initialStatus = settings.initialStatus || '📋'; // Default to To-Do emoji
+    
+    // Check if this is a task being marked as complete
+    const isBeingCompleted = updates.status === completedStatus && currentTask?.status !== completedStatus;
+    const hasRecurrence = isRecurringTask(currentTask?.recurrence);
+    
+    let finalUpdates = { ...updates };
+    
+    // Auto-fill estimated time on completion (stipulation feature)
+    if (isBeingCompleted && currentTask?.autoFillEstimatedTime && currentTask?.estimatedLengthMinutes) {
+      const existingLogs = listTimeLogsForTask(taskId);
+      // Check if there's any log from today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStart = today.getTime();
+      
+      const hasLogToday = existingLogs.some(log => {
+        if (!log.startTime) return false;
+        return new Date(log.startTime).getTime() >= todayStart;
+      });
+      
+      // Only auto-fill if no time was logged today
+      if (!hasLogToday) {
+        console.log('[AutoFill] Auto-filling estimated time on completion:', currentTask.estimatedLengthMinutes, 'minutes');
+        const now = new Date();
+        const startTime = new Date(now.getTime() - (currentTask.estimatedLengthMinutes * 60 * 1000));
+        
+        // Create a time log entry with the estimated time
+        const timeLogEntry = createLocalTimeLogEntry({
+          taskId: taskId,
+          taskTitle: currentTask.title,
+          status: 'End',
+          startTime: startTime.toISOString(),
+          endTime: now.toISOString(),
+          sessionLengthMinutes: currentTask.estimatedLengthMinutes
+        });
+        
+        // Broadcast the time log entry
+        BrowserWindow.getAllWindows().forEach((window) => {
+          window.webContents.send('timeLog:updated', timeLogEntry);
+        });
+      }
+    }
+    
+    // Handle recurring task completion
+    if (isBeingCompleted && hasRecurrence && currentTask) {
+      console.log('[Recurring] Task is being completed with recurrence:', currentTask.recurrence);
+      
+      // Calculate the next occurrence date
+      const nextDate = calculateNextOccurrence(currentTask.dueDate, currentTask.recurrence!);
+      console.log('[Recurring] Next occurrence:', nextDate);
+      
+      if (nextDate) {
+        // Override the status to reset to initial instead of completed
+        // And set the new due date
+        finalUpdates = {
+          ...updates,
+          status: initialStatus,
+          dueDate: nextDate
+        };
+        console.log('[Recurring] Task will be reset with new date:', nextDate);
+        
+        // Reset all subtasks to initial status
+        const subtasks = allTasks.filter(t => t.parentTaskId === taskId);
+        if (subtasks.length > 0) {
+          console.log(`[Recurring] Resetting ${subtasks.length} subtasks to initial status`);
+          for (const subtask of subtasks) {
+            const resetSubtask = updateLocalTask(subtask.id, { status: initialStatus });
+            BrowserWindow.getAllWindows().forEach((window) => {
+              window.webContents.send('tasks:updated', resetSubtask);
+            });
+          }
+        }
+      }
+    }
+    
+    const updated = updateLocalTask(taskId, finalUpdates);
     BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('tasks:updated', updated);
     });
@@ -660,6 +1035,29 @@ ipcMain.handle(
   }
 );
 ipcMain.handle('tasks:statusOptions', () => getStatusOptions());
+ipcMain.handle('tasks:orderOptions', () => getOrderOptions());
+ipcMain.handle('projects:statusOptions', () => getProjectStatusOptions());
+ipcMain.handle('projects:fetchAndSaveStatusOptions', async () => {
+  console.log('[IPC] projects:fetchAndSaveStatusOptions - Fetching from Notion...');
+  try {
+    const options = await fetchProjectStatusOptionsFromNotion();
+    if (options.length > 0) {
+      // Save to settings for persistence
+      const currentSettings = getProjectsSettings();
+      const updatedSettings = await persistProjectsSettings({
+        ...currentSettings,
+        cachedStatusOptions: options
+      });
+      setProjectsSettings(updatedSettings);
+      console.log(`[IPC] projects:fetchAndSaveStatusOptions - Saved ${options.length} status options`);
+      return options;
+    }
+    return options;
+  } catch (error) {
+    console.error('[IPC] projects:fetchAndSaveStatusOptions - Failed:', error);
+    throw error;
+  }
+});
 ipcMain.handle('taskWindow:open', async (_event, taskId: string) => {
   if (!taskId) {
     console.warn('taskWindow:open called without taskId');
@@ -704,6 +1102,251 @@ ipcMain.handle(
     return saved;
   }
 );
+ipcMain.handle('settings:projects:get', () => getProjectsSettings());
+ipcMain.handle(
+  'settings:projects:update',
+  async (_event, next: ProjectsSettings) => {
+    const saved = await persistProjectsSettings(next);
+    setProjectsSettings(saved);
+    return saved;
+  }
+);
+ipcMain.handle('settings:contacts:get', () => getContactsSettings());
+ipcMain.handle(
+  'settings:contacts:update',
+  async (_event, next: ContactsSettings) => {
+    const saved = await persistContactsSettingsConfig(next);
+    setContactsSettings(saved);
+    return saved;
+  }
+);
+ipcMain.handle('settings:chatbot:get', () => getChatbotSettings());
+ipcMain.handle(
+  'settings:chatbot:update',
+  async (_event, next: ChatbotSettings) => {
+    const saved = await persistChatbotSettings(next);
+    return saved;
+  }
+);
+
+// ============================================================================
+// CHATBOT AI ASSISTANT
+// Voice/text based task management assistant
+// ============================================================================
+ipcMain.handle('chatbot:sendMessage', async (_event, payload: {
+  message: string;
+  tasks: Task[];
+  projects: Project[];
+}) => {
+  const { processChatMessage } = await import('./services/chatbotService');
+  return processChatMessage(payload);
+});
+
+ipcMain.handle('chatbot:executeActions', async (_event, payload: {
+  actions: import('../shared/types').TaskAction[];
+}) => {
+  const { executeChatbotActions } = await import('./services/chatbotActionExecutor');
+  const actionResults = await executeChatbotActions(payload.actions);
+  
+  // Map ChatbotActionExecutionResult[] to ChatbotExecutionResult format
+  const results: import('../shared/types').TaskActionResult[] = actionResults.map(r => ({
+    action: r.action,
+    success: r.status === 'applied',
+    message: r.message,
+    taskId: r.task?.id,
+    error: r.status === 'failed' ? r.message : undefined
+  }));
+  
+  const allSucceeded = results.every(r => r.success);
+  
+  return {
+    success: allSucceeded,
+    results,
+    error: allSucceeded ? undefined : 'Some actions failed'
+  } satisfies import('../shared/types').ChatbotExecutionResult;
+});
+
+ipcMain.handle('chatbot:getSummaries', async (_event, limit?: number, offset?: number) => {
+  const { listChatSummaries } = await import('./db/repositories/chatSummaryRepository');
+  return listChatSummaries(limit ?? 50, offset ?? 0);
+});
+
+ipcMain.handle('chatbot:getSummary', async (_event, summaryId: string) => {
+  const { getChatSummary } = await import('./db/repositories/chatSummaryRepository');
+  return getChatSummary(summaryId);
+});
+
+ipcMain.handle('chatbot:deleteSummary', async (_event, summaryId: string) => {
+  const { deleteChatSummary } = await import('./db/repositories/chatSummaryRepository');
+  return deleteChatSummary(summaryId);
+});
+
+ipcMain.handle('projects:fetch', async () => listCachedProjects());
+ipcMain.handle('projects:refresh', async () => {
+  console.log('[IPC] projects:refresh - Fetching projects from Notion');
+  try {
+    const projects = await fetchNotionProjects();
+    const timestamp = new Date().toISOString();
+    console.log(`[IPC] projects:refresh - Received ${projects.length} projects, storing...`);
+    projects.forEach((project) => {
+      upsertProject(project, timestamp);
+    });
+    // Return the freshly stored projects
+    return listCachedProjects();
+  } catch (error) {
+    console.error('[IPC] projects:refresh - Failed:', error);
+    throw error;
+  }
+});
+ipcMain.handle('contacts:fetch', async () => {
+  try {
+    return await fetchContactsFromNotion();
+  } catch (error) {
+    console.error('[IPC] contacts:fetch - Failed:', error);
+    throw error;
+  }
+});
+ipcMain.handle('contacts:refresh', async () => {
+  try {
+    return await refreshContactsFromNotion();
+  } catch (error) {
+    console.error('[IPC] contacts:refresh - Failed:', error);
+    throw error;
+  }
+});
+ipcMain.handle('diagnostics:statusSummary', () => getStatusDiagnostics());
+ipcMain.handle('diagnostics:statusDetailed', () => getDetailedStatusDiagnostics());
+
+// ============================================================================
+// LOCAL STATUS OPTIONS (LOCAL-FIRST)
+// These allow managing statuses independently of Notion
+// ============================================================================
+ipcMain.handle('localStatus:listTaskStatuses', () => listLocalTaskStatuses());
+ipcMain.handle('localStatus:listProjectStatuses', () => listLocalProjectStatuses());
+ipcMain.handle('localStatus:createTaskStatus', (_event, options: { 
+  name: string; 
+  color?: string; 
+  sortOrder?: number; 
+  isCompleted?: boolean 
+}) => {
+  return createLocalTaskStatus(options);
+});
+ipcMain.handle('localStatus:createProjectStatus', (_event, options: { 
+  name: string; 
+  color?: string; 
+  sortOrder?: number; 
+  isCompleted?: boolean 
+}) => {
+  return createLocalProjectStatus(options);
+});
+ipcMain.handle('localStatus:updateTaskStatus', (_event, id: string, updates: { 
+  name?: string; 
+  color?: string | null; 
+  sortOrder?: number; 
+  isCompleted?: boolean 
+}) => {
+  updateLocalTaskStatus(id, updates);
+});
+ipcMain.handle('localStatus:deleteTaskStatus', (_event, id: string) => {
+  deleteLocalTaskStatus(id);
+});
+ipcMain.handle('localStatus:getCombinedStatuses', async () => {
+  // Get both local and Notion statuses, merge them
+  try {
+    const notionStatuses = await getStatusOptions();
+    return getCombinedTaskStatuses(notionStatuses);
+  } catch {
+    // If Notion fails, return local only
+    return listLocalTaskStatuses();
+  }
+});
+ipcMain.handle('localStatus:mergeNotionStatuses', async () => {
+  // Fetch from Notion and merge
+  try {
+    const notionTaskStatuses = await getStatusOptions();
+    mergeNotionTaskStatuses(notionTaskStatuses);
+    
+    const notionProjectStatuses = await getProjectStatusOptions();
+    mergeNotionProjectStatuses(notionProjectStatuses);
+    
+    return { 
+      success: true, 
+      taskStatuses: listLocalTaskStatuses(),
+      projectStatuses: listLocalProjectStatuses()
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : String(error) 
+    };
+  }
+});
+
+// ============================================================================
+// LOCAL PROJECT MANAGEMENT (LOCAL-FIRST)
+// Projects can be created locally and synced to Notion later
+// ============================================================================
+ipcMain.handle('localProject:create', (_event, payload: CreateLocalProjectPayload) => {
+  return createLocalProject(payload);
+});
+ipcMain.handle('localProject:update', (_event, projectId: string, updates: Partial<CreateLocalProjectPayload>) => {
+  return updateLocalProject(projectId, updates);
+});
+ipcMain.handle('localProject:delete', (_event, projectId: string) => {
+  return deleteLocalProject(projectId);
+});
+ipcMain.handle('localProject:get', (_event, projectId: string) => {
+  return getProject(projectId);
+});
+
+ipcMain.handle('sync:status', () => syncEngine.getStatus());
+ipcMain.handle('sync:force', async () => {
+  await syncEngine.forceSync();
+  return syncEngine.getStatus();
+});
+ipcMain.handle('sync:timestamps', () => syncEngine.getSyncTimestamps());
+ipcMain.handle('sync:importProjects', async () => {
+  console.log('[IPC] sync:importProjects - Starting manual projects import');
+  return syncEngine.importProjects();
+});
+ipcMain.handle('sync:importTimeLogs', async () => {
+  console.log('[IPC] sync:importTimeLogs - Starting manual time logs import');
+  return syncEngine.importTimeLogs();
+});
+ipcMain.handle('sync:testConnection', async () => {
+  return syncEngine.testConnection();
+});
+ipcMain.handle('sync:isInitialImportDone', () => {
+  return syncEngine.isInitialImportDone();
+});
+
+// Notion connection status handlers
+ipcMain.handle('notion:isConnected', () => {
+  return isNotionConnected();
+});
+ipcMain.handle('notion:getConnectionStatus', async () => {
+  const connected = isNotionConnected();
+  const settings = getNotionSettingsSnapshot();
+  return {
+    connected,
+    hasApiKey: Boolean(settings?.apiKey?.trim()),
+    hasDatabaseId: Boolean(settings?.databaseId?.trim()),
+    mode: connected ? 'synced' : 'local-only'
+  };
+});
+ipcMain.handle('sync:performInitialImport', async () => {
+  await syncEngine.performInitialImport();
+  return syncEngine.getStatus();
+});
+ipcMain.handle('sync:getImportProgress', () => {
+  return syncEngine.getImportProgress();
+});
+ipcMain.handle('sync:resetImport', () => {
+  syncEngine.resetImport();
+});
+ipcMain.handle('sync:importTaskById', async (_event, pageId: string) => {
+  return syncEngine.importTaskById(pageId);
+});
 ipcMain.handle('settings:app:get', () => getAppPreferences());
 ipcMain.handle('settings:app:update', async (_event, prefs: AppPreferences) => {
   const saved = await persistAppPreferences(prefs);
@@ -721,83 +1364,93 @@ ipcMain.handle('settings:app:setStartup', async (_event, enabled: boolean) => {
   syncWindowPreferences(saved);
   return saved;
 });
+ipcMain.handle('settings:features:get', () => getFeatureToggles());
+ipcMain.handle('settings:features:update', async (_event, toggles: FeatureToggles) => {
+  return persistFeatureToggles(toggles);
+});
 ipcMain.handle(
   'writing:createEntry',
   async (_event, payload: WritingEntryPayload) => {
-    await createWritingEntry(payload);
+    createLocalWritingEntry(payload);
     notifyWritingEntryCaptured();
   }
 );
 ipcMain.handle(
   'timeLog:createEntry',
   async (_event, payload: TimeLogEntryPayload) => {
-    await createTimeLogEntry(payload);
+    return createLocalTimeLogEntry(payload);
   }
 );
 ipcMain.handle(
   'timeLog:getActive',
   async (_event, taskId: string) => {
-    try {
-      return await getActiveTimeLogEntry(taskId);
-    } catch (error) {
-      console.error('Failed to fetch active time log entry', error);
-      return null;
-    }
+    return getActiveEntryForTask(taskId);
   }
 );
 ipcMain.handle(
   'timeLog:getTotalLogged',
   async (_event, taskId: string) => {
-    try {
-      return await getTotalLoggedTime(taskId);
-    } catch (error) {
-      console.error('Failed to fetch total logged time', error);
-      return 0;
-    }
+    return getTotalLoggedMinutes(taskId);
+  }
+);
+ipcMain.handle(
+  'timeLog:getTodayLogged',
+  async (_event, taskId: string) => {
+    return getTodayLoggedMinutes(taskId);
+  }
+);
+ipcMain.handle(
+  'timeLog:getAggregated',
+  async (_event, taskId: string, subtaskIds: string[] = []) => {
+    return getAggregatedTimeData(taskId, subtaskIds);
   }
 );
 ipcMain.handle(
   'timeLog:getAllEntries',
   async (_event, taskId: string) => {
-    try {
-      return await getAllTimeLogEntries(taskId);
-    } catch (error) {
-      console.error('Failed to fetch time log entries', error);
-      return [];
-    }
+    return listTimeLogsForTask(taskId);
   }
 );
 ipcMain.handle(
   'timeLog:getAll',
   async () => {
-    try {
-      return await getAllTimeLogs();
-    } catch (error) {
-      console.error('Failed to fetch all time logs', error);
-      return [];
-    }
+    return listTimeLogs();
   }
 );
 ipcMain.handle(
   'timeLog:update',
   async (_event, entryId: string, updates: TimeLogUpdatePayload) => {
-    try {
-      return await updateTimeLogEntry(entryId, updates);
-    } catch (error) {
-      console.error('Failed to update time log entry', error);
-      throw error;
-    }
+    return updateLocalTimeLogEntry(entryId, updates);
   }
 );
 ipcMain.handle(
   'timeLog:delete',
   async (_event, entryId: string) => {
-    try {
-      await deleteTimeLogEntry(entryId);
-    } catch (error) {
-      console.error('Failed to delete time log entry', error);
-      throw error;
+    deleteLocalTimeLogEntry(entryId);
+  }
+);
+ipcMain.handle(
+  'speech:transcribe',
+  async (_event, payload: SpeechTranscriptionRequest) => {
+    if (payload.provider && payload.provider !== 'openai') {
+      throw new Error(
+        `Speech provider "${payload.provider}" is not supported yet.`
+      );
     }
+    const chatbotSettings = getChatbotSettings();
+    const apiKey =
+      payload.apiKey?.trim() ?? chatbotSettings.openaiApiKey?.trim();
+
+    if (!apiKey) {
+      throw new Error(
+        'OpenAI API key is required for voice transcription. Please add it in Chatbot settings.'
+      );
+    }
+
+    return transcribeWithWhisper({
+      ...payload,
+      apiKey
+    });
   }
 );
 ipcMain.handle(
@@ -948,6 +1601,50 @@ ipcMain.handle('fullScreen:window:close', () => {
   }
 });
 
+// Calendar widget handlers
+ipcMain.handle('calendar:window:open', async () => {
+  if (!app.isReady()) {
+    await app.whenReady();
+  }
+  try {
+    await createCalendarWindow();
+    if (calendarWindow) {
+      calendarWindow.focus();
+    }
+  } catch (error) {
+    console.error('Error in calendar:window:open handler', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('calendar:window:close', () => {
+  if (calendarWindow) {
+    calendarWindow.close();
+  }
+});
+
+ipcMain.handle('calendar:dock:expand', () => {
+  calendarDocking?.expand();
+  return calendarDocking?.getState();
+});
+
+ipcMain.handle('calendar:dock:collapse', () => {
+  const prefs = getAppPreferences();
+  if (prefs.pinWidget) {
+    calendarDocking?.expand();
+    return calendarDocking?.getState();
+  }
+  calendarDocking?.collapse();
+  return calendarDocking?.getState();
+});
+
+ipcMain.handle('calendar:dock:setEdge', (_event, edge: DockEdge) => {
+  calendarDocking?.snapToEdge(edge);
+  return calendarDocking?.getState();
+});
+
+ipcMain.handle('calendar:dock:getState', () => calendarDocking?.getState());
+
 // Update handlers
 ipcMain.handle('updater:check', async () => {
   try {
@@ -999,6 +1696,216 @@ onUpdateStatusChange((status, info) => {
   });
 });
 
+// Cross-window drag-and-drop handlers
+ipcMain.handle('crossWindowDrag:start', (_event, task: Task, sourceWindow: 'widget' | 'fullscreen') => {
+  console.log('[CrossWindowDrag] Start drag from', sourceWindow, '- task:', task.title);
+  crossWindowDragState = {
+    task,
+    sourceWindow,
+    isDragging: true
+  };
+  console.log('[CrossWindowDrag] Started drag from', sourceWindow, 'with task', task.id);
+  broadcastCrossWindowDragState();
+});
+
+ipcMain.handle('crossWindowDrag:end', () => {
+  console.log('[CrossWindowDrag] Drag ended');
+  crossWindowDragState = {
+    task: null,
+    sourceWindow: null,
+    isDragging: false
+  };
+  broadcastCrossWindowDragState();
+});
+
+ipcMain.handle('crossWindowDrag:getState', () => {
+  return crossWindowDragState;
+});
+
+ipcMain.handle('crossWindowDrag:drop', async (_event, payload: CrossWindowDropPayload) => {
+  const task = crossWindowDragState.task;
+  if (!task) {
+    console.warn('[CrossWindowDrag] Drop called with no active drag');
+    return null;
+  }
+
+  console.log('[CrossWindowDrag] Processing drop', payload.zoneType, payload);
+
+  let updates: Record<string, unknown> = {};
+
+  switch (payload.zoneType) {
+    case 'calendar':
+      if (payload.date) {
+        // Convert date string to ISO format at midday (local time)
+        const parts = payload.date.split('-').map(Number);
+        const dropDate = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0, 0);
+        updates.dueDate = dropDate.toISOString();
+        updates.dueDateEnd = null;
+      }
+      break;
+
+    case 'project':
+      updates.projectIds = payload.projectId ? [payload.projectId] : [];
+      break;
+
+    case 'status-filter':
+      if (payload.status) {
+        updates.status = payload.status;
+      }
+      break;
+
+    case 'focus-stack':
+      // Add to focus stack instead of updating task properties
+      if (!focusStack.includes(task.id)) {
+        focusStack.push(task.id);
+        broadcastFocusStack();
+      }
+      // Clear drag state
+      crossWindowDragState = { task: null, sourceWindow: null, isDragging: false };
+      broadcastCrossWindowDragState();
+      return task;
+
+    case 'task-list':
+      // Apply multiple filter-based updates
+      if (payload.filters) {
+        if (payload.filters.status !== undefined) {
+          updates.status = payload.filters.status;
+        }
+        if (payload.filters.projectId !== undefined) {
+          updates.projectIds = payload.filters.projectId ? [payload.filters.projectId] : [];
+        }
+        if (payload.filters.urgent !== undefined) {
+          updates.urgent = payload.filters.urgent;
+        }
+        if (payload.filters.important !== undefined) {
+          updates.important = payload.filters.important;
+        }
+      }
+      break;
+  }
+
+  // Clear drag state
+  crossWindowDragState = { task: null, sourceWindow: null, isDragging: false };
+  broadcastCrossWindowDragState();
+
+  // Update the task if we have changes
+  if (Object.keys(updates).length > 0) {
+    try {
+      const updated = updateLocalTask(task.id, updates);
+      BrowserWindow.getAllWindows().forEach((window) => {
+        window.webContents.send('tasks:updated', updated);
+      });
+      return updated;
+    } catch (error) {
+      console.error('[CrossWindowDrag] Failed to update task on drop', error);
+      return null;
+    }
+  }
+
+  return task;
+});
+
+// Focus stack handlers
+ipcMain.handle('focusStack:get', () => {
+  return focusStack;
+});
+
+ipcMain.handle('focusStack:add', (_event, taskId: string) => {
+  if (!focusStack.includes(taskId)) {
+    focusStack.push(taskId);
+    broadcastFocusStack();
+  }
+  return focusStack;
+});
+
+ipcMain.handle('focusStack:remove', (_event, taskId: string) => {
+  focusStack = focusStack.filter((id) => id !== taskId);
+  broadcastFocusStack();
+  return focusStack;
+});
+
+ipcMain.handle('focusStack:clear', () => {
+  focusStack = [];
+  broadcastFocusStack();
+});
+
+// Saved views handlers
+ipcMain.handle('views:getAll', () => {
+  return getSavedViews();
+});
+
+ipcMain.handle('views:save', async (_event, view: Omit<SavedView, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => {
+  return saveView(view);
+});
+
+ipcMain.handle('views:delete', async (_event, viewId: string) => {
+  return deleteView(viewId);
+});
+
+ipcMain.handle('views:openWindow', async (_event, view: SavedView) => {
+  return createViewWindow(view);
+});
+
+// View windows - multiple widget windows with specific views
+const viewWindows = new Map<string, BrowserWindow>();
+
+async function createViewWindow(view: SavedView) {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width, height } = primaryDisplay.workAreaSize;
+  const initialPreferences = getAppPreferences();
+  
+  const viewWindow = new BrowserWindow({
+    width: 600,
+    height: 760,
+    minWidth: 440,
+    minHeight: 600,
+    x: Math.floor(width / 2 - 300 + Math.random() * 100),
+    y: Math.floor(height / 2 - 380 + Math.random() * 100),
+    frame: false,
+    transparent: true,
+    resizable: true,
+    alwaysOnTop: initialPreferences.alwaysOnTop,
+    skipTaskbar: false,
+    titleBarStyle: 'hidden',
+    backgroundColor: '#00000000',
+    show: false,
+    webPreferences: {
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: true
+    }
+  });
+  
+  viewWindows.set(view.id, viewWindow);
+  
+  viewWindow.on('closed', () => {
+    viewWindows.delete(view.id);
+  });
+  
+  // Pass view settings via URL hash
+  const viewParams = encodeURIComponent(JSON.stringify(view));
+  
+  if (isDev && process.env.VITE_DEV_SERVER_URL) {
+    await viewWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}#view=${viewParams}`);
+  } else {
+    await viewWindow.loadFile(path.join(rendererDist, 'index.html'), {
+      hash: `view=${viewParams}`
+    });
+  }
+  
+  viewWindow.once('ready-to-show', () => {
+    viewWindow.show();
+    viewWindow.focus();
+  });
+  
+  return view;
+}
+
+// Hardcoded minimum sizes - don't use window.getMinimumSize() as it can return incorrect values
+const WIDGET_MIN_WIDTH = 440;
+const WIDGET_MIN_HEIGHT = 600;
+
 function performWindowResize(
   direction: ResizeDirection,
   deltaX: number,
@@ -1008,11 +1915,14 @@ function performWindowResize(
   const window = targetWindow ?? mainWindow;
   if (!window) return;
   if (!deltaX && !deltaY) return;
+  
   const bounds = window.getBounds();
+  const originalBounds = { ...bounds };
   let { x, y, width, height } = bounds;
-  const [minWidth, minHeight] = window.getMinimumSize();
-  const minW = Math.max(minWidth || 320, 200);
-  const minH = Math.max(minHeight || 420, 200);
+  
+  // Use hardcoded minimums - window.getMinimumSize() returns wrong values on Windows
+  const minW = WIDGET_MIN_WIDTH;
+  const minH = WIDGET_MIN_HEIGHT;
 
   const segments = direction.split('-') as Array<'left' | 'right' | 'top' | 'bottom'>;
   const includes = (dir: 'left' | 'right' | 'top' | 'bottom') =>
@@ -1050,5 +1960,14 @@ function performWindowResize(
     height = nextHeight;
   }
 
-  window.setBounds({ x, y, width, height });
+  const newBounds = { x, y, width, height };
+  console.log('[Resize]', direction, {
+    delta: { deltaX, deltaY },
+    mins: { minW, minH },
+    before: originalBounds,
+    after: newBounds,
+    changed: originalBounds.width !== width || originalBounds.height !== height
+  });
+  
+  window.setBounds(newBounds);
 }

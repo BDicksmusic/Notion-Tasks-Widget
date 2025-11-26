@@ -57,7 +57,8 @@ export function useTimeTracker(
             onCreateTimeLog({
               taskId: task.id,
               taskTitle: task.title,
-              duration: durationMinutes,
+              status: 'completed',
+              sessionLengthMinutes: durationMinutes,
               startTime,
               endTime
             }).catch((err) => {
