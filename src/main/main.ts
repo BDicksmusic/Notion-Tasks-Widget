@@ -1,6 +1,59 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { app, BrowserWindow, ipcMain, shell, screen, globalShortcut } from 'electron';
+
+// Fix EPIPE errors when running without a console (e.g., double-clicking the app)
+// This happens because console.log/error tries to write to stdout/stderr which may not exist
+const safeConsole = {
+  log: (...args: unknown[]) => {
+    try {
+      console.log(...args);
+    } catch {
+      // Ignore EPIPE errors
+    }
+  },
+  error: (...args: unknown[]) => {
+    try {
+      console.error(...args);
+    } catch {
+      // Ignore EPIPE errors
+    }
+  },
+  warn: (...args: unknown[]) => {
+    try {
+      console.warn(...args);
+    } catch {
+      // Ignore EPIPE errors
+    }
+  }
+};
+
+// Override global console to prevent EPIPE crashes
+if (!process.stdout.isTTY) {
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalWarn = console.warn;
+  
+  console.log = (...args: unknown[]) => {
+    try { originalLog.apply(console, args); } catch { /* ignore */ }
+  };
+  console.error = (...args: unknown[]) => {
+    try { originalError.apply(console, args); } catch { /* ignore */ }
+  };
+  console.warn = (...args: unknown[]) => {
+    try { originalWarn.apply(console, args); } catch { /* ignore */ }
+  };
+}
+
+// Also handle uncaught EPIPE errors at process level
+process.stdout?.on?.('error', (err) => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') return;
+  throw err;
+});
+process.stderr?.on?.('error', (err) => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') return;
+  throw err;
+});
 import dotenv from 'dotenv';
 import { DockingController } from './docking';
 import {
