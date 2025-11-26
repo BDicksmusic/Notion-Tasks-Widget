@@ -1,7 +1,7 @@
 {
   "name": "notion-tasks-widget",
   "private": true,
-  "version": "0.6.8",
+  "version": "0.6.9",
   "description": "Electron-based floating widget for viewing and adding Notion tasks",
   "repository": {
     "type": "git",
@@ -141,7 +141,8 @@
       "installerHeaderIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Notion Tasks Widget"
+      "shortcutName": "Notion Tasks Widget",
+      "include": "build/installer.nsh"
     },
     "extraResources": [
       {
