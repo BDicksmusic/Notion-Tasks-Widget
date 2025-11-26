@@ -59,17 +59,17 @@ jobs:
       
       - name: Build installer (Windows)
         if: matrix.platform == 'win'
-        run: npx electron-builder --win
+        run: npx electron-builder --win --publish never
       
       - name: Build installer (macOS)
         if: matrix.platform == 'mac'
-        run: npx electron-builder --mac
+        run: npx electron-builder --mac --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false  # Skip code signing
       
       - name: Build installer (Linux)
         if: matrix.platform == 'linux'
-        run: npx electron-builder --linux
+        run: npx electron-builder --linux --publish never
       
       - name: Upload Windows artifacts
         if: matrix.platform == 'win'
