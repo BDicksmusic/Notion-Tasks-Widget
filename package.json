@@ -1,7 +1,7 @@
 {
   "name": "notion-tasks-widget",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Electron-based floating widget for viewing and adding Notion tasks",
   "repository": {
     "type": "git",
@@ -65,7 +65,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "icon.ico",
