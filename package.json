@@ -46,13 +46,18 @@
       "node_modules/better-sqlite3/**/*",
       "node_modules/bindings/**/*",
       "node_modules/file-uri-to-path/**/*",
+      "node_modules/prebuild-install/**/*",
       "!dist/win-unpacked/**/*",
       "!dist/*.exe",
       "!dist/*.7z"
     ],
     "asarUnpack": [
-      "**/node_modules/better-sqlite3/**/*"
+      "**/node_modules/better-sqlite3/**/*",
+      "**/node_modules/bindings/**/*",
+      "**/node_modules/file-uri-to-path/**/*"
     ],
+    "asar": true,
+    "npmRebuild": true,
     "directories": {
       "buildResources": "build"
     },

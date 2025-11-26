@@ -198,3 +198,4 @@ const TrashPanel = ({ isOpen, onClose }: Props) => {
 
 export default TrashPanel;
 
+
