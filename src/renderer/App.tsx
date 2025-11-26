@@ -37,6 +37,7 @@ import ProjectsWidget from './components/ProjectsWidget';
 import SearchInput from './components/SearchInput';
 import ViewSelector from './components/ViewSelector';
 import ChatbotPanel from './components/ChatbotPanel';
+import ImportQueueMenu from './components/ImportQueueMenu';
 import { playWidgetSound } from './utils/sounds';
 import {
   FilterIcon,
@@ -2615,6 +2616,7 @@ const App = () => {
                 Exit focus
               </button>
             )}
+            <ImportQueueMenu onImportStarted={() => fetchTasks()} />
             <button
               type="button"
               className="gear-button"

@@ -12,7 +12,10 @@ import type {
   DockEdge,
   DockState,
   FeatureToggles,
+  ImportJobStatus,
   ImportProgress,
+  ImportQueueStatus,
+  ImportType,
   NotionCreatePayload,
   NotionSettings,
   NotificationPreviewPayload,
@@ -216,8 +219,21 @@ export interface WidgetAPI {
   getSyncTimestamps(): Promise<{ tasks: string | null; projects: string | null; timeLogs: string | null }>;
   importProjects(): Promise<{ success: boolean; count: number; error?: string }>;
   importTimeLogs(): Promise<{ success: boolean; count: number; error?: string }>;
+  importContacts(): Promise<{ success: boolean; count: number; error?: string }>;
   testConnection(): Promise<{ success: boolean; message: string; latencyMs?: number }>;
   isInitialImportDone(): Promise<boolean>;
+  
+  // Import Queue Management - ensures only one import runs at a time
+  /** Get the current status of all import types */
+  getImportQueueStatus(): Promise<ImportQueueStatus>;
+  /** Cancel a specific import type (if running) */
+  cancelImport(type: ImportType): Promise<boolean>;
+  /** Cancel all running imports */
+  cancelAllImports(): Promise<void>;
+  /** Get which import type is currently running (if any) */
+  getCurrentImport(): Promise<ImportType | null>;
+  /** Listen for import queue status changes */
+  onImportQueueStatusChange(callback: (statuses: ImportJobStatus[]) => void): () => void;
   
   // Notion connection status
   isNotionConnected(): Promise<boolean>;

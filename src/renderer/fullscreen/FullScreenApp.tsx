@@ -29,6 +29,7 @@ import TaskList from '../components/TaskList';
 import QuickAdd from '../components/QuickAdd';
 import WritingWidget from '../components/WritingWidget';
 import SearchInput from '../components/SearchInput';
+import ImportQueueMenu from '../components/ImportQueueMenu';
 import EisenhowerMatrix from './views/EisenhowerMatrix';
 import KanbanBoard from './views/KanbanBoard';
 import TaskTimeLogView from './views/TaskTimeLogView';
@@ -4774,15 +4775,7 @@ const FullScreenApp = () => {
               Writing
             </button>
           </div>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={fetchTasks}
-            title="Refresh tasks"
-            aria-label="Refresh tasks"
-          >
-            ⟳
-          </button>
+          <ImportQueueMenu onImportStarted={() => fetchTasks()} />
           {focusTaskId && (
             <button
               className="pill ghost"

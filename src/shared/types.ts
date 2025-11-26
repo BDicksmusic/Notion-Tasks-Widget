@@ -472,6 +472,26 @@ export interface ImportProgress {
   completedAt?: string;
 }
 
+/** Import types that can be queued */
+export type ImportType = 'tasks' | 'projects' | 'contacts' | 'timeLogs';
+
+/** Status of an import job in the queue */
+export interface ImportJobStatus {
+  type: ImportType;
+  status: 'queued' | 'running' | 'completed' | 'cancelled' | 'error';
+  progress?: number;
+  message?: string;
+  startedAt?: string;
+  completedAt?: string;
+  error?: string;
+}
+
+/** Overall import queue status */
+export interface ImportQueueStatus {
+  currentImport: ImportType | null;
+  allStatuses: ImportJobStatus[];
+}
+
 /**
  * Feature toggles allow users to enable/disable specific features
  * This provides a simplified experience for users who don't need all functionality

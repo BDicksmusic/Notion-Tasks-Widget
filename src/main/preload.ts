@@ -3,7 +3,10 @@ import type {
   CrossWindowDragState,
   CrossWindowDropPayload,
   DockState,
+  ImportJobStatus,
   ImportProgress,
+  ImportQueueStatus,
+  ImportType,
   Project,
   SavedView,
   StatusDiagnostics,
@@ -305,8 +308,35 @@ const widgetAPI: WidgetAPI = {
   importTimeLogs() {
     return ipcRenderer.invoke('sync:importTimeLogs');
   },
+  importContacts() {
+    return ipcRenderer.invoke('sync:importContacts');
+  },
   testConnection() {
     return ipcRenderer.invoke('sync:testConnection');
+  },
+  
+  // Import Queue Management
+  getImportQueueStatus(): Promise<ImportQueueStatus> {
+    return ipcRenderer.invoke('importQueue:getStatus');
+  },
+  cancelImport(type: ImportType): Promise<boolean> {
+    return ipcRenderer.invoke('importQueue:cancel', type);
+  },
+  cancelAllImports(): Promise<void> {
+    return ipcRenderer.invoke('importQueue:cancelAll');
+  },
+  getCurrentImport(): Promise<ImportType | null> {
+    return ipcRenderer.invoke('importQueue:getCurrentImport');
+  },
+  onImportQueueStatusChange(callback: (statuses: ImportJobStatus[]) => void) {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      statuses: ImportJobStatus[]
+    ) => callback(statuses);
+    ipcRenderer.on('importQueue:status-changed', listener);
+    return () => {
+      ipcRenderer.removeListener('importQueue:status-changed', listener);
+    };
   },
   isInitialImportDone() {
     return ipcRenderer.invoke('sync:isInitialImportDone');
