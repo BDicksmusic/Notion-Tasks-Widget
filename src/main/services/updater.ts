@@ -74,6 +74,10 @@ function setupEventHandlers(): void {
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
+  // Disable code signature verification since we don't have a code signing certificate
+  // This allows updates to work without needing to sign the app (~$200-400/year)
+  autoUpdater.forceCodeSigning = false;
+  
   // Configure update channel (use 'latest' for GitHub releases)
   autoUpdater.channel = 'latest';
 
