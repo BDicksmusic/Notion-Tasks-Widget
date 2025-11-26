@@ -42,7 +42,8 @@ import {
   taskToCreatePayload as convertTaskToCreatePayload,
   upsertRemoteTask,
   countTasks,
-  getOldestSyncTimestamp
+  getOldestSyncTimestamp,
+  markTaskAsTrashed
 } from '../db/repositories/taskRepository';
 import {
   getTimeLog,
@@ -1106,16 +1107,35 @@ class SyncEngine extends EventEmitter {
       return;
     }
 
-    await updateTask(notionId, updates);
-    const synced = upsertRemoteTask(
-      {
-        ...localTask,
-        id: notionId
-      },
-      notionId,
-      new Date().toISOString()
-    );
-    this.notifyTaskUpdated(synced);
+    try {
+      await updateTask(notionId, updates);
+      const synced = upsertRemoteTask(
+        {
+          ...localTask,
+          id: notionId
+        },
+        notionId,
+        new Date().toISOString()
+      );
+      this.notifyTaskUpdated(synced);
+    } catch (error) {
+      // Check if task was deleted in Notion (404 error)
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const is404 = errorMessage.includes('404') || 
+                    errorMessage.includes('not found') || 
+                    errorMessage.includes('Could not find') ||
+                    errorMessage.includes('object_not_found');
+      
+      if (is404) {
+        console.log(`[SyncEngine] Task ${notionId} not found in Notion - marking as trashed`);
+        markTaskAsTrashed(entry.clientId);
+        // Don't rethrow - this is expected for deleted tasks
+        return;
+      }
+      
+      // Rethrow other errors
+      throw error;
+    }
   }
 
   private async processTimeLogEntry(entry: SyncQueueEntry<TimeLogQueuePayload>) {

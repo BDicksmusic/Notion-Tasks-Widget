@@ -834,6 +834,17 @@ app.whenReady().then(async () => {
   }
   
   syncEngine.start();
+  
+  // Auto-cleanup old trashed tasks (older than 30 days) on startup
+  try {
+    const cleaned = cleanupOldTrashedTasks(30);
+    if (cleaned > 0) {
+      console.log(`[Startup] Cleaned up ${cleaned} old trashed tasks`);
+    }
+  } catch (error) {
+    console.error('[Startup] Failed to cleanup trashed tasks:', error);
+  }
+  
   syncEngine.on('task-updated', (task: Task) => {
     BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('tasks:updated', task);
