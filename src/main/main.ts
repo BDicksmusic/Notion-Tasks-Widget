@@ -1,6 +1,21 @@
-// CRITICAL: Fix EPIPE errors BEFORE any imports that might log
-// When double-clicking the app (no console), stdout/stderr writes crash the app
-// This must be at the VERY TOP before any other code runs
+// CRITICAL: Debug and fix startup issues
+// Write to a log file IMMEDIATELY to debug double-click issues
+const _fs = require('fs');
+const _path = require('path');
+const _logDir = _path.join(process.env.APPDATA || 'C:\\temp', 'NotionTasksWidget');
+const _startupLog = _path.join(_logDir, 'startup.log');
+
+try {
+  _fs.mkdirSync(_logDir, { recursive: true });
+  _fs.appendFileSync(_startupLog, `\n--- STARTUP ${new Date().toISOString()} ---\n`);
+  _fs.appendFileSync(_startupLog, `argv: ${JSON.stringify(process.argv)}\n`);
+  _fs.appendFileSync(_startupLog, `cwd: ${process.cwd()}\n`);
+  _fs.appendFileSync(_startupLog, `stdout exists: ${!!process.stdout}\n`);
+  _fs.appendFileSync(_startupLog, `stdout.isTTY: ${process.stdout?.isTTY}\n`);
+  _fs.appendFileSync(_startupLog, `stderr exists: ${!!process.stderr}\n`);
+} catch (e) {
+  // Can't even write to log - really bad
+}
 
 // Suppress all stdout/stderr when not running in a terminal
 if (!process.stdout?.isTTY) {
@@ -13,6 +28,10 @@ if (!process.stdout?.isTTY) {
   if (process.stderr) {
     process.stderr.write = nullWrite as typeof process.stderr.write;
   }
+  
+  try {
+    _fs.appendFileSync(_startupLog, `stdout/stderr suppressed\n`);
+  } catch {}
 }
 
 // Handle any EPIPE errors that slip through
@@ -328,6 +347,12 @@ const createWindow = async () => {
   });
 
   console.log('Main window created');
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const logPath = path.join(process.env.APPDATA || '', 'NotionTasksWidget', 'startup.log');
+    fs.appendFileSync(logPath, `Main window created at ${new Date().toISOString()}\n`);
+  } catch {}
   docking = new DockingController(mainWindow);
 
   mainWindow.on('closed', () => {
@@ -384,9 +409,16 @@ const createWindow = async () => {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
     docking?.snapToEdge('top');
-    if (!initialPreferences.pinWidget) {
-      setTimeout(() => docking?.collapse(), 900);
-    }
+    // Always start expanded so user can see the widget
+    // User can collapse it manually if desired
+    docking?.expand();
+    
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const logPath = path.join(process.env.APPDATA || '', 'NotionTasksWidget', 'startup.log');
+      fs.appendFileSync(logPath, `Window shown and expanded at ${new Date().toISOString()}\n`);
+    } catch {}
   });
 };
 
