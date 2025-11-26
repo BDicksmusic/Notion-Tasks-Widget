@@ -2603,20 +2603,19 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
               </div>
 
               <div className="section-group">
-                <h3>Verify Configuration</h3>
+                <h3>Verify Projects Configuration</h3>
                 <p className="section-description">
-                  Click below to verify that all property names match your Notion databases.
+                  Click below to verify that all property names match your Notion Projects database.
                 </p>
-                <div className="verification-row">
-                  <div className="verification-item">
-                    <strong>Projects:</strong>
-                    <DatabaseVerification databaseType="projects" compact />
-                  </div>
-                  <div className="verification-item">
-                    <strong>Contacts:</strong>
-                    <DatabaseVerification databaseType="contacts" compact />
-                  </div>
-                </div>
+                <DatabaseVerification databaseType="projects" />
+              </div>
+
+              <div className="section-group">
+                <h3>Verify Contacts Configuration</h3>
+                <p className="section-description">
+                  Click below to verify that all property names match your Notion Contacts database.
+                </p>
+                <DatabaseVerification databaseType="contacts" />
               </div>
 
               <div className="section-actions sticky">
