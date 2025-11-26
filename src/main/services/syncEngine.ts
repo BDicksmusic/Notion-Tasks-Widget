@@ -22,6 +22,7 @@ import {
   getAllTimeLogs,
   createWritingEntry,
   getProjects as fetchNotionProjects,
+  refreshContacts as fetchNotionContacts,
   testConnection,
   type DateFilter,
   type StatusFilter,
@@ -57,6 +58,7 @@ import {
 import { listProjects, upsertProject } from '../db/repositories/projectRepository';
 import { getSyncState, setSyncState, clearSyncState } from '../db/repositories/syncStateRepository';
 import { getNotionSettingsSnapshot } from './notion';
+import { importQueueManager, type ImportType } from './importQueueManager';
 
 // Sync state keys
 const SYNC_KEY_TASKS_LAST = 'tasks_last_sync';
@@ -345,6 +347,9 @@ class SyncEngine extends EventEmitter {
    * 4. Most important (recently edited) tasks come first
    * 
    * Target: 500 tasks minimum
+   * 
+   * Uses the ImportQueueManager to ensure only one import runs at a time.
+   * If another import (projects, contacts, etc.) is running, it will be cancelled.
    */
   async performInitialImport(): Promise<void> {
     if (this.importRunning) {
@@ -383,6 +388,22 @@ class SyncEngine extends EventEmitter {
       return;
     }
 
+    // Use ImportQueueManager to ensure only one import at a time
+    console.log('[SyncEngine] Requesting tasks import via ImportQueueManager');
+    
+    await importQueueManager.requestImport('tasks', async (abortSignal) => {
+      await this.performTasksImportInternal(abortSignal, existingTaskCount, TARGET_TASK_COUNT);
+    });
+  }
+
+  /**
+   * Internal implementation of task import (called by ImportQueueManager)
+   */
+  private async performTasksImportInternal(
+    abortSignal: AbortSignal,
+    existingTaskCount: number,
+    TARGET_TASK_COUNT: number
+  ): Promise<void> {
     this.importRunning = true;
     console.log(`[SyncEngine] Starting TIME WINDOW import (have ${existingTaskCount}, target ${TARGET_TASK_COUNT})...`);
     
@@ -398,6 +419,12 @@ class SyncEngine extends EventEmitter {
     });
     
     this.updateStatus({ state: 'syncing', message: `Importing tasks (${existingTaskCount}/${TARGET_TASK_COUNT})...` });
+
+    // Check for cancellation
+    if (abortSignal.aborted) {
+      this.importRunning = false;
+      throw new Error('Import was cancelled');
+    }
 
     const connectionTest = await testConnection();
     if (!connectionTest.success) {
@@ -428,6 +455,13 @@ class SyncEngine extends EventEmitter {
     
     // Process each time window
     while (currentWindowIndex < timeWindows.length && totalTasksInDB < TARGET_TASK_COUNT) {
+      // Check for cancellation at window level
+      if (abortSignal.aborted) {
+        console.log('[SyncEngine] Import cancelled at window level');
+        this.importRunning = false;
+        throw new Error('Import was cancelled');
+      }
+      
       const window = timeWindows[currentWindowIndex];
       console.log(`[SyncEngine] === Processing window: ${window.name} ===`);
       
@@ -435,9 +469,23 @@ class SyncEngine extends EventEmitter {
       let windowTaskCount = 0;
       
       while (!windowDone && totalTasksInDB < TARGET_TASK_COUNT) {
+        // Check for cancellation at batch level
+        if (abortSignal.aborted) {
+          console.log('[SyncEngine] Import cancelled at batch level');
+          this.importRunning = false;
+          throw new Error('Import was cancelled');
+        }
+        
         try {
           // Fetch batch with time window filter
           const result = await getTasksBatchReliably(cursor, RELIABLE_BATCH_SIZE, window.filter);
+          
+          // Check for cancellation after fetch
+          if (abortSignal.aborted) {
+            console.log('[SyncEngine] Import cancelled after fetch');
+            this.importRunning = false;
+            throw new Error('Import was cancelled');
+          }
           
           if (result.tasks.length === 0 || !result.hasMore) {
             console.log(`[SyncEngine] Window "${window.name}" complete (${windowTaskCount} tasks)`);
@@ -469,12 +517,23 @@ class SyncEngine extends EventEmitter {
             message: `[${window.name}] ${totalTasksInDB} tasks...`
           });
           
+          // Update ImportQueueManager progress
+          const progressPercent = Math.min(99, Math.round((totalTasksInDB / TARGET_TASK_COUNT) * 100));
+          importQueueManager.updateProgress('tasks', progressPercent, `${totalTasksInDB} tasks imported`);
+          
           console.log(`[SyncEngine] ${window.name}: +${result.tasks.length} tasks (total: ${totalTasksInDB})`);
           
           // Short delay between batches
           await sleep(BACKGROUND_IMPORT_DELAY_MS);
           
         } catch (error) {
+          // Check if this was a cancellation
+          if (abortSignal.aborted || (error instanceof Error && error.message.includes('cancelled'))) {
+            console.log('[SyncEngine] Import was cancelled');
+            this.importRunning = false;
+            throw error;
+          }
+          
           consecutiveFailures++;
           const errorMessage = error instanceof Error ? error.message : String(error);
           const is504 = errorMessage.includes('504');
@@ -974,15 +1033,27 @@ class SyncEngine extends EventEmitter {
 
   /**
    * Pull time logs with incremental sync support
+   * @param abortSignal - Optional AbortSignal for cancellation support
    */
-  private async pullTimeLogs() {
+  private async pullTimeLogs(abortSignal?: AbortSignal) {
     const lastSync = getSyncState(SYNC_KEY_TIMELOGS_LAST);
     const isInitialSync = !lastSync;
     
     console.log(`[SyncEngine] Pulling time logs (${isInitialSync ? 'initial' : 'incremental'} sync)`);
     
+    // Check for cancellation before starting
+    if (abortSignal?.aborted) {
+      throw new Error('Import was cancelled');
+    }
+    
     // getAllTimeLogs already filters to last 2 days for efficiency
     const remoteLogs = await getAllTimeLogs();
+    
+    // Check for cancellation after fetch
+    if (abortSignal?.aborted) {
+      throw new Error('Import was cancelled');
+    }
+    
     const timestamp = new Date().toISOString();
     
     console.log(`[SyncEngine] Received ${remoteLogs.length} time logs from Notion`);
@@ -999,11 +1070,23 @@ class SyncEngine extends EventEmitter {
 
   /**
    * Pull projects (internal method)
+   * @param abortSignal - Optional AbortSignal for cancellation support
    */
-  private async pullProjects() {
+  private async pullProjects(abortSignal?: AbortSignal) {
     console.log('[SyncEngine] Pulling projects');
     
+    // Check for cancellation before starting
+    if (abortSignal?.aborted) {
+      throw new Error('Import was cancelled');
+    }
+    
     const projects = await fetchNotionProjects();
+    
+    // Check for cancellation after fetch
+    if (abortSignal?.aborted) {
+      throw new Error('Import was cancelled');
+    }
+    
     const timestamp = new Date().toISOString();
     
     console.log(`[SyncEngine] Received ${projects.length} projects from Notion`);
@@ -1021,18 +1104,28 @@ class SyncEngine extends EventEmitter {
   /**
    * Manually import projects from Notion
    * Call this to sync projects without affecting other data types
+   * 
+   * Uses the ImportQueueManager to ensure only one import runs at a time.
+   * If another import is running, it will be cancelled to make room for this one.
    */
   async importProjects(): Promise<{ success: boolean; count: number; error?: string }> {
-    try {
-      console.log('[SyncEngine] Manual projects import started');
-      const count = await this.pullProjects();
-      return { success: true, count };
-    } catch (error) {
-      console.error('[SyncEngine] Manual projects import failed:', error);
+    console.log('[SyncEngine] Manual projects import requested');
+    
+    let importedCount = 0;
+    
+    const result = await importQueueManager.requestImport('projects', async (abortSignal) => {
+      importedCount = await this.pullProjects(abortSignal);
+    });
+    
+    if (result.status === 'completed') {
+      return { success: true, count: importedCount };
+    } else if (result.status === 'cancelled') {
+      return { success: false, count: 0, error: 'Import was cancelled' };
+    } else {
       return { 
         success: false, 
         count: 0, 
-        error: error instanceof Error ? error.message : String(error) 
+        error: result.error ?? 'Import failed' 
       };
     }
   }
@@ -1040,18 +1133,70 @@ class SyncEngine extends EventEmitter {
   /**
    * Manually import time logs from Notion
    * Call this to sync time logs without affecting other data types
+   * 
+   * Uses the ImportQueueManager to ensure only one import runs at a time.
+   * If another import is running, it will be cancelled to make room for this one.
    */
   async importTimeLogs(): Promise<{ success: boolean; count: number; error?: string }> {
-    try {
-      console.log('[SyncEngine] Manual time logs import started');
-      const count = await this.pullTimeLogs();
-      return { success: true, count };
-    } catch (error) {
-      console.error('[SyncEngine] Manual time logs import failed:', error);
+    console.log('[SyncEngine] Manual time logs import requested');
+    
+    let importedCount = 0;
+    
+    const result = await importQueueManager.requestImport('timeLogs', async (abortSignal) => {
+      importedCount = await this.pullTimeLogs(abortSignal);
+    });
+    
+    if (result.status === 'completed') {
+      return { success: true, count: importedCount };
+    } else if (result.status === 'cancelled') {
+      return { success: false, count: 0, error: 'Import was cancelled' };
+    } else {
       return { 
         success: false, 
         count: 0, 
-        error: error instanceof Error ? error.message : String(error) 
+        error: result.error ?? 'Import failed' 
+      };
+    }
+  }
+
+  /**
+   * Manually import contacts from Notion
+   * Call this to sync contacts without affecting other data types
+   * 
+   * Uses the ImportQueueManager to ensure only one import runs at a time.
+   * If another import is running, it will be cancelled to make room for this one.
+   */
+  async importContacts(): Promise<{ success: boolean; count: number; error?: string }> {
+    console.log('[SyncEngine] Manual contacts import requested');
+    
+    let importedCount = 0;
+    
+    const result = await importQueueManager.requestImport('contacts', async (abortSignal) => {
+      // Check for cancellation before starting
+      if (abortSignal.aborted) {
+        throw new Error('Import was cancelled');
+      }
+      
+      const contacts = await fetchNotionContacts();
+      
+      // Check for cancellation after fetch
+      if (abortSignal.aborted) {
+        throw new Error('Import was cancelled');
+      }
+      
+      importedCount = contacts.length;
+      console.log(`[SyncEngine] Received ${contacts.length} contacts from Notion`);
+    });
+    
+    if (result.status === 'completed') {
+      return { success: true, count: importedCount };
+    } else if (result.status === 'cancelled') {
+      return { success: false, count: 0, error: 'Import was cancelled' };
+    } else {
+      return { 
+        success: false, 
+        count: 0, 
+        error: result.error ?? 'Import failed' 
       };
     }
   }
@@ -1065,6 +1210,30 @@ class SyncEngine extends EventEmitter {
       projects: getSyncState(SYNC_KEY_PROJECTS_LAST),
       timeLogs: getSyncState(SYNC_KEY_TIMELOGS_LAST)
     };
+  }
+
+  /**
+   * Get import queue status for all import types
+   */
+  getImportQueueStatus() {
+    return {
+      currentImport: importQueueManager.getCurrentImport(),
+      allStatuses: importQueueManager.getAllStatuses()
+    };
+  }
+
+  /**
+   * Cancel a specific import type (if running)
+   */
+  cancelImport(type: ImportType): boolean {
+    return importQueueManager.cancelImport(type);
+  }
+
+  /**
+   * Cancel all running imports
+   */
+  cancelAllImports(): void {
+    importQueueManager.cancelAll();
   }
 
   private async processTaskEntry(entry: SyncQueueEntry<TaskQueuePayload>) {
@@ -1223,6 +1392,9 @@ class SyncEngine extends EventEmitter {
 }
 
 export const syncEngine = new SyncEngine();
+
+// Re-export the importQueueManager for use in IPC handlers
+export { importQueueManager };
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

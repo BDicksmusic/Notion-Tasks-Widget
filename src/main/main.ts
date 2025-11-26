@@ -79,7 +79,8 @@ import {
 } from './services/notion';
 import { initializeDatabase } from './db/database';
 import { startDatabaseBackupRoutine } from './db/backupService';
-import { syncEngine } from './services/syncEngine';
+import { syncEngine, importQueueManager } from './services/syncEngine';
+import type { ImportType } from './services/importQueueManager';
 import {
   createLocalTask,
   listTasks as listStoredTasks,
@@ -1477,6 +1478,10 @@ ipcMain.handle('sync:importTimeLogs', async () => {
   console.log('[IPC] sync:importTimeLogs - Starting manual time logs import');
   return syncEngine.importTimeLogs();
 });
+ipcMain.handle('sync:importContacts', async () => {
+  console.log('[IPC] sync:importContacts - Starting manual contacts import');
+  return syncEngine.importContacts();
+});
 ipcMain.handle('sync:testConnection', async () => {
   return syncEngine.testConnection();
 });
@@ -1510,6 +1515,33 @@ ipcMain.handle('sync:resetImport', () => {
 });
 ipcMain.handle('sync:importTaskById', async (_event, pageId: string) => {
   return syncEngine.importTaskById(pageId);
+});
+
+// ============================================================================
+// IMPORT QUEUE MANAGEMENT
+// Ensures only one import runs at a time to avoid API rate limits
+// ============================================================================
+ipcMain.handle('importQueue:getStatus', () => {
+  return syncEngine.getImportQueueStatus();
+});
+
+ipcMain.handle('importQueue:cancel', (_event, type: ImportType) => {
+  return syncEngine.cancelImport(type);
+});
+
+ipcMain.handle('importQueue:cancelAll', () => {
+  syncEngine.cancelAllImports();
+});
+
+ipcMain.handle('importQueue:getCurrentImport', () => {
+  return importQueueManager.getCurrentImport();
+});
+
+// Forward import queue status changes to all windows
+importQueueManager.on('all-status-changed', (statuses) => {
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('importQueue:status-changed', statuses);
+  });
 });
 ipcMain.handle('settings:app:get', () => getAppPreferences());
 ipcMain.handle('settings:app:update', async (_event, prefs: AppPreferences) => {
