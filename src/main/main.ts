@@ -1,59 +1,44 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { app, BrowserWindow, ipcMain, shell, screen, globalShortcut } from 'electron';
+// CRITICAL: Fix EPIPE errors BEFORE any imports that might log
+// When double-clicking the app (no console), stdout/stderr writes crash the app
+// This must be at the VERY TOP before any other code runs
 
-// Fix EPIPE errors when running without a console (e.g., double-clicking the app)
-// This happens because console.log/error tries to write to stdout/stderr which may not exist
-const safeConsole = {
-  log: (...args: unknown[]) => {
-    try {
-      console.log(...args);
-    } catch {
-      // Ignore EPIPE errors
-    }
-  },
-  error: (...args: unknown[]) => {
-    try {
-      console.error(...args);
-    } catch {
-      // Ignore EPIPE errors
-    }
-  },
-  warn: (...args: unknown[]) => {
-    try {
-      console.warn(...args);
-    } catch {
-      // Ignore EPIPE errors
-    }
-  }
-};
-
-// Override global console to prevent EPIPE crashes
-if (!process.stdout.isTTY) {
-  const originalLog = console.log;
-  const originalError = console.error;
-  const originalWarn = console.warn;
+// Suppress all stdout/stderr when not running in a terminal
+if (!process.stdout?.isTTY) {
+  // Create no-op write streams to prevent EPIPE errors
+  const nullWrite = () => true;
   
-  console.log = (...args: unknown[]) => {
-    try { originalLog.apply(console, args); } catch { /* ignore */ }
-  };
-  console.error = (...args: unknown[]) => {
-    try { originalError.apply(console, args); } catch { /* ignore */ }
-  };
-  console.warn = (...args: unknown[]) => {
-    try { originalWarn.apply(console, args); } catch { /* ignore */ }
-  };
+  if (process.stdout) {
+    process.stdout.write = nullWrite as typeof process.stdout.write;
+  }
+  if (process.stderr) {
+    process.stderr.write = nullWrite as typeof process.stderr.write;
+  }
 }
 
-// Also handle uncaught EPIPE errors at process level
+// Handle any EPIPE errors that slip through
+process.on('uncaughtException', (err) => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') return;
+  // For other errors, we should still crash but log to file if possible
+  const fs = require('fs');
+  const path = require('path');
+  try {
+    const logPath = path.join(process.env.APPDATA || '', 'NotionTasksWidget', 'crash.log');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, `${new Date().toISOString()} - ${err.stack || err}\n`);
+  } catch { /* ignore logging errors */ }
+  throw err;
+});
+
 process.stdout?.on?.('error', (err) => {
   if ((err as NodeJS.ErrnoException).code === 'EPIPE') return;
-  throw err;
 });
 process.stderr?.on?.('error', (err) => {
   if ((err as NodeJS.ErrnoException).code === 'EPIPE') return;
-  throw err;
 });
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { app, BrowserWindow, ipcMain, shell, screen, globalShortcut } from 'electron';
 import dotenv from 'dotenv';
 import { DockingController } from './docking';
 import {

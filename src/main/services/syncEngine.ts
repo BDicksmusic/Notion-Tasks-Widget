@@ -1108,16 +1108,16 @@ class SyncEngine extends EventEmitter {
     }
 
     try {
-      await updateTask(notionId, updates);
-      const synced = upsertRemoteTask(
-        {
-          ...localTask,
-          id: notionId
-        },
-        notionId,
-        new Date().toISOString()
-      );
-      this.notifyTaskUpdated(synced);
+    await updateTask(notionId, updates);
+    const synced = upsertRemoteTask(
+      {
+        ...localTask,
+        id: notionId
+      },
+      notionId,
+      new Date().toISOString()
+    );
+    this.notifyTaskUpdated(synced);
     } catch (error) {
       // Check if task was deleted in Notion (404 error)
       const errorMessage = error instanceof Error ? error.message : String(error);
