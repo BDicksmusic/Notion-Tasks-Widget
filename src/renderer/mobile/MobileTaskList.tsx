@@ -175,7 +175,7 @@ const MobileTaskList: React.FC<Props> = ({
   // Render group
   const renderGroup = (group: TaskGroup) => {
     return (
-      <div key={group.key} className="mobile-task-group">
+      <div key={group.id} className="mobile-task-group">
         <div className="mobile-task-group-header">
           <span className="mobile-task-group-label">{group.label}</span>
           <span className="mobile-task-group-count">{group.tasks.length}</span>

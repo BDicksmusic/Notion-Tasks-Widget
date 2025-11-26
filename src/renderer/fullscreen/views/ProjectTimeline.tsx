@@ -260,7 +260,7 @@ const ProjectTimeline = ({
         completed,
         urgent,
         overdue,
-        statusColor: getStatusColor(project.status),
+        statusColor: getStatusColor(project.status ?? undefined),
         timelineStatus,
         daysRemaining
       };

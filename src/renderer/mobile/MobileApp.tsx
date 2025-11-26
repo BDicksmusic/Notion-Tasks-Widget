@@ -35,7 +35,7 @@ import {
   deserializeSortRules,
   isGroupingOption
 } from '../utils/sorting';
-import { useCountdownTimer } from '../utils/useCountdownTimer';
+// import { useCountdownTimer } from '../utils/useCountdownTimer'; // Not used yet
 import { matrixOptions } from '../constants/matrix';
 import './MobileApp.css';
 
@@ -109,9 +109,11 @@ const MobileApp: React.FC = () => {
   const [sortRules, setSortRules] = useState<SortRule[]>(() => {
     try {
       const stored = localStorage.getItem(SORT_RULES_STORAGE_KEY);
-      return stored ? deserializeSortRules(stored) : [];
+      if (!stored) return deserializeSortRules();
+      const parsed = JSON.parse(stored);
+      return deserializeSortRules(parsed);
     } catch {
-      return [];
+      return deserializeSortRules();
     }
   });
   const [grouping, setGrouping] = useState<GroupingOption>(() => {
@@ -132,16 +134,8 @@ const MobileApp: React.FC = () => {
   // Deadline filter
   const [deadlineFilter, setDeadlineFilter] = useState<'all' | 'hard' | 'soft'>('all');
   
-  // Timer hook
-  const {
-    getRemainingTime,
-    getEndTime,
-    formatTime,
-    formatEndTime,
-    isCountingDown,
-    startCountdown,
-    extendCountdown
-  } = useCountdownTimer();
+  // Timer hook - removed: not currently used in mobile view
+  // If countdown timer is needed, pass: useCountdownTimer(tasks, handleUpdateTask, handleCreateTimeLog)
 
   // Load initial view mode
   useEffect(() => {
@@ -800,7 +794,7 @@ const MobileApp: React.FC = () => {
                   : 'No tasks match your filters'
               }
               grouping={grouping}
-              groups={groupedTasks}
+              groups={groupedTasks ?? undefined}
             />
           </div>
         );
@@ -1105,7 +1099,7 @@ const MobileApp: React.FC = () => {
             </div>
             <div className="mobile-modal-content">
               <QuickAdd
-                onAdd={handleAddTask}
+                onAdd={async (payload) => { await handleAddTask(payload); }}
                 statusOptions={statusOptions}
                 manualStatuses={[]}
                 completedStatus={notionSettings?.completedStatus}

@@ -460,7 +460,7 @@ const App = () => {
         setDayFilter(view.dayFilter);
         setMatrixFilter(view.matrixFilter);
         setDeadlineFilter(view.deadlineFilter);
-        setStatusFilter(view.statusFilter);
+        setStatusFilter(view.statusFilter as StatusFilterValue);
         if (view.sortRules) {
           setSortRules(view.sortRules);
         }
@@ -767,7 +767,7 @@ const App = () => {
     setDayFilter(view.dayFilter);
     setMatrixFilter(view.matrixFilter);
     setDeadlineFilter(view.deadlineFilter);
-    setStatusFilter(view.statusFilter);
+    setStatusFilter(view.statusFilter as StatusFilterValue);
     if (view.sortRules) {
       setSortRules(view.sortRules);
     }

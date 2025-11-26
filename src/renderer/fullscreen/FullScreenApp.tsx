@@ -1286,7 +1286,7 @@ const FullScreenApp = () => {
   }, []);
 
   useEffect(() => {
-    if (viewMode !== 'split') {
+    if (viewMode !== 'projects') {
       setProjectDropTarget(null);
     }
     if (viewMode !== 'calendar') {
