@@ -17,6 +17,7 @@ import type {
   WritingSettings
 } from '@shared/types';
 import { extractDatabaseId } from '@shared/utils/notionUrl';
+import { DatabaseVerification, VerifyAllDatabases } from '../components/DatabaseVerification';
 
 type Feedback = {
   kind: 'success' | 'error';
@@ -1536,6 +1537,14 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                 </div>
               </div>
 
+              <div className="section-group">
+                <h3>Verify All Connections</h3>
+                <p className="section-description">
+                  Test that all your configured databases are accessible and properly configured.
+                </p>
+                <VerifyAllDatabases />
+              </div>
+
               <div className="section-actions sticky">
                 <button 
                   type="button" 
@@ -2158,6 +2167,14 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                 </div>
               </div>
 
+              <div className="section-group">
+                <h3>Verify Configuration</h3>
+                <p className="section-description">
+                  Click below to verify that all property names match your Notion database.
+                </p>
+                <DatabaseVerification databaseType="tasks" />
+              </div>
+
               <div className="section-actions sticky">
                 <button 
                   type="button" 
@@ -2229,6 +2246,14 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                 </div>
               </div>
 
+              <div className="section-group">
+                <h3>Verify Configuration</h3>
+                <p className="section-description">
+                  Click below to verify that all property names match your Notion database.
+                </p>
+                <DatabaseVerification databaseType="writing" />
+              </div>
+
               <div className="section-actions sticky">
                 <button 
                   type="button" 
@@ -2296,6 +2321,14 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="section-group">
+                <h3>Verify Configuration</h3>
+                <p className="section-description">
+                  Click below to verify that all property names match your Notion database.
+                </p>
+                <DatabaseVerification databaseType="timeLogs" />
               </div>
 
               <div className="section-actions sticky">
@@ -2566,6 +2599,23 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                       <span>• Time Logs: {syncTimestamps.timeLogs ? new Date(syncTimestamps.timeLogs).toLocaleString() : 'Never'}</span>
                     </div>
                   )}
+                </div>
+              </div>
+
+              <div className="section-group">
+                <h3>Verify Configuration</h3>
+                <p className="section-description">
+                  Click below to verify that all property names match your Notion databases.
+                </p>
+                <div className="verification-row">
+                  <div className="verification-item">
+                    <strong>Projects:</strong>
+                    <DatabaseVerification databaseType="projects" compact />
+                  </div>
+                  <div className="verification-item">
+                    <strong>Contacts:</strong>
+                    <DatabaseVerification databaseType="contacts" compact />
+                  </div>
                 </div>
               </div>
 

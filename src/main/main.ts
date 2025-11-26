@@ -194,6 +194,14 @@ import {
 } from './services/updater';
 import { transcribeWithWhisper } from './services/speechService';
 import { getStatusDiagnostics, getDetailedStatusDiagnostics } from './services/statusDiagnostics';
+import {
+  verifyTasksDatabase,
+  verifyProjectsDatabase,
+  verifyContactsDatabase,
+  verifyTimeLogDatabase,
+  verifyWritingDatabase,
+  verifyAllDatabases
+} from './services/databaseVerification';
 
 dotenv.config();
 console.log('Notion env check', {
@@ -1366,6 +1374,49 @@ ipcMain.handle('contacts:refresh', async () => {
 });
 ipcMain.handle('diagnostics:statusSummary', () => getStatusDiagnostics());
 ipcMain.handle('diagnostics:statusDetailed', () => getDetailedStatusDiagnostics());
+
+// ============================================================================
+// DATABASE VERIFICATION
+// Verify that configured property names exist in Notion databases
+// ============================================================================
+ipcMain.handle('verify:tasks', async () => {
+  const settings = getSettings();
+  return verifyTasksDatabase(settings);
+});
+
+ipcMain.handle('verify:projects', async () => {
+  const taskSettings = getSettings();
+  const projectSettings = getProjectsSettings();
+  return verifyProjectsDatabase(projectSettings, taskSettings.apiKey);
+});
+
+ipcMain.handle('verify:contacts', async () => {
+  const taskSettings = getSettings();
+  const contactSettings = getContactsSettings();
+  return verifyContactsDatabase(contactSettings, taskSettings.apiKey);
+});
+
+ipcMain.handle('verify:timeLogs', async () => {
+  const taskSettings = getSettings();
+  const timeLogSettings = getTimeLogSettings();
+  return verifyTimeLogDatabase(timeLogSettings, taskSettings.apiKey);
+});
+
+ipcMain.handle('verify:writing', async () => {
+  const taskSettings = getSettings();
+  const writingSettings = getWritingSettings();
+  return verifyWritingDatabase(writingSettings, taskSettings.apiKey);
+});
+
+ipcMain.handle('verify:all', async () => {
+  return verifyAllDatabases({
+    taskSettings: getSettings(),
+    projectsSettings: getProjectsSettings(),
+    contactsSettings: getContactsSettings(),
+    timeLogSettings: getTimeLogSettings(),
+    writingSettings: getWritingSettings()
+  });
+});
 
 // ============================================================================
 // LOCAL STATUS OPTIONS (LOCAL-FIRST)

@@ -1563,11 +1563,29 @@ async function getContactPropertyIds(): Promise<Map<string, string>> {
 
 export async function getProjects(): Promise<Project[]> {
   if (!projectsSettings?.databaseId) {
+    console.warn('[Notion] Projects database ID not configured - returning empty array');
+    console.warn('[Notion] Configure the Projects database in Control Center > Projects Settings');
     return [];
   }
 
-  const client = getProjectsClient();
-  const dbId = getProjectsDatabaseId();
+  let client: Client;
+  let dbId: string;
+  
+  try {
+    client = getProjectsClient();
+  } catch (error) {
+    console.error('[Notion] Failed to get projects client:', error);
+    throw new Error('Projects API not configured. Please add your Notion API key in Control Center.');
+  }
+  
+  try {
+    dbId = getProjectsDatabaseId();
+  } catch (error) {
+    console.error('[Notion] Failed to get projects database ID:', error);
+    throw new Error('Projects database ID is invalid. Please check your database ID in Control Center.');
+  }
+  
+  console.log(`[Notion] Starting projects fetch from database: ${dbId.substring(0, 8)}...`);
 
   try {
     const projects: Project[] = [];

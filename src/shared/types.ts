@@ -492,6 +492,44 @@ export interface ImportQueueStatus {
   allStatuses: ImportJobStatus[];
 }
 
+// ============================================================================
+// DATABASE VERIFICATION TYPES
+// Used to verify that configured property names exist in Notion databases
+// ============================================================================
+
+/** Result of verifying a single property */
+export interface PropertyVerificationResult {
+  propertyName: string;
+  configuredValue: string;
+  exists: boolean;
+  actualType?: string;
+  expectedType?: string;
+  isRequired: boolean;
+  suggestion?: string;
+}
+
+/** Result of verifying an entire database configuration */
+export interface DatabaseVerificationResult {
+  databaseId: string;
+  databaseName?: string;
+  connected: boolean;
+  error?: string;
+  properties: PropertyVerificationResult[];
+  availableProperties: Array<{ name: string; type: string }>;
+}
+
+/** Overall verification result for all databases */
+export interface FullVerificationResult {
+  tasks?: DatabaseVerificationResult;
+  projects?: DatabaseVerificationResult;
+  contacts?: DatabaseVerificationResult;
+  timeLogs?: DatabaseVerificationResult;
+  writing?: DatabaseVerificationResult;
+}
+
+/** Database type for verification */
+export type VerifiableDatabaseType = 'tasks' | 'projects' | 'contacts' | 'timeLogs' | 'writing';
+
 /**
  * Feature toggles allow users to enable/disable specific features
  * This provides a simplified experience for users who don't need all functionality

@@ -451,6 +451,56 @@ const widgetAPI: WidgetAPI = {
     };
   },
   
+  // Database Verification API (mobile stubs)
+  async verifyTasksDatabase(): Promise<import('@shared/types').DatabaseVerificationResult> {
+    return {
+      databaseId: '',
+      connected: false,
+      error: 'Database verification not available on mobile',
+      properties: [],
+      availableProperties: []
+    };
+  },
+  async verifyProjectsDatabase(): Promise<import('@shared/types').DatabaseVerificationResult> {
+    return {
+      databaseId: '',
+      connected: false,
+      error: 'Database verification not available on mobile',
+      properties: [],
+      availableProperties: []
+    };
+  },
+  async verifyContactsDatabase(): Promise<import('@shared/types').DatabaseVerificationResult> {
+    return {
+      databaseId: '',
+      connected: false,
+      error: 'Database verification not available on mobile',
+      properties: [],
+      availableProperties: []
+    };
+  },
+  async verifyTimeLogsDatabase(): Promise<import('@shared/types').DatabaseVerificationResult> {
+    return {
+      databaseId: '',
+      connected: false,
+      error: 'Database verification not available on mobile',
+      properties: [],
+      availableProperties: []
+    };
+  },
+  async verifyWritingDatabase(): Promise<import('@shared/types').DatabaseVerificationResult> {
+    return {
+      databaseId: '',
+      connected: false,
+      error: 'Database verification not available on mobile',
+      properties: [],
+      availableProperties: []
+    };
+  },
+  async verifyAllDatabases(): Promise<import('@shared/types').FullVerificationResult> {
+    return {};
+  },
+  
   // LOCAL STATUS MANAGEMENT (mobile stubs)
   async getLocalTaskStatuses(): Promise<TaskStatusOption[]> {
     // Mobile doesn't have local storage for statuses, return empty
@@ -522,6 +572,9 @@ const widgetAPI: WidgetAPI = {
   async importTimeLogs() {
     return { success: false, count: 0, error: 'Not implemented for mobile' };
   },
+  async importContacts() {
+    return { success: false, count: 0, error: 'Not implemented for mobile' };
+  },
   async testConnection() {
     // Mobile uses direct API calls, no separate connection test needed
     return { success: true, message: 'Mobile mode - direct API', latencyMs: 0 };
@@ -562,6 +615,33 @@ const widgetAPI: WidgetAPI = {
     return () => {};
   },
   onImportProgress() {
+    return () => {};
+  },
+  
+  // Import Queue Management (mobile stubs)
+  async getImportQueueStatus(): Promise<import('@shared/types').ImportQueueStatus> {
+    return {
+      currentImport: null,
+      allStatuses: [
+        { type: 'tasks', status: 'completed', message: 'Mobile mode' },
+        { type: 'projects', status: 'completed', message: 'Mobile mode' },
+        { type: 'contacts', status: 'completed', message: 'Mobile mode' },
+        { type: 'timeLogs', status: 'completed', message: 'Mobile mode' }
+      ]
+    };
+  },
+  async cancelImport(_type: import('@shared/types').ImportType): Promise<boolean> {
+    // No import queue on mobile
+    return false;
+  },
+  async cancelAllImports(): Promise<void> {
+    // No-op on mobile
+  },
+  async getCurrentImport(): Promise<import('@shared/types').ImportType | null> {
+    return null;
+  },
+  onImportQueueStatusChange(_callback: (statuses: import('@shared/types').ImportJobStatus[]) => void) {
+    // No import queue updates on mobile
     return () => {};
   },
   

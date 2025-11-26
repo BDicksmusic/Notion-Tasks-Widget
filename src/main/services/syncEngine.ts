@@ -1041,10 +1041,15 @@ class SyncEngine extends EventEmitter {
     
     console.log(`[SyncEngine] Pulling time logs (${isInitialSync ? 'initial' : 'incremental'} sync)`);
     
+    // Update progress to show we're starting
+    importQueueManager.updateProgress('timeLogs', 10, 'Connecting to Notion...');
+    
     // Check for cancellation before starting
     if (abortSignal?.aborted) {
       throw new Error('Import was cancelled');
     }
+    
+    importQueueManager.updateProgress('timeLogs', 30, 'Fetching time logs...');
     
     // getAllTimeLogs already filters to last 2 days for efficiency
     const remoteLogs = await getAllTimeLogs();
@@ -1054,16 +1059,27 @@ class SyncEngine extends EventEmitter {
       throw new Error('Import was cancelled');
     }
     
+    importQueueManager.updateProgress('timeLogs', 70, `Processing ${remoteLogs.length} entries...`);
+    
     const timestamp = new Date().toISOString();
     
     console.log(`[SyncEngine] Received ${remoteLogs.length} time logs from Notion`);
     
-    remoteLogs.forEach((entry) => {
-      const synced = upsertRemoteTimeLogEntry(entry, timestamp);
-      this.notifyTimeLogUpdated(synced);
-    });
+    if (remoteLogs.length === 0) {
+      console.warn('[SyncEngine] No time logs received - check if Time Log database is configured');
+      importQueueManager.updateProgress('timeLogs', 100, 'No time logs found - check settings');
+    } else {
+      remoteLogs.forEach((entry) => {
+        const synced = upsertRemoteTimeLogEntry(entry, timestamp);
+        this.notifyTimeLogUpdated(synced);
+      });
+      
+      importQueueManager.updateProgress('timeLogs', 90, `Saving ${remoteLogs.length} entries...`);
+    }
     
     setSyncState(SYNC_KEY_TIMELOGS_LAST, timestamp);
+    
+    importQueueManager.updateProgress('timeLogs', 100, `${remoteLogs.length} time logs imported`);
     
     return remoteLogs.length;
   }
@@ -1075,10 +1091,15 @@ class SyncEngine extends EventEmitter {
   private async pullProjects(abortSignal?: AbortSignal) {
     console.log('[SyncEngine] Pulling projects');
     
+    // Update progress to show we're starting
+    importQueueManager.updateProgress('projects', 10, 'Connecting to Notion...');
+    
     // Check for cancellation before starting
     if (abortSignal?.aborted) {
       throw new Error('Import was cancelled');
     }
+    
+    importQueueManager.updateProgress('projects', 30, 'Fetching projects...');
     
     const projects = await fetchNotionProjects();
     
@@ -1087,16 +1108,27 @@ class SyncEngine extends EventEmitter {
       throw new Error('Import was cancelled');
     }
     
+    importQueueManager.updateProgress('projects', 70, `Processing ${projects.length} projects...`);
+    
     const timestamp = new Date().toISOString();
     
     console.log(`[SyncEngine] Received ${projects.length} projects from Notion`);
     
-    projects.forEach((project) => {
-      upsertProject(project, timestamp);
-    });
+    if (projects.length === 0) {
+      console.warn('[SyncEngine] No projects received - check if Projects database is configured in Control Center');
+      importQueueManager.updateProgress('projects', 100, 'No projects found - check settings');
+    } else {
+      projects.forEach((project) => {
+        upsertProject(project, timestamp);
+      });
+      
+      importQueueManager.updateProgress('projects', 90, `Saving ${projects.length} projects...`);
+    }
     
     setSyncState(SYNC_KEY_PROJECTS_LAST, timestamp);
     this.notifyProjectsUpdated(listProjects());
+    
+    importQueueManager.updateProgress('projects', 100, `${projects.length} projects imported`);
     
     return projects.length;
   }
@@ -1172,10 +1204,15 @@ class SyncEngine extends EventEmitter {
     let importedCount = 0;
     
     const result = await importQueueManager.requestImport('contacts', async (abortSignal) => {
+      // Update progress to show we're starting
+      importQueueManager.updateProgress('contacts', 10, 'Connecting to Notion...');
+      
       // Check for cancellation before starting
       if (abortSignal.aborted) {
         throw new Error('Import was cancelled');
       }
+      
+      importQueueManager.updateProgress('contacts', 30, 'Fetching contacts...');
       
       const contacts = await fetchNotionContacts();
       
@@ -1184,8 +1221,17 @@ class SyncEngine extends EventEmitter {
         throw new Error('Import was cancelled');
       }
       
+      importQueueManager.updateProgress('contacts', 70, `Processing ${contacts.length} contacts...`);
+      
       importedCount = contacts.length;
       console.log(`[SyncEngine] Received ${contacts.length} contacts from Notion`);
+      
+      if (contacts.length === 0) {
+        console.warn('[SyncEngine] No contacts received - check if Contacts database is configured');
+        importQueueManager.updateProgress('contacts', 100, 'No contacts found - check settings');
+      } else {
+        importQueueManager.updateProgress('contacts', 100, `${contacts.length} contacts imported`);
+      }
     });
     
     if (result.status === 'completed') {

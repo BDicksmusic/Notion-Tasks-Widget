@@ -17,6 +17,17 @@ const IMPORT_OPTIONS: ImportOption[] = [
   { type: 'timeLogs', label: 'Time Logs', icon: '⏱', description: 'Import time log entries' },
 ];
 
+// Helper to get human-readable database names
+function getDatabaseSettingsHint(type: ImportType): string {
+  switch (type) {
+    case 'tasks': return 'Tasks Database';
+    case 'projects': return 'Projects Settings';
+    case 'contacts': return 'Contacts Settings';
+    case 'timeLogs': return 'Time Log Settings';
+    default: return 'Settings';
+  }
+}
+
 function getStatusIcon(status: ImportJobStatus['status']): string {
   switch (status) {
     case 'running': return '⟳';
@@ -207,6 +218,11 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
                             : jobStatus.error}
                         </span>
                       )}
+                      {jobStatus?.message?.includes('No ') && jobStatus?.message?.includes('found') && (
+                        <span className="import-item-hint">
+                          Check {getDatabaseSettingsHint(option.type)} in Control Center
+                        </span>
+                      )}
                     </div>
                   </div>
                   
@@ -249,6 +265,26 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           </div>
           
           <div className="import-queue-footer">
+            <div className="import-queue-footer-actions">
+              <button
+                type="button"
+                className="quick-sync-btn"
+                onClick={async () => {
+                  const widgetAPI = getWidgetAPI();
+                  try {
+                    await widgetAPI.forceSync();
+                    const tasks = await widgetAPI.getTasks();
+                    onImportStarted?.('tasks');
+                  } catch (error) {
+                    console.error('Quick sync failed:', error);
+                  }
+                }}
+                disabled={isAnyRunning}
+                title="Quick sync - refreshes local data from cache"
+              >
+                ↻ Quick Sync
+              </button>
+            </div>
             <span className="import-queue-hint">
               Only one import runs at a time. Starting a new import will cancel the current one.
             </span>
@@ -422,6 +458,12 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           text-overflow: ellipsis;
         }
 
+        .import-item-hint {
+          font-size: 10px;
+          color: var(--notion-orange, #f39c12);
+          font-style: italic;
+        }
+
         .import-item-actions {
           display: flex;
           align-items: center;
@@ -487,10 +529,46 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           background: var(--notion-bg);
         }
 
+        .import-queue-footer-actions {
+          display: flex;
+          justify-content: center;
+          margin-bottom: 8px;
+        }
+
+        .quick-sync-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 8px 16px;
+          border: 1px solid var(--notion-border);
+          border-radius: 6px;
+          background: var(--notion-bg-secondary);
+          color: var(--notion-text);
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+          width: 100%;
+        }
+
+        .quick-sync-btn:hover:not(:disabled) {
+          background: var(--notion-bg-hover);
+          border-color: var(--notion-blue);
+          color: var(--notion-blue);
+        }
+
+        .quick-sync-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
         .import-queue-hint {
           font-size: 11px;
           color: var(--notion-text-secondary);
           line-height: 1.4;
+          text-align: center;
+          display: block;
         }
       `}</style>
     </div>

@@ -1232,17 +1232,16 @@ const TaskList = ({
 
         const handleCompleteToggle = (event: React.MouseEvent<HTMLButtonElement>) => {
           if (!completedStatus) return;
+          // Capture the task row before async operations (React events are recycled)
+          const taskRow = (event.currentTarget as HTMLElement)?.closest('.task-row') as HTMLElement | null;
           playCompletionSound(isComplete ? 'undo' : 'complete');
           void handleUpdate(task.id, {
             status: isComplete ? defaultStatus || null : completedStatus
           });
           // Scroll to center after toggle
-          if (onScrollToCenter) {
+          if (onScrollToCenter && taskRow) {
             setTimeout(() => {
-              const taskRow = event.currentTarget.closest('.task-row') as HTMLElement;
-              if (taskRow) {
-                onScrollToCenter(taskRow);
-              }
+              onScrollToCenter(taskRow);
             }, 0);
           }
         };
@@ -1519,16 +1518,15 @@ const TaskList = ({
                     task.hardDeadline ? 'chip-hard' : 'chip-soft'
                   }`}
                   onClick={(e) => {
+                    // Capture the task row before async operations (React events are recycled)
+                    const taskRow = (e.currentTarget as HTMLElement)?.closest('.task-row') as HTMLElement | null;
                     void handleUpdate(task.id, {
                       hardDeadline: !task.hardDeadline
                     });
                     // Scroll to center after toggle
-                    if (onScrollToCenter) {
+                    if (onScrollToCenter && taskRow) {
                       setTimeout(() => {
-                        const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
-                        if (taskRow) {
-                          onScrollToCenter(taskRow);
-                        }
+                        onScrollToCenter(taskRow);
                       }, 0);
                     }
                   }}

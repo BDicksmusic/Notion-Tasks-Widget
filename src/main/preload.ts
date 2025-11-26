@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   CrossWindowDragState,
   CrossWindowDropPayload,
+  DatabaseVerificationResult,
   DockState,
+  FullVerificationResult,
   ImportJobStatus,
   ImportProgress,
   ImportQueueStatus,
@@ -13,7 +15,8 @@ import type {
   SyncStateSummary,
   Task,
   UpdateInfo,
-  UpdateStatus
+  UpdateStatus,
+  VerifiableDatabaseType
 } from '../shared/types';
 import type { SettingsAPI, WidgetAPI } from '../shared/ipc';
 
@@ -254,6 +257,26 @@ const widgetAPI: WidgetAPI = {
   },
   getDetailedStatusDiagnostics() {
     return ipcRenderer.invoke('diagnostics:statusDetailed');
+  },
+  
+  // Database Verification API
+  verifyTasksDatabase(): Promise<DatabaseVerificationResult> {
+    return ipcRenderer.invoke('verify:tasks');
+  },
+  verifyProjectsDatabase(): Promise<DatabaseVerificationResult> {
+    return ipcRenderer.invoke('verify:projects');
+  },
+  verifyContactsDatabase(): Promise<DatabaseVerificationResult> {
+    return ipcRenderer.invoke('verify:contacts');
+  },
+  verifyTimeLogsDatabase(): Promise<DatabaseVerificationResult> {
+    return ipcRenderer.invoke('verify:timeLogs');
+  },
+  verifyWritingDatabase(): Promise<DatabaseVerificationResult> {
+    return ipcRenderer.invoke('verify:writing');
+  },
+  verifyAllDatabases(): Promise<FullVerificationResult> {
+    return ipcRenderer.invoke('verify:all');
   },
   
   // ============================================================================

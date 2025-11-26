@@ -9,9 +9,11 @@ import type {
   ContactsSettings,
   CrossWindowDragState,
   CrossWindowDropPayload,
+  DatabaseVerificationResult,
   DockEdge,
   DockState,
   FeatureToggles,
+  FullVerificationResult,
   ImportJobStatus,
   ImportProgress,
   ImportQueueStatus,
@@ -141,6 +143,20 @@ export interface WidgetAPI {
       normalizedStatus: string | undefined;
     }>;
   }>;
+  
+  // Database Verification API
+  /** Verify Tasks database configuration - checks if properties exist */
+  verifyTasksDatabase(): Promise<DatabaseVerificationResult>;
+  /** Verify Projects database configuration */
+  verifyProjectsDatabase(): Promise<DatabaseVerificationResult>;
+  /** Verify Contacts database configuration */
+  verifyContactsDatabase(): Promise<DatabaseVerificationResult>;
+  /** Verify Time Logs database configuration */
+  verifyTimeLogsDatabase(): Promise<DatabaseVerificationResult>;
+  /** Verify Writing database configuration */
+  verifyWritingDatabase(): Promise<DatabaseVerificationResult>;
+  /** Verify all databases at once */
+  verifyAllDatabases(): Promise<FullVerificationResult>;
   
   // ============================================================================
   // LOCAL STATUS MANAGEMENT (LOCAL-FIRST)
