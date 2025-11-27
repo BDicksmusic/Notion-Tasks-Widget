@@ -386,3 +386,138 @@ export async function retrievePagesById<T>(
   return pages;
 }
 
+/**
+ * Property value types from Notion API
+ */
+export interface PropertyItemValue {
+  type: string;
+  id: string;
+  [key: string]: any;
+}
+
+/**
+ * Retrieve ONLY specific properties for a page using the property-specific endpoint.
+ * 
+ * This is the OPTIMAL strategy for databases with many properties (50+):
+ * - pages.retrieve fetches ALL properties (slow for 200 properties)
+ * - pages/{page_id}/properties/{property_id} fetches ONE property (fast)
+ * 
+ * For a database with 200 properties where we only need 5:
+ * - pages.retrieve: computes 200 properties → slow, may timeout
+ * - This method: computes 5 properties → 40x faster
+ * 
+ * @param client - Notion client
+ * @param pageId - Page ID to retrieve properties for
+ * @param propertyIds - Map of property name → property ID
+ * @param propertyNames - List of property names to retrieve
+ * @returns Map of property name → property value
+ */
+export async function retrievePageProperties(
+  client: Client,
+  pageId: string,
+  propertyIds: Map<string, string>,
+  propertyNames: string[]
+): Promise<Map<string, PropertyItemValue>> {
+  const properties = new Map<string, PropertyItemValue>();
+  
+  // Filter to only properties that exist in the schema
+  const validProperties = propertyNames.filter(name => propertyIds.has(name));
+  
+  if (validProperties.length === 0) {
+    console.warn(`[NotionAPI] No valid properties to retrieve for page ${pageId.substring(0, 8)}`);
+    return properties;
+  }
+  
+  // Fetch all properties in parallel (each is a separate API call, but very fast)
+  const results = await Promise.all(
+    validProperties.map(async (propName) => {
+      const propId = propertyIds.get(propName)!;
+      try {
+        const response = await withRetry(
+          client,
+          () => client.pages.properties.retrieve({ 
+            page_id: pageId, 
+            property_id: propId 
+          }),
+          `Get property ${propName}`
+        );
+        return { name: propName, value: response as PropertyItemValue };
+      } catch (error) {
+        // Property might not exist on this specific page
+        console.debug(`[NotionAPI] Failed to get property "${propName}" for page ${pageId.substring(0, 8)}`);
+        return { name: propName, value: null };
+      }
+    })
+  );
+  
+  for (const { name, value } of results) {
+    if (value !== null) {
+      properties.set(name, value);
+    }
+  }
+  
+  return properties;
+}
+
+/**
+ * Retrieve pages with ONLY specific properties - optimized for databases with many properties.
+ * 
+ * Strategy:
+ * 1. Get page basic info (id, url) from search/query results
+ * 2. Fetch only the required properties using property-specific endpoint
+ * 3. Much faster than pages.retrieve for databases with 50+ properties
+ * 
+ * @param client - Notion client
+ * @param pageIds - Array of page IDs
+ * @param propertyIds - Map of property name → property ID (from database schema)
+ * @param propertyNames - List of property names we actually need
+ * @param concurrency - Number of parallel page fetches
+ */
+export async function retrievePagesWithSpecificProperties(
+  client: Client,
+  pageIds: string[],
+  propertyIds: Map<string, string>,
+  propertyNames: string[],
+  concurrency: number = 2
+): Promise<Array<{ id: string; url: string; properties: Map<string, PropertyItemValue> }>> {
+  const results: Array<{ id: string; url: string; properties: Map<string, PropertyItemValue> }> = [];
+  
+  console.log(`[NotionAPI] Fetching ${pageIds.length} pages with ${propertyNames.length} specific properties each`);
+  
+  // Process pages in batches
+  for (let i = 0; i < pageIds.length; i += concurrency) {
+    const batch = pageIds.slice(i, i + concurrency);
+    
+    const batchResults = await Promise.all(
+      batch.map(async (pageId) => {
+        try {
+          // Fetch only the properties we need
+          const properties = await retrievePageProperties(
+            client,
+            pageId,
+            propertyIds,
+            propertyNames
+          );
+          
+          // Construct page URL from ID
+          const cleanId = pageId.replace(/-/g, '');
+          const url = `https://www.notion.so/${cleanId}`;
+          
+          return { id: pageId, url, properties };
+        } catch (error) {
+          console.error(`[NotionAPI] Failed to get properties for page ${pageId}:`, error);
+          return null;
+        }
+      })
+    );
+    
+    for (const result of batchResults) {
+      if (result !== null) {
+        results.push(result);
+      }
+    }
+  }
+  
+  return results;
+}
+

@@ -29,7 +29,18 @@ import type {
   WritingSettings
 } from '../../shared/types';
 import { convertMarkdown } from '../../shared/markdown';
-import { createNotionClient, withRetry, andFilters, classifyError, getErrorMessage, is504Error, searchPagesInDatabase, retrievePagesById } from './notionApi';
+import { 
+  createNotionClient, 
+  withRetry, 
+  andFilters, 
+  classifyError, 
+  getErrorMessage, 
+  is504Error, 
+  searchPagesInDatabase, 
+  retrievePagesById,
+  retrievePagesWithSpecificProperties,
+  type PropertyItemValue
+} from './notionApi';
 
 let notion: Client | null = null;
 let settings: NotionSettings;
@@ -643,6 +654,11 @@ export async function getTasksBatchReliably(
 
 /**
  * Search API fallback for tasks - used when database.query times out
+ * 
+ * OPTIMIZED: Uses property-specific retrieval instead of pages.retrieve
+ * For databases with 200 properties where we only need ~8:
+ * - pages.retrieve: computes 200 properties → slow
+ * - This method: computes 8 properties → 25x faster
  */
 async function getTasksBatchViaSearch(
   client: Client,
@@ -650,7 +666,7 @@ async function getTasksBatchViaSearch(
   cursor: string | undefined,
   batchSize: number
 ): Promise<ReliableImportResult> {
-  console.log(`[Notion] Using Search API fallback for tasks (cursor: ${cursor ? 'yes' : 'no'})`);
+  console.log(`[Notion] Using OPTIMIZED Search API fallback for tasks (cursor: ${cursor ? 'yes' : 'no'})`);
   
   const searchResult = await searchPagesInDatabase(
     client,
@@ -672,10 +688,57 @@ async function getTasksBatchViaSearch(
     };
   }
   
-  // Retrieve each page individually (this never times out)
-  const tasks = await fetchTasksFromPageIds(client, searchResult.pageIds);
+  // Get property ID mapping
+  const propertyIds = await getPropertyIds();
   
-  console.log(`[Notion] Search fallback batch: ${tasks.length} tasks from ${searchResult.pageIds.length} pages`);
+  if (propertyIds.size === 0) {
+    // Fallback to full page retrieval if no property IDs
+    console.warn('[Notion] No property IDs available, using full page retrieval');
+    const tasks = await fetchTasksFromPageIds(client, searchResult.pageIds);
+    return {
+      tasks,
+      pageIds: searchResult.pageIds,
+      nextCursor: searchResult.nextCursor,
+      hasMore: searchResult.hasMore
+    };
+  }
+  
+  // Define ONLY the properties we need for tasks
+  const requiredProperties = [
+    settings.titleProperty,
+    settings.statusProperty,
+    settings.dateProperty,
+    settings.deadlineProperty,
+    settings.urgentProperty,
+    settings.importantProperty,
+    settings.mainEntryProperty,
+    settings.sessionLengthProperty,
+    settings.estimatedLengthProperty,
+    settings.orderProperty,
+    settings.projectRelationProperty,
+    settings.parentTaskProperty,
+    settings.recurrenceProperty
+  ].filter((p): p is string => Boolean(p?.trim()));
+  
+  console.log(`[Notion] Fetching only ${requiredProperties.length} properties per task`);
+  
+  // Use optimized property-specific retrieval
+  const pageData = await retrievePagesWithSpecificProperties(
+    client,
+    searchResult.pageIds,
+    propertyIds,
+    requiredProperties,
+    2 // 2 pages in parallel
+  );
+  
+  // Map to tasks
+  const tasks: Task[] = [];
+  for (const { id, url, properties } of pageData) {
+    const task = mapPropertiesToTask(id, url, properties);
+    tasks.push(task);
+  }
+  
+  console.log(`[Notion] OPTIMIZED Search batch: ${tasks.length} tasks from ${searchResult.pageIds.length} pages`);
   
   return {
     tasks,
@@ -683,6 +746,159 @@ async function getTasksBatchViaSearch(
     nextCursor: searchResult.nextCursor,
     hasMore: searchResult.hasMore
   };
+}
+
+/**
+ * Map property values to a Task object (used with property-specific retrieval)
+ */
+function mapPropertiesToTask(
+  pageId: string,
+  url: string,
+  properties: Map<string, PropertyItemValue>
+): Task {
+  const title = extractTitleFromPropertyItem(properties.get(settings.titleProperty)) || 'Untitled';
+  const status = extractStatusFromPropertyItem(properties.get(settings.statusProperty));
+  const { start: dueDate, end: dueDateEnd } = extractDateRangeFromPropertyItem(properties.get(settings.dateProperty));
+  
+  const hardDeadline = settings.deadlineProperty 
+    ? isStatusMatchFromPropertyItem(properties.get(settings.deadlineProperty), settings.deadlineHardValue)
+    : false;
+  
+  const urgent = settings.urgentProperty
+    ? extractBooleanFromPropertyItem(properties.get(settings.urgentProperty), settings.urgentStatusActive)
+    : false;
+    
+  const important = settings.importantProperty
+    ? extractBooleanFromPropertyItem(properties.get(settings.importantProperty), settings.importantStatusActive)
+    : false;
+  
+  const mainEntry = settings.mainEntryProperty
+    ? extractRichTextFromPropertyItem(properties.get(settings.mainEntryProperty))
+    : undefined;
+  
+  const sessionLengthMinutes = settings.sessionLengthProperty
+    ? extractNumberFromPropertyItem(properties.get(settings.sessionLengthProperty))
+    : undefined;
+    
+  const estimatedLengthMinutes = settings.estimatedLengthProperty
+    ? extractNumberFromPropertyItem(properties.get(settings.estimatedLengthProperty))
+    : undefined;
+  
+  const orderSelect = settings.orderProperty
+    ? extractSelectFromPropertyItem(properties.get(settings.orderProperty))
+    : null;
+  
+  const projectIds = settings.projectRelationProperty
+    ? extractRelationIdsFromPropertyItem(properties.get(settings.projectRelationProperty))
+    : null;
+    
+  const parentTaskIds = settings.parentTaskProperty
+    ? extractRelationIdsFromPropertyItem(properties.get(settings.parentTaskProperty))
+    : null;
+  const parentTaskId = parentTaskIds && parentTaskIds.length > 0 ? parentTaskIds[0] : undefined;
+  
+  const recurrence = settings.recurrenceProperty
+    ? extractMultiSelectFromPropertyItem(properties.get(settings.recurrenceProperty))
+    : null;
+  
+  // Import status filter mapping
+  const { mapStatusToFilterValue } = require('@shared/statusFilters');
+  const normalizedStatus = mapStatusToFilterValue(status);
+  
+  return {
+    id: pageId,
+    title,
+    status: status ?? undefined,
+    normalizedStatus,
+    dueDate,
+    dueDateEnd: dueDateEnd ?? undefined,
+    url,
+    hardDeadline,
+    urgent,
+    important,
+    mainEntry: mainEntry ?? undefined,
+    sessionLengthMinutes,
+    estimatedLengthMinutes,
+    orderValue: orderSelect?.name ?? null,
+    orderColor: orderSelect?.color ?? null,
+    projectIds,
+    recurrence: recurrence && recurrence.length > 0 ? recurrence : undefined,
+    parentTaskId
+  };
+}
+
+// Additional property extractors for tasks
+function extractDateRangeFromPropertyItem(prop: PropertyItemValue | undefined): { start?: string; end?: string } {
+  if (!prop || prop.type !== 'date') {
+    return {};
+  }
+  return {
+    start: prop.date?.start ?? undefined,
+    end: prop.date?.end ?? undefined
+  };
+}
+
+function isStatusMatchFromPropertyItem(prop: PropertyItemValue | undefined, expected: string): boolean {
+  if (!prop || !expected) return false;
+  if (prop.type === 'status') {
+    return prop.status?.name === expected;
+  }
+  if (prop.type === 'select') {
+    return prop.select?.name === expected;
+  }
+  return false;
+}
+
+function extractBooleanFromPropertyItem(prop: PropertyItemValue | undefined, activeLabel: string): boolean {
+  if (!prop) return false;
+  if (prop.type === 'checkbox') {
+    return Boolean(prop.checkbox);
+  }
+  return isStatusMatchFromPropertyItem(prop, activeLabel);
+}
+
+function extractNumberFromPropertyItem(prop: PropertyItemValue | undefined): number | undefined {
+  if (!prop) return undefined;
+  if (prop.type === 'number') {
+    return typeof prop.number === 'number' ? prop.number : undefined;
+  }
+  if (prop.type === 'formula') {
+    const value = prop.formula;
+    if (value && 'number' in value && typeof value.number === 'number') {
+      return value.number;
+    }
+  }
+  return undefined;
+}
+
+function extractSelectFromPropertyItem(prop: PropertyItemValue | undefined): { name: string; color?: string } | null {
+  if (!prop) return null;
+  if (prop.type === 'select' && prop.select) {
+    return { name: prop.select.name, color: prop.select.color };
+  }
+  if (prop.type === 'status' && prop.status) {
+    return { name: prop.status.name, color: prop.status.color };
+  }
+  return null;
+}
+
+function extractRelationIdsFromPropertyItem(prop: PropertyItemValue | undefined): string[] | null {
+  if (!prop) return null;
+  
+  // Relation properties return a paginated list
+  if (prop.type === 'relation') {
+    const relations = prop.relation || prop.results;
+    if (Array.isArray(relations)) {
+      return relations.map((r: any) => r.id);
+    }
+  }
+  
+  // Handle paginated response format
+  if (prop.type === 'property_item' && Array.isArray((prop as any).results)) {
+    return (prop as any).results.map((r: any) => r.relation?.id || r.id).filter(Boolean);
+  }
+  
+  return null;
 }
 
 /**
@@ -1748,26 +1964,51 @@ async function getProjectsViaQuery(client: Client, dbId: string): Promise<Projec
 }
 
 /**
- * Fallback approach: Use Search API + pages.retrieve
- * This is MUCH more reliable for complex databases with many rollups/relations
+ * Fallback approach: Use Search API + property-specific retrieval
+ * 
+ * OPTIMIZED for databases with many properties (50+):
+ * - Instead of pages.retrieve (fetches ALL properties), we use
+ * - pages/{page_id}/properties/{property_id} (fetches ONE property)
+ * 
+ * For a database with 200 properties where we only need 5:
+ * - pages.retrieve: computes 200 properties → slow, may timeout
+ * - This method: computes 5 properties → 40x faster
  */
 async function getProjectsViaSearch(client: Client, dbId: string): Promise<Project[]> {
-  console.log('[Notion] Using Search API fallback for projects...');
+  console.log('[Notion] Using OPTIMIZED Search API fallback for projects (property-specific retrieval)...');
+  
+  // Get property ID mapping first
+  const propertyIds = await getProjectPropertyIds();
+  
+  if (propertyIds.size === 0) {
+    console.warn('[Notion] No property IDs available, falling back to full page retrieval');
+    return getProjectsViaSearchFullPages(client, dbId);
+  }
+  
+  // Define the ONLY properties we need for projects
+  const requiredProperties = [
+    projectsSettings?.titleProperty || 'Name',
+    projectsSettings?.statusProperty || 'Status',
+    projectsSettings?.descriptionProperty,
+    projectsSettings?.startDateProperty,
+    projectsSettings?.endDateProperty,
+    projectsSettings?.tagsProperty
+  ].filter((p): p is string => Boolean(p?.trim()));
+  
+  console.log(`[Notion] Will fetch only ${requiredProperties.length} properties per page: ${requiredProperties.join(', ')}`);
   
   const projects: Project[] = [];
   let cursor: string | undefined = undefined;
   let totalPagesFound = 0;
   let emptySearchCount = 0;
-  const MAX_EMPTY_SEARCHES = 5; // Stop after 5 consecutive empty results
+  const MAX_EMPTY_SEARCHES = 5;
   
-  // Search API may return results from other databases, so we filter by database ID
-  // Also, search doesn't support database_id filter, so we fetch and filter
   while (emptySearchCount < MAX_EMPTY_SEARCHES) {
     const searchResult = await searchPagesInDatabase(
       client,
       dbId,
-      '', // Empty query = all pages
-      20, // Larger page size since we're filtering
+      '',
+      20,
       cursor
     );
     
@@ -1778,35 +2019,186 @@ async function getProjectsViaSearch(client: Client, dbId: string): Promise<Proje
       continue;
     }
     
-    emptySearchCount = 0; // Reset counter on successful find
+    emptySearchCount = 0;
     totalPagesFound += searchResult.pageIds.length;
     
-    console.log(`[Notion] Found ${searchResult.pageIds.length} project pages, retrieving...`);
+    console.log(`[Notion] Found ${searchResult.pageIds.length} project pages, fetching specific properties...`);
     
-    // Retrieve each page individually (this never times out)
-    const pages = await retrievePagesById<PageObjectResponse>(
+    // Use optimized property-specific retrieval
+    const pageData = await retrievePagesWithSpecificProperties(
       client,
       searchResult.pageIds,
-      3 // 3 concurrent requests
+      propertyIds,
+      requiredProperties,
+      2 // 2 pages in parallel (each page fetches multiple properties)
     );
     
-    for (const page of pages) {
-      const project = mapPageToProject(page, projects.length === 0);
+    for (const { id, url, properties } of pageData) {
+      const project = mapPropertiesToProject(id, url, properties, projects.length === 0);
       projects.push(project);
     }
     
     if (!searchResult.hasMore) break;
     cursor = searchResult.nextCursor ?? undefined;
     
-    // Brief delay between search batches
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   
-  console.log(`[Notion] Fetched ${projects.length} projects via Search API (total pages found: ${totalPagesFound})`);
+  console.log(`[Notion] Fetched ${projects.length} projects via OPTIMIZED Search API (total pages found: ${totalPagesFound})`);
   const withStatus = projects.filter(p => p.status).length;
   console.log(`[Notion] Projects with status: ${withStatus}/${projects.length}`);
   
   return projects;
+}
+
+/**
+ * Legacy fallback - uses full page retrieval (for when property IDs aren't available)
+ */
+async function getProjectsViaSearchFullPages(client: Client, dbId: string): Promise<Project[]> {
+  console.log('[Notion] Using Search API fallback with full page retrieval...');
+  
+  const projects: Project[] = [];
+  let cursor: string | undefined = undefined;
+  let emptySearchCount = 0;
+  const MAX_EMPTY_SEARCHES = 5;
+  
+  while (emptySearchCount < MAX_EMPTY_SEARCHES) {
+    const searchResult = await searchPagesInDatabase(client, dbId, '', 20, cursor);
+    
+    if (searchResult.pageIds.length === 0) {
+      emptySearchCount++;
+      if (!searchResult.hasMore) break;
+      cursor = searchResult.nextCursor ?? undefined;
+      continue;
+    }
+    
+    emptySearchCount = 0;
+    
+    const pages = await retrievePagesById<PageObjectResponse>(client, searchResult.pageIds, 3);
+    
+    for (const page of pages) {
+      projects.push(mapPageToProject(page, projects.length === 0));
+    }
+    
+    if (!searchResult.hasMore) break;
+    cursor = searchResult.nextCursor ?? undefined;
+    
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  
+  return projects;
+}
+
+/**
+ * Map property values to a Project object (used with property-specific retrieval)
+ */
+function mapPropertiesToProject(
+  pageId: string, 
+  url: string, 
+  properties: Map<string, PropertyItemValue>,
+  logDebug: boolean = false
+): Project {
+  if (logDebug) {
+    console.log('Projects - Retrieved properties:', Array.from(properties.keys()).join(', '));
+  }
+  
+  // Extract values from property items
+  const titlePropName = projectsSettings?.titleProperty || 'Name';
+  const statusPropName = projectsSettings?.statusProperty || 'Status';
+  
+  const title = extractTitleFromPropertyItem(properties.get(titlePropName));
+  const status = extractStatusFromPropertyItem(properties.get(statusPropName));
+  const description = extractRichTextFromPropertyItem(properties.get(projectsSettings?.descriptionProperty || ''));
+  const startDate = extractDateFromPropertyItem(properties.get(projectsSettings?.startDateProperty || ''));
+  const endDate = extractDateFromPropertyItem(properties.get(projectsSettings?.endDateProperty || ''));
+  const tags = extractMultiSelectFromPropertyItem(properties.get(projectsSettings?.tagsProperty || ''));
+  
+  if (logDebug) {
+    console.log(`[Notion] Project: "${title}" → status="${status}"`);
+  }
+  
+  return {
+    id: pageId,
+    title,
+    status,
+    description,
+    startDate,
+    endDate,
+    tags,
+    url
+  };
+}
+
+// Property item extractors for the property-specific API response format
+function extractTitleFromPropertyItem(prop: PropertyItemValue | undefined): string | null {
+  if (!prop) return null;
+  
+  // Property item response has different structure than page property
+  if (prop.type === 'title') {
+    const titleArray = prop.title || prop.results;
+    if (Array.isArray(titleArray)) {
+      return titleArray.map((t: any) => t.plain_text || '').join('') || null;
+    }
+  }
+  
+  // Handle paginated title responses
+  if (prop.type === 'property_item' && (prop as any).property_item?.type === 'title') {
+    const results = (prop as any).results;
+    if (Array.isArray(results)) {
+      return results.map((t: any) => t.title?.plain_text || '').join('') || null;
+    }
+  }
+  
+  return null;
+}
+
+function extractStatusFromPropertyItem(prop: PropertyItemValue | undefined): string | null {
+  if (!prop) return null;
+  
+  if (prop.type === 'status') {
+    return prop.status?.name ?? null;
+  }
+  if (prop.type === 'select') {
+    return prop.select?.name ?? null;
+  }
+  
+  return null;
+}
+
+function extractRichTextFromPropertyItem(prop: PropertyItemValue | undefined): string | null {
+  if (!prop) return null;
+  
+  if (prop.type === 'rich_text') {
+    const textArray = prop.rich_text || prop.results;
+    if (Array.isArray(textArray)) {
+      return textArray.map((t: any) => t.plain_text || '').join('') || null;
+    }
+  }
+  
+  return null;
+}
+
+function extractDateFromPropertyItem(prop: PropertyItemValue | undefined): string | null {
+  if (!prop) return null;
+  
+  if (prop.type === 'date') {
+    return prop.date?.start ?? null;
+  }
+  
+  return null;
+}
+
+function extractMultiSelectFromPropertyItem(prop: PropertyItemValue | undefined): string[] | null {
+  if (!prop) return null;
+  
+  if (prop.type === 'multi_select') {
+    const options = prop.multi_select;
+    if (Array.isArray(options)) {
+      return options.map((o: any) => o.name);
+    }
+  }
+  
+  return null;
 }
 
 /**
