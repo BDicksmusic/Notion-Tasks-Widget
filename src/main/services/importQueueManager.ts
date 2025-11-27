@@ -225,12 +225,22 @@ class ImportQueueManager extends EventEmitter {
    * Cancel a specific import type (if it's running)
    */
   cancelImport(type: ImportType): boolean {
+    console.log(`[ImportQueue] Cancel requested for: ${type}, currentJob: ${this.currentJob?.type ?? 'none'}`);
+    
     if (this.currentJob?.type !== type) {
+      console.log(`[ImportQueue] Cannot cancel - job type mismatch or no job running`);
       return false;
     }
     
-    console.log(`[ImportQueue] Manual cancel requested: ${type}`);
+    console.log(`[ImportQueue] Aborting import: ${type}`);
     this.currentJob.abortController.abort();
+    
+    // Update status immediately to reflect cancellation
+    this.updateStatus(type, {
+      status: 'cancelled',
+      message: 'Cancelling...'
+    });
+    
     return true;
   }
   

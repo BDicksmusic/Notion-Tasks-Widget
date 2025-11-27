@@ -566,6 +566,9 @@ const widgetAPI: WidgetAPI = {
     return null; // Mobile doesn't have local project storage
   },
   
+  async importTasks() {
+    // Not implemented for mobile - tasks are synced automatically
+  },
   async importProjects() {
     return { success: false, count: 0, error: 'Not implemented for mobile' };
   },
@@ -798,6 +801,91 @@ const widgetAPI: WidgetAPI = {
   async deleteChatSummary(_summaryId: string): Promise<boolean> {
     console.info('[mobile] deleteChatSummary - not supported on mobile');
     return false;
+  },
+  
+  // Data Management APIs (mobile stubs)
+  async getDataCounts(): Promise<import('@shared/ipc').DataCounts> {
+    console.info('[mobile] getDataCounts - not supported on mobile');
+    return {
+      tasks: 0,
+      projects: 0,
+      timeLogs: 0,
+      writingEntries: 0,
+      chatSummaries: 0,
+      pendingSyncItems: 0
+    };
+  },
+  async performFullReset(): Promise<import('@shared/ipc').ResetResult> {
+    console.info('[mobile] performFullReset - not supported on mobile');
+    return {
+      success: false,
+      clearedCounts: {
+        tasks: 0,
+        projects: 0,
+        timeLogs: 0,
+        writingEntries: 0,
+        chatSummaries: 0,
+        pendingSyncItems: 0
+      },
+      error: 'Data reset is not available on mobile'
+    };
+  },
+  async performSoftReset(): Promise<import('@shared/ipc').ResetResult> {
+    console.info('[mobile] performSoftReset - not supported on mobile');
+    return {
+      success: false,
+      clearedCounts: {
+        tasks: 0,
+        projects: 0,
+        timeLogs: 0,
+        writingEntries: 0,
+        chatSummaries: 0,
+        pendingSyncItems: 0
+      },
+      error: 'Data reset is not available on mobile'
+    };
+  },
+  async resetTasksOnly(): Promise<{ success: boolean; cleared: number; error?: string }> {
+    console.info('[mobile] resetTasksOnly - not supported on mobile');
+    return { success: false, cleared: 0, error: 'Not available on mobile' };
+  },
+  async resetProjectsOnly(): Promise<{ success: boolean; cleared: number; error?: string }> {
+    console.info('[mobile] resetProjectsOnly - not supported on mobile');
+    return { success: false, cleared: 0, error: 'Not available on mobile' };
+  },
+  async resetTimeLogsOnly(): Promise<{ success: boolean; cleared: number; error?: string }> {
+    console.info('[mobile] resetTimeLogsOnly - not supported on mobile');
+    return { success: false, cleared: 0, error: 'Not available on mobile' };
+  },
+  async performFullResetAndImport(): Promise<{
+    resetSuccess: boolean;
+    importSuccess: boolean;
+    resetResult: import('@shared/ipc').ResetResult;
+    syncStatus?: import('@shared/types').SyncStateSummary;
+    error?: string;
+  }> {
+    console.info('[mobile] performFullResetAndImport - not supported on mobile');
+    return {
+      resetSuccess: false,
+      importSuccess: false,
+      resetResult: {
+        success: false,
+        clearedCounts: {
+          tasks: 0,
+          projects: 0,
+          timeLogs: 0,
+          writingEntries: 0,
+          chatSummaries: 0,
+          pendingSyncItems: 0
+        },
+        error: 'Data reset is not available on mobile'
+      },
+      error: 'Not available on mobile'
+    };
+  },
+  onDataResetComplete(_callback: (result: import('@shared/ipc').ResetResult) => void) {
+    // No reset events on mobile
+    return () => {};
   }
 };
 

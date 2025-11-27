@@ -59,8 +59,15 @@ export function mapPageToTask(
   const parentTaskIds = extractRelationIds(parentTaskProperty);
   const parentTaskId = parentTaskIds && parentTaskIds.length > 0 ? parentTaskIds[0] : undefined;
 
+  // Extract unique ID for deduplication (e.g., "ACTION-123")
+  const idProperty = settings.idProperty
+    ? properties[settings.idProperty]
+    : undefined;
+  const uniqueId = extractUniqueId(idProperty);
+
   return {
     id: page.id,
+    uniqueId,
     title: title || 'Untitled',
     status,
     normalizedStatus,
@@ -204,6 +211,22 @@ function extractMultiSelect(property: TaskProperty | undefined): string[] | null
     return null;
   }
   return property.multi_select.map((option) => option.name);
+}
+
+/**
+ * Extract unique_id property value (e.g., "ACTION-123", "PRJ-45")
+ * Notion's unique_id property returns { prefix: string, number: number }
+ */
+function extractUniqueId(property: TaskProperty | undefined): string | undefined {
+  if (!property || property.type !== 'unique_id') {
+    return undefined;
+  }
+  const uniqueId = (property as any).unique_id;
+  if (uniqueId && typeof uniqueId.number === 'number') {
+    const prefix = uniqueId.prefix || '';
+    return prefix ? `${prefix}-${uniqueId.number}` : String(uniqueId.number);
+  }
+  return undefined;
 }
 
 

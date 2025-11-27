@@ -7,6 +7,8 @@ export interface DockState {
 
 export interface Task {
   id: string;
+  /** Notion's unique ID with prefix (e.g., "ACTION-123") */
+  uniqueId?: string;
   title: string;
   status?: string;
   normalizedStatus?: string;
@@ -148,6 +150,8 @@ export interface NotionSettings {
   // Widget Link - Date property to track when task was last synced to widget
   // This is updated every time a task is pushed to Notion
   widgetLinkProperty?: string;
+  /** Notion unique ID property (e.g., "ID" with prefix "ACTION") for deduplication */
+  idProperty?: string;
 }
 
 export interface AppPreferences {
@@ -171,6 +175,8 @@ export interface WritingSettings {
   statusProperty?: string;
   publishedStatus?: string;
   draftStatus?: string;
+  /** Notion unique ID property (e.g., "ID" with prefix "WRITE-LOG") for deduplication */
+  idProperty?: string;
 }
 
 export type ChatbotProvider = 'openai' | 'anthropic';
@@ -345,6 +351,8 @@ export interface TimeLogSettings {
   titleProperty?: string;
   startStatusValue?: string;  // Status option for active sessions (default: "Start")
   endStatusValue?: string;    // Status option for completed sessions (default: "End")
+  /** Notion unique ID property (e.g., "ID" with prefix "TIME-LOG") for deduplication */
+  idProperty?: string;
 }
 
 export interface TimeLogEntryPayload {
@@ -365,6 +373,8 @@ export interface ActiveTimeLogEntry {
 
 export interface TimeLogEntry {
   id: string;
+  /** Notion's unique ID with prefix (e.g., "TIME-LOG-123") */
+  uniqueId?: string;
   startTime?: string | null;
   endTime?: string | null;
   durationMinutes?: number | null;
@@ -404,6 +414,8 @@ export interface ProjectsSettings {
   completedStatus?: string;
   /** Cached status options from last successful schema fetch (avoids repeated API calls) */
   cachedStatusOptions?: Array<{ id: string; name: string; color?: string }>;
+  /** Notion unique ID property (e.g., "ID" with prefix "PRJ") for deduplication */
+  idProperty?: string;
 }
 
 export interface ContactsSettings {
@@ -420,6 +432,8 @@ export interface ContactsSettings {
 
 export interface Project {
   id: string;
+  /** Notion's unique ID with prefix (e.g., "PRJ-123") */
+  uniqueId?: string;
   title?: string | null;
   status?: string | null;
   description?: string | null;

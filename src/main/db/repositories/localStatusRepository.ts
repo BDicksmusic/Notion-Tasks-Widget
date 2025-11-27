@@ -410,5 +410,34 @@ export function initializeAllDefaultStatuses(): void {
   initializeDefaultProjectStatuses();
 }
 
+/**
+ * Clear all local task statuses from the database
+ */
+export function clearAllLocalTaskStatuses(): number {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM local_status_options`).run();
+  console.log(`[DB] Cleared all ${result.changes} local task statuses`);
+  return result.changes;
+}
+
+/**
+ * Clear all local project statuses from the database
+ */
+export function clearAllLocalProjectStatuses(): number {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM local_project_status_options`).run();
+  console.log(`[DB] Cleared all ${result.changes} local project statuses`);
+  return result.changes;
+}
+
+/**
+ * Clear all local statuses (both task and project)
+ */
+export function clearAllLocalStatuses(): number {
+  const taskCount = clearAllLocalTaskStatuses();
+  const projectCount = clearAllLocalProjectStatuses();
+  return taskCount + projectCount;
+}
+
 
 

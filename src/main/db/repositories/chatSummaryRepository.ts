@@ -184,4 +184,14 @@ export function getChatSummaryCount(): number {
   return result.count;
 }
 
+/**
+ * Clear all chat summaries from the database
+ */
+export function clearAllChatSummaries(): number {
+  const db = getDb();
+  const result = db.prepare(`DELETE FROM ${TABLE}`).run();
+  console.log(`[DB] Cleared all ${result.changes} chat summaries`);
+  return result.changes;
+}
+
 

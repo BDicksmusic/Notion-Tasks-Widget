@@ -233,6 +233,7 @@ export interface WidgetAPI {
   getSyncStatus(): Promise<SyncStateSummary>;
   forceSync(): Promise<SyncStateSummary>;
   getSyncTimestamps(): Promise<{ tasks: string | null; projects: string | null; timeLogs: string | null }>;
+  importTasks(): Promise<void>;
   importProjects(): Promise<{ success: boolean; count: number; error?: string }>;
   importTimeLogs(): Promise<{ success: boolean; count: number; error?: string }>;
   importContacts(): Promise<{ success: boolean; count: number; error?: string }>;
@@ -337,6 +338,58 @@ export interface WidgetAPI {
   getChatSummary(summaryId: string): Promise<ChatSummary | null>;
   /** Delete a chat summary */
   deleteChatSummary(summaryId: string): Promise<boolean>;
+  
+  // ============================================================================
+  // DATA MANAGEMENT APIs
+  // Reset and cleanup operations for local data
+  // ============================================================================
+  
+  /** Data counts for display purposes */
+  getDataCounts(): Promise<DataCounts>;
+  
+  /** Full reset - wipes ALL local data and sync state */
+  performFullReset(): Promise<ResetResult>;
+  
+  /** Soft reset - wipes data but preserves sync state */
+  performSoftReset(): Promise<ResetResult>;
+  
+  /** Reset only tasks */
+  resetTasksOnly(): Promise<{ success: boolean; cleared: number; error?: string }>;
+  
+  /** Reset only projects */
+  resetProjectsOnly(): Promise<{ success: boolean; cleared: number; error?: string }>;
+  
+  /** Reset only time logs */
+  resetTimeLogsOnly(): Promise<{ success: boolean; cleared: number; error?: string }>;
+  
+  /** Full reset followed by fresh import from Notion */
+  performFullResetAndImport(): Promise<{
+    resetSuccess: boolean;
+    importSuccess: boolean;
+    resetResult: ResetResult;
+    syncStatus?: SyncStateSummary;
+    error?: string;
+  }>;
+  
+  /** Listen for reset completion events */
+  onDataResetComplete(callback: (result: ResetResult) => void): () => void;
+}
+
+/** Data counts for display in Control Center */
+export interface DataCounts {
+  tasks: number;
+  projects: number;
+  timeLogs: number;
+  writingEntries: number;
+  chatSummaries: number;
+  pendingSyncItems: number;
+}
+
+/** Result of a reset operation */
+export interface ResetResult {
+  success: boolean;
+  clearedCounts: DataCounts;
+  error?: string;
 }
 
 export interface SettingsAPI {

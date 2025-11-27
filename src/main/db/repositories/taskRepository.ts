@@ -13,22 +13,46 @@ import {
   enqueueSyncEntry
 } from './syncQueueRepository';
 
+/**
+ * Task row with dedicated columns for performance.
+ * Columns are the source of truth; payload is kept for backwards compatibility.
+ */
 type TaskRow = {
   client_id: string;
   notion_id: string | null;
-  payload: string;
+  notion_unique_id: string | null;
+  payload: string;  // Kept for backwards compatibility / extra fields
   sync_status: SyncStatus;
   last_modified_local: number;
   last_modified_notion: number;
   field_local_ts: string;
   field_notion_ts: string;
-  // Local-only columns for recurring, subtasks, snooze, reminder, and time tracking
+  // Dedicated columns (source of truth)
+  title: string | null;
+  status: string | null;
+  normalized_status: string | null;
+  due_date: string | null;
+  due_date_end: string | null;
+  hard_deadline: number;
+  urgent: number;
+  important: number;
+  parent_task_id: string | null;
+  main_entry: string | null;
+  body: string | null;
+  recurrence: string | null;  // JSON array
+  session_length_minutes: number | null;
+  estimated_length_minutes: number | null;
+  order_value: string | null;
+  order_color: string | null;
+  project_ids: string | null;  // JSON array
+  url: string | null;
+  last_edited: string | null;
+  // Local-only columns
   snoozed_until: string | null;
   reminder_at: string | null;
   tracking_goal_minutes: number | null;
   done_tracking_after_cycle: number | null;
   auto_fill_estimated_time: number | null;
-  // Trash tracking
   trashed_at: string | null;
 };
 
@@ -53,31 +77,79 @@ function serializeFieldMap(map: FieldMap) {
   return JSON.stringify(map ?? {});
 }
 
+function parseJsonArray<T>(raw: string | null | undefined): T[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed as T[];
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+/**
+ * Map a database row to a Task object.
+ * Reads from dedicated columns (source of truth), not from JSON payload.
+ */
 function mapRowToTask(row: TaskRow): Task {
-  const task = JSON.parse(row.payload) as Task;
-  task.id = task.id ?? row.notion_id ?? row.client_id;
-  task.syncStatus = row.sync_status;
-  task.localOnly = !row.notion_id;
-  // Apply local-only fields from columns
-  if (row.snoozed_until) {
-    task.snoozedUntil = row.snoozed_until;
+  // Read extra fields from payload that aren't in columns yet
+  let extraFields: Partial<Task> = {};
+  try {
+    const payloadData = JSON.parse(row.payload);
+    // Only extract fields that aren't in dedicated columns
+    extraFields = {
+      subtaskIds: payloadData.subtaskIds,
+      subtaskProgress: payloadData.subtaskProgress,
+    };
+  } catch {
+    // ignore payload parse errors
   }
-  if (row.reminder_at) {
-    task.reminderAt = row.reminder_at;
-  }
-  if (row.tracking_goal_minutes != null) {
-    task.trackingGoalMinutes = row.tracking_goal_minutes;
-  }
-  if (row.done_tracking_after_cycle != null) {
-    task.doneTrackingAfterCycle = row.done_tracking_after_cycle === 1;
-  }
-  if (row.auto_fill_estimated_time != null) {
-    task.autoFillEstimatedTime = row.auto_fill_estimated_time === 1;
-  }
-  // Trash tracking
-  if (row.trashed_at) {
-    task.trashedAt = row.trashed_at;
-  }
+
+  const task: Task = {
+    // Identity
+    id: row.notion_id ?? row.client_id,
+    uniqueId: row.notion_unique_id ?? undefined,
+    
+    // Core fields from columns
+    title: row.title ?? '',
+    status: row.status ?? undefined,
+    normalizedStatus: row.normalized_status ?? undefined,
+    dueDate: row.due_date ?? undefined,
+    dueDateEnd: row.due_date_end ?? undefined,
+    hardDeadline: row.hard_deadline === 1,
+    urgent: row.urgent === 1,
+    important: row.important === 1,
+    parentTaskId: row.parent_task_id ?? undefined,
+    mainEntry: row.main_entry ?? undefined,
+    body: row.body ?? undefined,
+    recurrence: parseJsonArray<string>(row.recurrence),
+    sessionLengthMinutes: row.session_length_minutes ?? undefined,
+    estimatedLengthMinutes: row.estimated_length_minutes ?? undefined,
+    orderValue: row.order_value ?? undefined,
+    orderColor: row.order_color ?? undefined,
+    projectIds: parseJsonArray<string>(row.project_ids),
+    url: row.url ?? undefined,
+    lastEdited: row.last_edited ?? undefined,
+    
+    // Sync status
+    syncStatus: row.sync_status,
+    localOnly: !row.notion_id,
+    
+    // Local-only fields
+    snoozedUntil: row.snoozed_until ?? undefined,
+    reminderAt: row.reminder_at ?? undefined,
+    trackingGoalMinutes: row.tracking_goal_minutes ?? undefined,
+    doneTrackingAfterCycle: row.done_tracking_after_cycle === 1,
+    autoFillEstimatedTime: row.auto_fill_estimated_time === 1,
+    trashedAt: row.trashed_at ?? undefined,
+    
+    // Extra fields from payload
+    ...extraFields
+  };
+  
   return task;
 }
 
@@ -95,17 +167,34 @@ function readRowById(taskId: string): TaskRow | undefined {
   const db = getDb();
   return db
     .prepare(
-      `SELECT * FROM ${TABLE} WHERE client_id = ? OR notion_id = ? LIMIT 1`
+      `SELECT * FROM ${TABLE} WHERE client_id = ? OR notion_id = ? OR notion_unique_id = ? LIMIT 1`
     )
-    .get(taskId, taskId) as TaskRow | undefined;
+    .get(taskId, taskId, taskId) as TaskRow | undefined;
 }
 
+/**
+ * Find a task row by its Notion unique ID (e.g., "ACTION-123")
+ * This is used for deduplication during sync
+ */
+function readRowByUniqueId(uniqueId: string | null | undefined): TaskRow | undefined {
+  if (!uniqueId) return undefined;
+  const db = getDb();
+  return db
+    .prepare(`SELECT * FROM ${TABLE} WHERE notion_unique_id = ? LIMIT 1`)
+    .get(uniqueId) as TaskRow | undefined;
+}
+
+/**
+ * Save a task to the database using dedicated columns.
+ * The payload is kept for backwards compatibility but columns are the source of truth.
+ */
 function saveTaskRow(
   clientId: string,
-  payload: Task,
+  task: Task,
   syncStatus: SyncStatus,
   options: {
     notionId?: string | null;
+    notionUniqueId?: string | null;
     lastModifiedLocal?: number;
     lastModifiedNotion?: number;
     fieldLocal?: FieldMap;
@@ -120,6 +209,7 @@ function saveTaskRow(
   const db = getDb();
   const {
     notionId = null,
+    notionUniqueId = null,
     lastModifiedLocal = Date.now(),
     lastModifiedNotion = 0,
     fieldLocal = {},
@@ -130,32 +220,80 @@ function saveTaskRow(
     doneTrackingAfterCycle = null,
     autoFillEstimatedTime = null
   } = options;
-  const serializedTask = JSON.stringify(payload);
+
+  // Keep payload for backwards compatibility (stores extra fields)
+  const payload = JSON.stringify({
+    subtaskIds: task.subtaskIds,
+    subtaskProgress: task.subtaskProgress,
+  });
+
   db.prepare(
     `INSERT INTO ${TABLE} (
       client_id,
       notion_id,
+      notion_unique_id,
       payload,
       sync_status,
       last_modified_local,
       last_modified_notion,
       field_local_ts,
       field_notion_ts,
+      -- Dedicated columns
+      title,
+      status,
+      normalized_status,
+      due_date,
+      due_date_end,
+      hard_deadline,
+      urgent,
+      important,
+      parent_task_id,
+      main_entry,
+      body,
+      recurrence,
+      session_length_minutes,
+      estimated_length_minutes,
+      order_value,
+      order_color,
+      project_ids,
+      url,
+      last_edited,
+      -- Local-only columns
       snoozed_until,
       reminder_at,
       tracking_goal_minutes,
       done_tracking_after_cycle,
       auto_fill_estimated_time
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(client_id) DO UPDATE SET
       notion_id = excluded.notion_id,
+      notion_unique_id = excluded.notion_unique_id,
       payload = excluded.payload,
       sync_status = excluded.sync_status,
       last_modified_local = excluded.last_modified_local,
       last_modified_notion = excluded.last_modified_notion,
       field_local_ts = excluded.field_local_ts,
       field_notion_ts = excluded.field_notion_ts,
+      title = excluded.title,
+      status = excluded.status,
+      normalized_status = excluded.normalized_status,
+      due_date = excluded.due_date,
+      due_date_end = excluded.due_date_end,
+      hard_deadline = excluded.hard_deadline,
+      urgent = excluded.urgent,
+      important = excluded.important,
+      parent_task_id = excluded.parent_task_id,
+      main_entry = excluded.main_entry,
+      body = excluded.body,
+      recurrence = excluded.recurrence,
+      session_length_minutes = excluded.session_length_minutes,
+      estimated_length_minutes = excluded.estimated_length_minutes,
+      order_value = excluded.order_value,
+      order_color = excluded.order_color,
+      project_ids = excluded.project_ids,
+      url = excluded.url,
+      last_edited = excluded.last_edited,
       snoozed_until = excluded.snoozed_until,
       reminder_at = excluded.reminder_at,
       tracking_goal_minutes = excluded.tracking_goal_minutes,
@@ -164,12 +302,34 @@ function saveTaskRow(
   ).run(
     clientId,
     notionId ?? null,
-    serializedTask,
+    notionUniqueId ?? null,
+    payload,
     syncStatus,
     lastModifiedLocal,
     lastModifiedNotion,
     serializeFieldMap(fieldLocal),
     serializeFieldMap(fieldNotion),
+    // Dedicated columns
+    task.title ?? null,
+    task.status ?? null,
+    task.normalizedStatus ?? null,
+    task.dueDate ?? null,
+    task.dueDateEnd ?? null,
+    task.hardDeadline ? 1 : 0,
+    task.urgent ? 1 : 0,
+    task.important ? 1 : 0,
+    task.parentTaskId ?? null,
+    task.mainEntry ?? null,
+    task.body ?? null,
+    task.recurrence ? JSON.stringify(task.recurrence) : null,
+    task.sessionLengthMinutes ?? null,
+    task.estimatedLengthMinutes ?? null,
+    task.orderValue ?? null,
+    task.orderColor ?? null,
+    task.projectIds ? JSON.stringify(task.projectIds) : null,
+    task.url ?? null,
+    task.lastEdited ?? null,
+    // Local-only columns
     snoozedUntil,
     reminderAt,
     trackingGoalMinutes,
@@ -232,9 +392,13 @@ function updatesToCreatePayload(
   return createPayload;
 }
 
+/**
+ * List tasks with optional filtering using indexed columns.
+ * Much faster than loading all tasks and filtering in JS!
+ */
 export function listTasks(limit = 2000, includeTrash = false) {
   const db = getDb();
-  // By default, exclude trashed tasks from the main list
+  // Use column-based query for better performance
   const query = includeTrash
     ? `SELECT * FROM ${TABLE} ORDER BY last_modified_local DESC LIMIT ?`
     : `SELECT * FROM ${TABLE} WHERE sync_status != 'trashed' ORDER BY last_modified_local DESC LIMIT ?`;
@@ -252,6 +416,63 @@ export function listTasks(limit = 2000, includeTrash = false) {
   return tasks;
 }
 
+/**
+ * List tasks by status - uses indexed column for fast lookup
+ */
+export function listTasksByStatus(status: string, limit = 500): Task[] {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT * FROM ${TABLE} WHERE status = ? AND sync_status != 'trashed' ORDER BY due_date ASC LIMIT ?`
+  ).all(status, limit) as TaskRow[];
+  return rows.map(mapRowToTask);
+}
+
+/**
+ * List tasks by due date range - uses indexed column
+ */
+export function listTasksByDateRange(startDate: string, endDate: string, limit = 500): Task[] {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT * FROM ${TABLE} 
+     WHERE due_date >= ? AND due_date <= ? AND sync_status != 'trashed' 
+     ORDER BY due_date ASC LIMIT ?`
+  ).all(startDate, endDate, limit) as TaskRow[];
+  return rows.map(mapRowToTask);
+}
+
+/**
+ * List urgent tasks - uses indexed column
+ */
+export function listUrgentTasks(limit = 100): Task[] {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT * FROM ${TABLE} WHERE urgent = 1 AND sync_status != 'trashed' ORDER BY due_date ASC LIMIT ?`
+  ).all(limit) as TaskRow[];
+  return rows.map(mapRowToTask);
+}
+
+/**
+ * List important tasks - uses indexed column
+ */
+export function listImportantTasks(limit = 100): Task[] {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT * FROM ${TABLE} WHERE important = 1 AND sync_status != 'trashed' ORDER BY due_date ASC LIMIT ?`
+  ).all(limit) as TaskRow[];
+  return rows.map(mapRowToTask);
+}
+
+/**
+ * List tasks with hard deadlines - uses indexed column
+ */
+export function listHardDeadlineTasks(limit = 100): Task[] {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT * FROM ${TABLE} WHERE hard_deadline = 1 AND sync_status != 'trashed' ORDER BY due_date ASC LIMIT ?`
+  ).all(limit) as TaskRow[];
+  return rows.map(mapRowToTask);
+}
+
 export function countTasks(): number {
   const db = getDb();
   const result = db.prepare(`SELECT COUNT(*) as count FROM ${TABLE}`).get() as { count: number };
@@ -260,12 +481,10 @@ export function countTasks(): number {
 
 export function getOldestSyncTimestamp(): string | null {
   const db = getDb();
-  // last_modified_notion is stored as epoch milliseconds
   const result = db.prepare(
     `SELECT MIN(last_modified_notion) as oldest FROM ${TABLE} WHERE last_modified_notion > 0`
   ).get() as { oldest: number | null };
   if (result?.oldest) {
-    // Convert epoch ms to ISO string
     return new Date(result.oldest).toISOString();
   }
   return null;
@@ -301,7 +520,6 @@ export function createLocalTask(payload: NotionCreatePayload) {
     important: payload.important ?? false,
     syncStatus: 'pending',
     localOnly: true,
-    // Subtask relationship
     parentTaskId: payload.parentTaskId ?? undefined
   };
 
@@ -340,7 +558,6 @@ export function updateParentSubtaskInfo(parentTaskId: string) {
   
   // Calculate progress
   const completedCount = subtasks.filter(st => {
-    // Consider a task completed if its normalizedStatus is 'done' or status contains 'done'/'complete'
     const status = (st.normalizedStatus || st.status || '').toLowerCase();
     return status === 'done' || status.includes('complete') || status.includes('done');
   }).length;
@@ -352,10 +569,20 @@ export function updateParentSubtaskInfo(parentTaskId: string) {
     subtaskProgress: { completed: completedCount, total: subtasks.length }
   };
 
-  // Save updated parent (don't sync to Notion, this is local-only metadata)
-  const db = getDb();
-  db.prepare(`UPDATE ${TABLE} SET payload = ? WHERE client_id = ? OR notion_id = ?`)
-    .run(JSON.stringify(nextParent), parentTaskId, parentTaskId);
+  // Save updated parent (uses columns + payload for subtask info)
+  saveTaskRow(parentRow.client_id, nextParent, parentRow.sync_status, {
+    notionId: parentRow.notion_id,
+    notionUniqueId: parentRow.notion_unique_id,
+    lastModifiedLocal: parentRow.last_modified_local,
+    lastModifiedNotion: parentRow.last_modified_notion,
+    fieldLocal: parseFieldMap(parentRow.field_local_ts),
+    fieldNotion: parseFieldMap(parentRow.field_notion_ts),
+    snoozedUntil: parentRow.snoozed_until,
+    reminderAt: parentRow.reminder_at,
+    trackingGoalMinutes: parentRow.tracking_goal_minutes,
+    doneTrackingAfterCycle: parentRow.done_tracking_after_cycle === 1,
+    autoFillEstimatedTime: parentRow.auto_fill_estimated_time === 1
+  });
 }
 
 export function updateLocalTask(taskId: string, updates: TaskUpdatePayload) {
@@ -397,17 +624,14 @@ export function updateLocalTask(taskId: string, updates: TaskUpdatePayload) {
     nextTask.mainEntry = updates.mainEntry ?? undefined;
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'sessionLengthMinutes')) {
-    nextTask.sessionLengthMinutes = updates.sessionLengthMinutes ?? null;
+    nextTask.sessionLengthMinutes = updates.sessionLengthMinutes ?? undefined;
   }
-  if (
-    Object.prototype.hasOwnProperty.call(updates, 'estimatedLengthMinutes')
-  ) {
-    nextTask.estimatedLengthMinutes = updates.estimatedLengthMinutes ?? null;
+  if (Object.prototype.hasOwnProperty.call(updates, 'estimatedLengthMinutes')) {
+    nextTask.estimatedLengthMinutes = updates.estimatedLengthMinutes ?? undefined;
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'orderValue')) {
-    nextTask.orderValue = updates.orderValue ?? null;
+    nextTask.orderValue = updates.orderValue ?? undefined;
   }
-  // Handle recurrence updates (synced to Notion)
   if (Object.prototype.hasOwnProperty.call(updates, 'recurrence')) {
     nextTask.recurrence = updates.recurrence ?? undefined;
   }
@@ -416,7 +640,6 @@ export function updateLocalTask(taskId: string, updates: TaskUpdatePayload) {
   nextTask.localOnly = !row.notion_id;
 
   const changedFields = extractChangedFields(updates);
-  // Filter out local-only fields from changed fields sent to Notion
   const localOnlyFields = ['snoozedUntil', 'reminderAt', 'trackingGoalMinutes', 'doneTrackingAfterCycle', 'autoFillEstimatedTime'];
   const notionChangedFields = changedFields.filter(f => !localOnlyFields.includes(f));
   const fieldLocalTs = touchFields(parseFieldMap(row.field_local_ts), notionChangedFields);
@@ -440,6 +663,7 @@ export function updateLocalTask(taskId: string, updates: TaskUpdatePayload) {
 
   saveTaskRow(row.client_id, nextTask, 'pending', {
     notionId: row.notion_id,
+    notionUniqueId: row.notion_unique_id,
     lastModifiedLocal: Date.now(),
     lastModifiedNotion: row.last_modified_notion,
     fieldLocal: fieldLocalTs,
@@ -476,47 +700,54 @@ export function updateLocalTask(taskId: string, updates: TaskUpdatePayload) {
   return nextTask;
 }
 
+/**
+ * Get task status breakdown using indexed column queries.
+ * Much faster than parsing JSON payload for each row!
+ */
 export function getTaskStatusBreakdown(): StatusBreakdown {
   const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT payload, last_modified_local FROM ${TABLE}`
-    )
-    .all() as Pick<TaskRow, 'payload' | 'last_modified_local'>[];
+  
+  // Use column-based aggregation - much faster!
+  const statusCounts = db.prepare(`
+    SELECT 
+      COALESCE(NULLIF(TRIM(status), ''), 'No Status') as status_name,
+      COUNT(*) as count
+    FROM ${TABLE}
+    GROUP BY status_name
+    ORDER BY count DESC
+  `).all() as { status_name: string; count: number }[];
 
-  const counts = new Map<string, number>();
-  let withStatus = 0;
-  let withoutStatus = 0;
-  let latest = 0;
-
-  rows.forEach((row) => {
-    const task = JSON.parse(row.payload) as Task;
-    const statusName = (task.status?.trim() || 'No Status');
-    if (statusName === 'No Status') {
-      withoutStatus += 1;
-    } else {
-      withStatus += 1;
-    }
-    counts.set(statusName, (counts.get(statusName) ?? 0) + 1);
-    if (row.last_modified_local > latest) {
-      latest = row.last_modified_local;
-    }
-  });
+  const totals = db.prepare(`
+    SELECT 
+      COUNT(*) as total,
+      SUM(CASE WHEN status IS NOT NULL AND TRIM(status) != '' THEN 1 ELSE 0 END) as with_status,
+      MAX(last_modified_local) as latest
+    FROM ${TABLE}
+  `).get() as { total: number; with_status: number; latest: number | null };
 
   return {
-    total: rows.length,
-    withStatus,
-    withoutStatus,
-    unique: counts.size,
-    lastUpdated: latest ? new Date(latest).toISOString() : null,
-    statuses: Array.from(counts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([name, count]) => ({ name, count }))
+    total: totals.total,
+    withStatus: totals.with_status,
+    withoutStatus: totals.total - totals.with_status,
+    unique: statusCounts.length,
+    lastUpdated: totals.latest ? new Date(totals.latest).toISOString() : null,
+    statuses: statusCounts.map(({ status_name, count }) => ({ name: status_name, count }))
   };
 }
 
 export function upsertRemoteTask(entity: Task, notionId: string, notionUpdatedAt: string) {
-  const row = readRowById(notionId);
+  // DEDUPLICATION STRATEGY:
+  // 1. First check by uniqueId (e.g., "ACTION-123")
+  // 2. Then fall back to notionId
+  // 3. Finally use entity.id
+  
+  console.log(`[TaskRepo] upsertRemoteTask called for: ${entity.title} (${notionId})`);
+  
+  let row = entity.uniqueId ? readRowByUniqueId(entity.uniqueId) : undefined;
+  if (!row) {
+    row = readRowById(notionId);
+  }
+  
   const existingLocal = row ? mapRowToTask(row) : null;
   const clientId = row?.client_id ?? entity.id ?? notionId;
 
@@ -539,13 +770,20 @@ export function upsertRemoteTask(entity: Task, notionId: string, notionUpdatedAt
     localOnly: false
   };
 
-  saveTaskRow(clientId, payload, 'synced', {
-    notionId,
-    lastModifiedLocal: existingLocal ? row!.last_modified_local : Date.now(),
-    lastModifiedNotion: Date.parse(notionUpdatedAt),
-    fieldLocal: parseFieldMap(row?.field_local_ts),
-    fieldNotion
-  });
+  try {
+    saveTaskRow(clientId, payload, 'synced', {
+      notionId,
+      notionUniqueId: entity.uniqueId ?? null,
+      lastModifiedLocal: existingLocal ? row!.last_modified_local : Date.now(),
+      lastModifiedNotion: Date.parse(notionUpdatedAt),
+      fieldLocal: parseFieldMap(row?.field_local_ts),
+      fieldNotion
+    });
+    console.log(`[TaskRepo] ✓ Task saved: ${entity.title} (clientId: ${clientId})`);
+  } catch (error) {
+    console.error(`[TaskRepo] ❌ Failed to save task: ${entity.title}`, error);
+    throw error;
+  }
 
   clearEntriesForEntity('task', clientId);
   return payload;
@@ -559,15 +797,15 @@ export function removeLocalTask(taskId: string) {
   clearEntriesForEntity('task', row.client_id);
 }
 
-export function clearAllTasks() {
+export function clearAllTasks(): number {
   const db = getDb();
-  db.prepare(`DELETE FROM ${TABLE}`).run();
-  console.log('[DB] Cleared all cached tasks');
+  const result = db.prepare(`DELETE FROM ${TABLE}`).run();
+  console.log(`[DB] Cleared all ${result.changes} cached tasks`);
+  return result.changes;
 }
 
 /**
  * Import tasks from the JSON file created by the import script.
- * This is a one-time operation - once imported, tasks are in SQLite and load instantly.
  */
 export function importTasksFromJson(jsonPath: string): number {
   const fs = require('fs');
@@ -592,8 +830,7 @@ export function importTasksFromJson(jsonPath: string): number {
     let imported = 0;
     const db = getDb();
     
-    // Use a transaction for better performance
-    const insertMany = db.transaction((tasks: any[]) => {
+    const insertMany = db.transaction((tasks: Task[]) => {
       for (const task of tasks) {
         if (!task.id || !task.title) continue;
         
@@ -614,14 +851,13 @@ export function importTasksFromJson(jsonPath: string): number {
           hardDeadline: task.hardDeadline ?? false,
           urgent: task.urgent ?? false,
           important: task.important ?? false,
-          sessionLengthMinutes: task.sessionLengthMinutes ?? null,
-          estimatedLengthMinutes: task.estimatedLengthMinutes ?? null,
+          sessionLengthMinutes: task.sessionLengthMinutes ?? undefined,
+          estimatedLengthMinutes: task.estimatedLengthMinutes ?? undefined,
           url: task.url ?? undefined,
           syncStatus: 'synced',
           localOnly: false
         };
         
-        // Check if task already exists
         const existing = readRowById(task.id);
         if (!existing) {
           saveTaskRow(task.id, payload, 'synced', {
@@ -638,7 +874,6 @@ export function importTasksFromJson(jsonPath: string): number {
     
     console.log(`[DB] Successfully imported ${imported} new tasks`);
     
-    // Rename the import file so we don't import again
     const backupPath = jsonPath.replace('.json', `-imported-${Date.now()}.json`);
     fs.renameSync(jsonPath, backupPath);
     console.log(`[DB] Moved import file to: ${path.basename(backupPath)}`);
@@ -650,9 +885,6 @@ export function importTasksFromJson(jsonPath: string): number {
   }
 }
 
-/**
- * Get the count of tasks in the database
- */
 export function getTaskCount(): number {
   const db = getDb();
   const result = db.prepare(`SELECT COUNT(*) as count FROM ${TABLE}`).get() as { count: number };
@@ -660,43 +892,31 @@ export function getTaskCount(): number {
 }
 
 /**
- * Build subtask relationships for a list of tasks.
- * For each parent task, populates subtaskIds and subtaskProgress.
- * Returns tasks sorted with parent tasks first (subtasks filtered out of main list).
+ * Build subtask relationships using indexed parent_task_id column.
  */
 export function buildSubtaskRelationships(
   tasks: Task[],
   completedStatus?: string
 ): { parentTasks: Task[]; subtaskMap: Map<string, Task[]> } {
-  // Create a map of parent ID -> subtasks
   const subtaskMap = new Map<string, Task[]>();
   const parentTasks: Task[] = [];
   
-  // First pass: identify subtasks and group them by parent
   for (const task of tasks) {
     if (task.parentTaskId) {
-      // This is a subtask
       const existing = subtaskMap.get(task.parentTaskId) || [];
       existing.push(task);
       subtaskMap.set(task.parentTaskId, existing);
     } else {
-      // This is a parent task (or standalone task)
       parentTasks.push(task);
     }
   }
   
-  // Second pass: enrich parent tasks with subtask info
   for (const task of parentTasks) {
     const subtasks = subtaskMap.get(task.id);
     if (subtasks && subtasks.length > 0) {
       task.subtaskIds = subtasks.map(s => s.id);
-      
-      // Calculate progress
       const completed = subtasks.filter(s => s.status === completedStatus).length;
-      task.subtaskProgress = {
-        completed,
-        total: subtasks.length
-      };
+      task.subtaskProgress = { completed, total: subtasks.length };
     }
   }
   
@@ -704,21 +924,20 @@ export function buildSubtaskRelationships(
 }
 
 /**
- * Get all subtasks for a given parent task ID
+ * Get all subtasks for a given parent task ID - uses indexed column!
  */
 export function getSubtasks(parentTaskId: string): Task[] {
-  const allTasks = listTasks();
-  return allTasks.filter(task => task.parentTaskId === parentTaskId);
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT * FROM ${TABLE} WHERE parent_task_id = ? AND sync_status != 'trashed'`
+  ).all(parentTaskId) as TaskRow[];
+  return rows.map(mapRowToTask);
 }
 
 // ============================================================================
 // TRASH MANAGEMENT
-// Tasks deleted in Notion are marked as trashed rather than immediately deleted
 // ============================================================================
 
-/**
- * Mark a task as trashed (detected as deleted in Notion)
- */
 export function markTaskAsTrashed(taskId: string): void {
   const db = getDb();
   const trashedAt = new Date().toISOString();
@@ -728,9 +947,6 @@ export function markTaskAsTrashed(taskId: string): void {
   console.log(`[TaskRepo] Marked task as trashed: ${taskId}`);
 }
 
-/**
- * Mark multiple tasks as trashed in a single transaction
- */
 export function markTasksAsTrashed(taskIds: string[]): number {
   if (taskIds.length === 0) return 0;
   
@@ -754,9 +970,6 @@ export function markTasksAsTrashed(taskIds: string[]): number {
   return count;
 }
 
-/**
- * List all trashed tasks
- */
 export function listTrashedTasks(): Task[] {
   const db = getDb();
   const rows = db
@@ -765,9 +978,6 @@ export function listTrashedTasks(): Task[] {
   return rows.map(mapRowToTask);
 }
 
-/**
- * Count trashed tasks
- */
 export function countTrashedTasks(): number {
   const db = getDb();
   const result = db
@@ -776,9 +986,6 @@ export function countTrashedTasks(): number {
   return result.count;
 }
 
-/**
- * Restore a task from trash (set back to synced status)
- */
 export function restoreTaskFromTrash(taskId: string): Task | null {
   const db = getDb();
   const result = db.prepare(
@@ -794,16 +1001,12 @@ export function restoreTaskFromTrash(taskId: string): Task | null {
   return row ? mapRowToTask(row) : null;
 }
 
-/**
- * Permanently delete a task (removes from database entirely)
- */
 export function permanentlyDeleteTask(taskId: string): boolean {
   const db = getDb();
   const result = db.prepare(
     `DELETE FROM ${TABLE} WHERE client_id = ? OR notion_id = ?`
   ).run(taskId, taskId);
   
-  // Also clear any sync queue entries
   clearEntriesForEntity('task', taskId);
   
   if (result.changes > 0) {
@@ -813,9 +1016,6 @@ export function permanentlyDeleteTask(taskId: string): boolean {
   return false;
 }
 
-/**
- * Permanently delete all trashed tasks
- */
 export function emptyTrash(): number {
   const db = getDb();
   const trashedTasks = listTrashedTasks();
@@ -838,16 +1038,12 @@ export function emptyTrash(): number {
   return deleted;
 }
 
-/**
- * Auto-cleanup: permanently delete tasks that have been in trash for more than X days
- */
 export function cleanupOldTrashedTasks(daysOld: number = 30): number {
   const db = getDb();
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - daysOld);
   const cutoffIso = cutoffDate.toISOString();
   
-  // First get the tasks to delete (so we can clear sync queue entries)
   const oldTrashedRows = db.prepare(
     `SELECT client_id FROM ${TABLE} WHERE sync_status = 'trashed' AND trashed_at < ?`
   ).all(cutoffIso) as { client_id: string }[];
@@ -870,10 +1066,6 @@ export function cleanupOldTrashedTasks(daysOld: number = 30): number {
   return deleted;
 }
 
-/**
- * Get all notion_ids for synced (non-trashed, non-local) tasks
- * Used to detect which tasks have been deleted in Notion
- */
 export function getSyncedTaskNotionIds(): Set<string> {
   const db = getDb();
   const rows = db.prepare(
@@ -881,4 +1073,3 @@ export function getSyncedTaskNotionIds(): Set<string> {
   ).all() as { notion_id: string }[];
   return new Set(rows.map(r => r.notion_id));
 }
-

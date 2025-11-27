@@ -325,6 +325,9 @@ const widgetAPI: WidgetAPI = {
     return ipcRenderer.invoke('localProject:get', projectId);
   },
   
+  importTasks() {
+    return ipcRenderer.invoke('sync:importTasks');
+  },
   importProjects() {
     return ipcRenderer.invoke('sync:importProjects');
   },
@@ -505,6 +508,39 @@ const widgetAPI: WidgetAPI = {
   },
   deleteChatSummary(summaryId: string) {
     return ipcRenderer.invoke('chatbot:deleteSummary', summaryId);
+  },
+  
+  // Data Management APIs
+  getDataCounts() {
+    return ipcRenderer.invoke('data:getCounts');
+  },
+  performFullReset() {
+    return ipcRenderer.invoke('data:fullReset');
+  },
+  performSoftReset() {
+    return ipcRenderer.invoke('data:softReset');
+  },
+  resetTasksOnly() {
+    return ipcRenderer.invoke('data:resetTasks');
+  },
+  resetProjectsOnly() {
+    return ipcRenderer.invoke('data:resetProjects');
+  },
+  resetTimeLogsOnly() {
+    return ipcRenderer.invoke('data:resetTimeLogs');
+  },
+  performFullResetAndImport() {
+    return ipcRenderer.invoke('data:fullResetAndImport');
+  },
+  onDataResetComplete(callback: (result: import('../shared/ipc').ResetResult) => void) {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      result: import('../shared/ipc').ResetResult
+    ) => callback(result);
+    ipcRenderer.on('data:reset-complete', listener);
+    return () => {
+      ipcRenderer.removeListener('data:reset-complete', listener);
+    };
   }
 };
 

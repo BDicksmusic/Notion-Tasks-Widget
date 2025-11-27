@@ -82,6 +82,16 @@ import { startDatabaseBackupRoutine } from './db/backupService';
 import { syncEngine, importQueueManager } from './services/syncEngine';
 import type { ImportType } from './services/importQueueManager';
 import {
+  getDataCounts,
+  performFullReset,
+  performSoftReset,
+  resetTasksOnly,
+  resetProjectsOnly,
+  resetTimeLogsOnly,
+  type DataCounts,
+  type ResetResult
+} from './services/dataManagement';
+import {
   createLocalTask,
   listTasks as listStoredTasks,
   updateLocalTask,
@@ -1521,6 +1531,10 @@ ipcMain.handle('sync:force', async () => {
   return syncEngine.getStatus();
 });
 ipcMain.handle('sync:timestamps', () => syncEngine.getSyncTimestamps());
+ipcMain.handle('sync:importTasks', async () => {
+  console.log('[IPC] sync:importTasks - Starting manual tasks import');
+  return syncEngine.startManualImport();
+});
 ipcMain.handle('sync:importProjects', async () => {
   console.log('[IPC] sync:importProjects - Starting manual projects import');
   return syncEngine.importProjects();
@@ -1594,6 +1608,109 @@ importQueueManager.on('all-status-changed', (statuses) => {
     window.webContents.send('importQueue:status-changed', statuses);
   });
 });
+
+// ============================================================================
+// DATA MANAGEMENT
+// Full reset and data cleanup operations
+// ============================================================================
+
+ipcMain.handle('data:getCounts', () => {
+  return getDataCounts();
+});
+
+ipcMain.handle('data:fullReset', async () => {
+  console.log('[IPC] data:fullReset - Starting full data reset');
+  const result = performFullReset();
+  
+  // Also reset sync engine import state
+  syncEngine.resetImport();
+  
+  // Notify all windows to refresh
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('data:reset-complete', result);
+  });
+  
+  return result;
+});
+
+ipcMain.handle('data:softReset', async () => {
+  console.log('[IPC] data:softReset - Starting soft data reset');
+  const result = performSoftReset();
+  
+  // Notify all windows to refresh
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('data:reset-complete', result);
+  });
+  
+  return result;
+});
+
+ipcMain.handle('data:resetTasks', async () => {
+  console.log('[IPC] data:resetTasks - Resetting tasks only');
+  const result = resetTasksOnly();
+  
+  // Notify all windows to refresh tasks
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('tasks:cache-invalidated');
+  });
+  
+  return result;
+});
+
+ipcMain.handle('data:resetProjects', async () => {
+  console.log('[IPC] data:resetProjects - Resetting projects only');
+  const result = resetProjectsOnly();
+  
+  // Notify all windows to refresh projects
+  BrowserWindow.getAllWindows().forEach((window) => {
+    window.webContents.send('projects:cache-invalidated');
+  });
+  
+  return result;
+});
+
+ipcMain.handle('data:resetTimeLogs', async () => {
+  console.log('[IPC] data:resetTimeLogs - Resetting time logs only');
+  return resetTimeLogsOnly();
+});
+
+ipcMain.handle('data:fullResetAndImport', async () => {
+  console.log('[IPC] data:fullResetAndImport - Full reset followed by import');
+  
+  // First perform the full reset
+  const resetResult = performFullReset();
+  if (!resetResult.success) {
+    return { 
+      resetSuccess: false, 
+      importSuccess: false, 
+      resetResult, 
+      error: resetResult.error 
+    };
+  }
+  
+  // Reset sync engine import state
+  syncEngine.resetImport();
+  
+  // Then trigger the initial import
+  try {
+    await syncEngine.performInitialImport();
+    return { 
+      resetSuccess: true, 
+      importSuccess: true, 
+      resetResult,
+      syncStatus: syncEngine.getStatus()
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return { 
+      resetSuccess: true, 
+      importSuccess: false, 
+      resetResult, 
+      error: errorMessage 
+    };
+  }
+});
+
 ipcMain.handle('settings:app:get', () => getAppPreferences());
 ipcMain.handle('settings:app:update', async (_event, prefs: AppPreferences) => {
   const saved = await persistAppPreferences(prefs);

@@ -16,6 +16,7 @@ import type {
   UpdateStatus,
   WritingSettings
 } from '@shared/types';
+import type { DataCounts, ResetResult } from '@shared/ipc';
 import { extractDatabaseId } from '@shared/utils/notionUrl';
 import { DatabaseVerification, VerifyAllDatabases } from '../components/DatabaseVerification';
 
@@ -35,6 +36,7 @@ type Section =
   | 'projects'
   | 'widget'
   | 'import'
+  | 'reset'
   | 'mcp'
   | 'shortcuts'
   | 'about';
@@ -50,6 +52,7 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: 'projects', label: 'Projects', icon: '📁' },
   { id: 'widget', label: 'Widget', icon: '🪟' },
   { id: 'import', label: 'Import & Sync', icon: '📥' },
+  { id: 'reset', label: 'Data Reset', icon: '🔄' },
   { id: 'mcp', label: 'MCP Servers', icon: '🔌' },
   { id: 'shortcuts', label: 'Shortcuts', icon: '⌨️' },
   { id: 'about', label: 'About', icon: 'ℹ️' }
@@ -214,6 +217,13 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
   // Environment variable import
   const [envText, setEnvText] = useState('');
   const [envImportFeedback, setEnvImportFeedback] = useState<Feedback | null>(null);
+  
+  // Data reset state
+  const [dataCounts, setDataCounts] = useState<DataCounts | null>(null);
+  const [dataCountsLoading, setDataCountsLoading] = useState(false);
+  const [resetInProgress, setResetInProgress] = useState(false);
+  const [resetResult, setResetResult] = useState<ResetResult | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState<'full' | 'fullAndImport' | null>(null);
 
   const loadStatusDiagnostics = useCallback(async () => {
     if (!isDesktopRuntime) return;
@@ -230,6 +240,69 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
       setStatusDiagnosticsLoading(false);
     }
   }, []);
+
+  const loadDataCounts = useCallback(async () => {
+    if (!isDesktopRuntime) return;
+    try {
+      setDataCountsLoading(true);
+      const counts = await widgetAPI.getDataCounts();
+      setDataCounts(counts);
+    } catch (err) {
+      console.error('Failed to load data counts:', err);
+    } finally {
+      setDataCountsLoading(false);
+    }
+  }, []);
+
+  const handleFullReset = useCallback(async () => {
+    if (!isDesktopRuntime) return;
+    try {
+      setResetInProgress(true);
+      setResetResult(null);
+      const result = await widgetAPI.performFullReset();
+      setResetResult(result);
+      setShowResetConfirm(null);
+      // Reload data counts after reset
+      await loadDataCounts();
+      setFeedback({
+        kind: result.success ? 'success' : 'error',
+        message: result.success 
+          ? `Reset complete. Cleared ${result.clearedCounts.tasks} tasks, ${result.clearedCounts.projects} projects, ${result.clearedCounts.timeLogs} time logs.`
+          : result.error || 'Reset failed'
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setFeedback({ kind: 'error', message: errorMessage });
+    } finally {
+      setResetInProgress(false);
+    }
+  }, [loadDataCounts]);
+
+  const handleFullResetAndImport = useCallback(async () => {
+    if (!isDesktopRuntime) return;
+    try {
+      setResetInProgress(true);
+      setResetResult(null);
+      const result = await widgetAPI.performFullResetAndImport();
+      if (result.resetResult) {
+        setResetResult(result.resetResult);
+      }
+      setShowResetConfirm(null);
+      // Reload data counts after reset
+      await loadDataCounts();
+      setFeedback({
+        kind: result.resetSuccess && result.importSuccess ? 'success' : 'error',
+        message: result.resetSuccess && result.importSuccess
+          ? 'Reset and re-import complete. All data has been refreshed from Notion.'
+          : result.error || 'Operation failed'
+      });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setFeedback({ kind: 'error', message: errorMessage });
+    } finally {
+      setResetInProgress(false);
+    }
+  }, [loadDataCounts]);
 
   const formatTimestamp = (iso?: string | null) => {
     if (!iso) return null;
@@ -459,6 +532,13 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
     const timer = window.setTimeout(() => setFeedback(null), 4000);
     return () => window.clearTimeout(timer);
   }, [feedback]);
+
+  // Load data counts when reset section is active
+  useEffect(() => {
+    if (activeSection === 'reset' && !dataCounts && !dataCountsLoading) {
+      loadDataCounts();
+    }
+  }, [activeSection, dataCounts, dataCountsLoading, loadDataCounts]);
 
   // ============ HANDLERS ============
 
@@ -2783,6 +2863,234 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                       Reset
                     </button>
                   )}
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* DATA RESET SECTION */}
+          {activeSection === 'reset' && (
+            <section className="settings-section">
+              <div className="section-group">
+                <h3>Data Reset</h3>
+                <p className="section-description">
+                  Reset your local database. Use these options when you need to start fresh or fix sync issues.
+                </p>
+                
+                {/* Data counts overview */}
+                <div className="data-counts-card" style={{ 
+                  background: 'var(--layer-1)', 
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '16px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h4 style={{ margin: 0, fontWeight: 600 }}>Current Data</h4>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={loadDataCounts}
+                      disabled={dataCountsLoading}
+                      style={{ fontSize: '12px', padding: '4px 8px' }}
+                    >
+                      {dataCountsLoading ? 'Loading...' : 'Refresh'}
+                    </button>
+                  </div>
+                  {dataCounts ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                      <div className="data-count-item">
+                        <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--accent-color)' }}>
+                          {dataCounts.tasks.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Tasks</div>
+                      </div>
+                      <div className="data-count-item">
+                        <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--accent-color)' }}>
+                          {dataCounts.projects.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Projects</div>
+                      </div>
+                      <div className="data-count-item">
+                        <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--accent-color)' }}>
+                          {dataCounts.timeLogs.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Time Logs</div>
+                      </div>
+                      <div className="data-count-item">
+                        <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--accent-color)' }}>
+                          {dataCounts.writingEntries.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Writing Entries</div>
+                      </div>
+                      <div className="data-count-item">
+                        <div style={{ fontSize: '24px', fontWeight: 600, color: 'var(--accent-color)' }}>
+                          {dataCounts.chatSummaries.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Chat Summaries</div>
+                      </div>
+                      <div className="data-count-item">
+                        <div style={{ fontSize: '24px', fontWeight: 600, color: dataCounts.pendingSyncItems > 0 ? 'var(--warning-color)' : 'var(--accent-color)' }}>
+                          {dataCounts.pendingSyncItems.toLocaleString()}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Pending Sync</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      Click Refresh to load data counts
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="section-group">
+                <h3>Reset Options</h3>
+                
+                {/* Option 1: Full Reset and Re-import */}
+                <div className="reset-option-card" style={{
+                  background: 'var(--layer-1)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '12px',
+                  padding: '16px',
+                  marginBottom: '12px'
+                }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '24px' }}>🔄</div>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: '0 0 8px 0', fontWeight: 600 }}>Full Reset & Re-import</h4>
+                      <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+                        Wipe all local data and immediately re-import everything from Notion. 
+                        This is the recommended option when you want a fresh start while keeping 
+                        your Notion data intact.
+                      </p>
+                      {showResetConfirm === 'fullAndImport' ? (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '13px', color: 'var(--warning-color)' }}>
+                            Are you sure? This will delete all local data.
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={handleFullResetAndImport}
+                            disabled={resetInProgress}
+                            style={{ background: 'var(--error-color)', borderColor: 'var(--error-color)' }}
+                          >
+                            {resetInProgress ? 'Resetting...' : 'Yes, Reset & Import'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={() => setShowResetConfirm(null)}
+                            disabled={resetInProgress}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => setShowResetConfirm('fullAndImport')}
+                          disabled={resetInProgress}
+                        >
+                          Reset & Re-import
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Option 2: Full Reset Only */}
+                <div className="reset-option-card" style={{
+                  background: 'var(--layer-1)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: '12px',
+                  padding: '16px'
+                }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                    <div style={{ fontSize: '24px' }}>🗑️</div>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: '0 0 8px 0', fontWeight: 600 }}>Full Reset (Wipe Only)</h4>
+                      <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-muted)' }}>
+                        Completely wipe all local data without re-importing. Use this when you 
+                        want to start with a clean slate. The next sync will pull data from Notion 
+                        based on your current filters.
+                      </p>
+                      {showResetConfirm === 'full' ? (
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <span style={{ fontSize: '13px', color: 'var(--warning-color)' }}>
+                            Are you sure? This cannot be undone.
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={handleFullReset}
+                            disabled={resetInProgress}
+                            style={{ background: 'var(--error-color)', borderColor: 'var(--error-color)' }}
+                          >
+                            {resetInProgress ? 'Resetting...' : 'Yes, Wipe All'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={() => setShowResetConfirm(null)}
+                            disabled={resetInProgress}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() => setShowResetConfirm('full')}
+                          disabled={resetInProgress}
+                          style={{ color: 'var(--error-color)' }}
+                        >
+                          Wipe All Data
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Last reset result */}
+              {resetResult && (
+                <div className="section-group">
+                  <h3>Last Reset Result</h3>
+                  <div className={`status-box ${resetResult.success ? 'success' : 'error'}`}>
+                    {resetResult.success ? (
+                      <>
+                        <div className="status-title">✓ Reset completed successfully</div>
+                        <div className="status-detail">
+                          Cleared: {resetResult.clearedCounts.tasks} tasks, {resetResult.clearedCounts.projects} projects, {resetResult.clearedCounts.timeLogs} time logs, {resetResult.clearedCounts.writingEntries} writing entries
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="status-title">Reset failed</div>
+                        <div className="status-detail">{resetResult.error}</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="section-group">
+                <div className="reset-warning" style={{
+                  background: 'rgba(234, 179, 8, 0.1)',
+                  border: '1px solid rgba(234, 179, 8, 0.3)',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  fontSize: '13px'
+                }}>
+                  <strong style={{ color: 'var(--warning-color)' }}>⚠️ Warning:</strong>
+                  <span style={{ color: 'var(--text-muted)' }}>
+                    {' '}Reset operations cannot be undone. Any local-only data (not yet synced to Notion) 
+                    will be permanently lost. Make sure you've synced all important changes before resetting.
+                  </span>
                 </div>
               </div>
             </section>

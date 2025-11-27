@@ -437,7 +437,8 @@ function normalizeWritingSettings(next: WritingSettings): WritingSettings {
     tagsProperty: rest.tagsProperty?.trim() || undefined,
     statusProperty: rest.statusProperty?.trim() || undefined,
     publishedStatus: rest.publishedStatus?.trim() || undefined,
-    draftStatus: rest.draftStatus?.trim() || undefined
+    draftStatus: rest.draftStatus?.trim() || undefined,
+    idProperty: rest.idProperty?.trim() || 'ID'
   };
 }
 
@@ -453,7 +454,8 @@ function normalizeTimeLogSettings(next: TimeLogSettings): TimeLogSettings {
     statusProperty: next.statusProperty?.trim() || undefined,
     startTimeProperty: next.startTimeProperty?.trim() || undefined,
     endTimeProperty: next.endTimeProperty?.trim() || undefined,
-    titleProperty: next.titleProperty?.trim() || 'Name'
+    titleProperty: next.titleProperty?.trim() || 'Name',
+    idProperty: next.idProperty?.trim() || 'ID'
   };
 }
 
@@ -529,7 +531,9 @@ function loadTaskDefaults(): NotionSettings {
       ''
     ).trim(),
     // Widget Link - Date property updated on every sync to track linked tasks
-    widgetLinkProperty: envDefault('NOTION_TASK_WIDGET_LINK_PROP', 'Widget Link').trim() || undefined
+    widgetLinkProperty: envDefault('NOTION_TASK_WIDGET_LINK_PROP', 'Widget Link').trim() || undefined,
+    // Unique ID property for deduplication (e.g., "ID" with prefix "ACTION")
+    idProperty: envDefault('NOTION_TASK_ID_PROP', 'ID').trim() || undefined
   };
 }
 
@@ -542,7 +546,9 @@ function loadWritingDefaults(): WritingSettings {
     tagsProperty: process.env.NOTION_WRITING_TAGS_PROP,
     statusProperty: process.env.NOTION_WRITING_STATUS_PROP,
     publishedStatus: process.env.NOTION_WRITING_PUBLISHED_STATUS,
-    draftStatus: process.env.NOTION_WRITING_DRAFT_STATUS
+    draftStatus: process.env.NOTION_WRITING_DRAFT_STATUS,
+    // Unique ID property for deduplication (e.g., "ID" with prefix "WRITE-LOG")
+    idProperty: envDefault('NOTION_WRITING_ID_PROP', 'ID').trim() || undefined
   };
 }
 
@@ -556,7 +562,9 @@ function loadTimeLogDefaults(): TimeLogSettings {
     endTimeProperty: process.env.NOTION_TIME_LOG_END_TIME_PROP,
     titleProperty: envDefault('NOTION_TIME_LOG_TITLE_PROP', 'Name'),
     startStatusValue: envDefault('NOTION_TIME_LOG_START_STATUS', 'Start'),
-    endStatusValue: envDefault('NOTION_TIME_LOG_END_STATUS', 'End')
+    endStatusValue: envDefault('NOTION_TIME_LOG_END_STATUS', 'End'),
+    // Unique ID property for deduplication (e.g., "ID" with prefix "TIME-LOG")
+    idProperty: envDefault('NOTION_TIME_LOG_ID_PROP', 'ID').trim() || undefined
   };
 }
 
@@ -581,7 +589,8 @@ function normalizeProjectsSettings(next: ProjectsSettings): ProjectsSettings {
     completedStatus: next.completedStatus?.trim() || 'Done',
     cachedStatusOptions: Array.isArray(next.cachedStatusOptions) 
       ? next.cachedStatusOptions 
-      : undefined
+      : undefined,
+    idProperty: next.idProperty?.trim() || 'ID'
   };
 }
 
@@ -598,7 +607,9 @@ function loadProjectsDefaults(): ProjectsSettings {
     actionsRelationProperty: process.env.NOTION_PROJECTS_ACTIONS_PROP ?? 'Actions',
     statusPresets: parseList(envDefault('NOTION_PROJECTS_STATUS_PRESETS', 'Not started,In progress,Done')),
     completedStatus: envDefault('NOTION_PROJECTS_COMPLETED_STATUS', 'Done'),
-    cachedStatusOptions: undefined
+    cachedStatusOptions: undefined,
+    // Unique ID property for deduplication (e.g., "ID" with prefix "PRJ")
+    idProperty: envDefault('NOTION_PROJECTS_ID_PROP', 'ID').trim() || undefined
   };
 }
 

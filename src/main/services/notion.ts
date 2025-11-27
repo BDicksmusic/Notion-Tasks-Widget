@@ -66,6 +66,11 @@ let contactsFetchedAt: number | null = null;
 // Cache for property name -> ID mapping (filter_properties requires IDs, not names)
 let cachedPropertyIds: Map<string, string> | null = null;
 
+const MAX_STATUS_WARNINGS = 5;
+let missingStatusWarnings = 0;
+const MAX_TITLE_WARNINGS = 3;
+let missingTitleWarnings = 0;
+
 // Notion SDK v2 types don't fully export query method types, so we define the response shape
 interface QueryDatabaseResult {
   results: Array<PageObjectResponse | { object: string; [key: string]: unknown }>;
@@ -141,6 +146,40 @@ async function getPropertyIds(): Promise<Map<string, string>> {
     // Return empty map - will fallback to fetching all properties
     return new Map();
   }
+}
+
+function withAbortSignal<T>(
+  promise: Promise<T>,
+  abortSignal?: AbortSignal,
+  label = 'operation'
+): Promise<T> {
+  if (!abortSignal) {
+    return promise;
+  }
+  
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      abortSignal.removeEventListener('abort', onAbort);
+      reject(new Error(`${label} was cancelled`));
+    };
+    
+    if (abortSignal.aborted) {
+      onAbort();
+      return;
+    }
+    
+    abortSignal.addEventListener('abort', onAbort);
+    
+    promise
+      .then((result) => {
+        abortSignal.removeEventListener('abort', onAbort);
+        resolve(result);
+      })
+      .catch((error) => {
+        abortSignal.removeEventListener('abort', onAbort);
+        reject(error);
+      });
+  });
 }
 
 /**
@@ -544,12 +583,6 @@ export interface ReliableImportResult {
   hasMore: boolean;
 }
 
-export interface TimeWindowFilter {
-  // Filter by last_edited_time timestamp
-  on_or_after?: string;  // ISO timestamp
-  on_or_before?: string; // ISO timestamp
-}
-
 // Track cursor for search-based import
 let searchImportCursor: string | undefined = undefined;
 
@@ -575,7 +608,7 @@ export function resetSearchFallbackState(): void {
 export async function getTasksBatchReliably(
   cursor?: string | null,
   batchSize: number = 5,
-  timeWindow?: TimeWindowFilter
+  abortSignal?: AbortSignal
 ): Promise<ReliableImportResult> {
   if (!notion) {
     return { tasks: [], pageIds: [], nextCursor: null, hasMore: false };
@@ -588,7 +621,7 @@ export async function getTasksBatchReliably(
 
   console.log(`[Notion] IMPORT: Using Search API + Property-Specific strategy (most reliable)`);
   
-  return getTasksBatchViaSearch(client, dbId, effectiveCursor ?? undefined, batchSize);
+  return getTasksBatchViaSearch(client, dbId, effectiveCursor ?? undefined, batchSize, abortSignal);
 }
 
 /**
@@ -608,16 +641,21 @@ async function getTasksBatchViaSearch(
   client: Client,
   dbId: string,
   cursor: string | undefined,
-  batchSize: number
+  batchSize: number,
+  abortSignal?: AbortSignal
 ): Promise<ReliableImportResult> {
   console.log(`[Notion] IMPORT: Search + Property-Specific (cursor: ${cursor ? 'yes' : 'no'})`);
   
-  const searchResult = await searchPagesInDatabase(
-    client,
-    dbId,
-    '', // Empty query = all pages
-    batchSize * 3, // Request more since search may return pages from other databases
-    cursor
+  const searchResult = await withAbortSignal(
+    searchPagesInDatabase(
+      client,
+      dbId,
+      '', // Empty query = all pages
+      batchSize * 3, // Request more since search may return pages from other databases
+      cursor
+    ),
+    abortSignal,
+    'Search tasks'
   );
   
   // Track cursor for next batch
@@ -634,11 +672,18 @@ async function getTasksBatchViaSearch(
   
   // Get property ID mapping (cached after first call)
   const propertyIds = await getPropertyIds();
+  if (abortSignal?.aborted) {
+    throw new Error('Import was cancelled');
+  }
   
   if (propertyIds.size === 0) {
     // Fallback to full page retrieval if schema fetch failed
     console.warn('[Notion] No property IDs cached, using full page retrieval');
-    const tasks = await fetchTasksFromPageIds(client, searchResult.pageIds);
+    const tasks = await withAbortSignal(
+      fetchTasksFromPageIds(client, searchResult.pageIds),
+      abortSignal,
+      'Fetch tasks from page IDs'
+    );
     return {
       tasks,
       pageIds: searchResult.pageIds,
@@ -662,29 +707,40 @@ async function getTasksBatchViaSearch(
     settings.orderProperty,      // Priority/order
     settings.projectRelationProperty,  // Project relation
     settings.parentTaskProperty, // Parent task (for subtasks)
-    settings.recurrenceProperty  // Recurrence pattern
+    settings.recurrenceProperty, // Recurrence pattern
+    settings.idProperty          // Unique ID for deduplication (e.g., "ACTION-123")
   ].filter((p): p is string => Boolean(p?.trim()));
   
   console.log(`[Notion] Fetching ${requiredProperties.length} properties per task (skipping ${propertyIds.size - requiredProperties.length} unused properties)`);
   
   // Use optimized property-specific retrieval
-  const pageData = await retrievePagesWithSpecificProperties(
-    client,
-    searchResult.pageIds,
-    propertyIds,
-    requiredProperties,
-    3 // 3 pages in parallel (each page fetches ~10 properties)
+  const pageData = await withAbortSignal(
+    retrievePagesWithSpecificProperties(
+      client,
+      searchResult.pageIds,
+      propertyIds,
+      requiredProperties,
+      3 // 3 pages in parallel (each page fetches ~10 properties)
+    ),
+    abortSignal,
+    'Retrieve task properties'
   );
   
   // Map to tasks
   const tasks: Task[] = [];
   for (const { id, url, properties } of pageData) {
+    if (abortSignal?.aborted) {
+      throw new Error('Import was cancelled');
+    }
     const task = mapPropertiesToTask(id, url, properties);
     tasks.push(task);
   }
   
   const withStatus = tasks.filter(t => t.status).length;
   console.log(`[Notion] IMPORT batch: ${tasks.length} tasks (${withStatus} with status)`);
+  if (tasks.length === 0) {
+    console.warn('[Notion] IMPORT batch returned 0 tasks - possible stale cursor or empty database');
+  }
   
   return {
     tasks,
@@ -702,8 +758,21 @@ function mapPropertiesToTask(
   url: string,
   properties: Map<string, PropertyItemValue>
 ): Task {
-  const title = extractTitleFromPropertyItem(properties.get(settings.titleProperty)) || 'Untitled';
+  const rawTitle = extractTitleFromPropertyItem(properties.get(settings.titleProperty));
+  if (!rawTitle && missingTitleWarnings < MAX_TITLE_WARNINGS) {
+    missingTitleWarnings++;
+    console.warn(`[Notion] Task ${pageId} missing title (property "${settings.titleProperty}")`);
+  }
+  const title = rawTitle || 'Untitled';
+  
   const status = extractStatusFromPropertyItem(properties.get(settings.statusProperty));
+  if (!status && missingStatusWarnings < MAX_STATUS_WARNINGS) {
+    missingStatusWarnings++;
+    console.warn(`[Notion] Task "${title}" missing status (property "${settings.statusProperty}")`);
+  }
+  const uniqueId = settings.idProperty 
+    ? extractUniqueIdFromPropertyItem(properties.get(settings.idProperty))
+    : null;
   const { start: dueDate, end: dueDateEnd } = extractDateRangeFromPropertyItem(properties.get(settings.dateProperty));
   
   const hardDeadline = settings.deadlineProperty 
@@ -753,6 +822,7 @@ function mapPropertiesToTask(
   
   return {
     id: pageId,
+    uniqueId: uniqueId ?? undefined,
     title,
     status: status ?? undefined,
     normalizedStatus,
@@ -1410,9 +1480,13 @@ export async function getAllTimeLogEntries(taskId: string): Promise<TimeLogEntry
         titleProp?.type === 'title'
           ? titleProp.title.map((t: any) => t.plain_text).join('')
           : null;
+      
+      // Extract unique ID for deduplication (e.g., "TIME-LOG-123")
+      const uniqueId = extractUniqueIdFromPageProperty(props, timeLogSettings?.idProperty);
 
       entries.push({
         id: result.id,
+        uniqueId: uniqueId ?? undefined,
         startTime,
         endTime,
         durationMinutes,
@@ -1523,9 +1597,13 @@ export async function getAllTimeLogs(): Promise<TimeLogEntry[]> {
         // Note: We'd need to fetch the task page to get the title, but for now we'll leave it null
         // and can enhance later if needed
       }
+      
+      // Extract unique ID for deduplication (e.g., "TIME-LOG-123")
+      const uniqueId = extractUniqueIdFromPageProperty(props, timeLogSettings.idProperty);
 
       entries.push({
         id: result.id,
+        uniqueId: uniqueId ?? undefined,
         startTime,
         endTime,
         durationMinutes,
@@ -1934,7 +2012,8 @@ async function getProjectsViaSearch(client: Client, dbId: string): Promise<Proje
     projectsSettings?.descriptionProperty,
     projectsSettings?.startDateProperty,
     projectsSettings?.endDateProperty,
-    projectsSettings?.tagsProperty
+    projectsSettings?.tagsProperty,
+    projectsSettings?.idProperty  // Unique ID for deduplication (e.g., "PRJ-123")
   ].filter((p): p is string => Boolean(p?.trim()));
   
   console.log(`[Notion] Will fetch only ${requiredProperties.length} properties per page: ${requiredProperties.join(', ')}`);
@@ -2054,13 +2133,17 @@ function mapPropertiesToProject(
   const startDate = extractDateFromPropertyItem(properties.get(projectsSettings?.startDateProperty || ''));
   const endDate = extractDateFromPropertyItem(properties.get(projectsSettings?.endDateProperty || ''));
   const tags = extractMultiSelectFromPropertyItem(properties.get(projectsSettings?.tagsProperty || ''));
+  const uniqueId = projectsSettings?.idProperty
+    ? extractUniqueIdFromPropertyItem(properties.get(projectsSettings.idProperty))
+    : null;
   
   if (logDebug) {
-    console.log(`[Notion] Project: "${title}" → status="${status}"`);
+    console.log(`[Notion] Project: "${title}" → status="${status}", uniqueId="${uniqueId}"`);
   }
   
   return {
     id: pageId,
+    uniqueId: uniqueId ?? undefined,
     title,
     status,
     description,
@@ -2137,6 +2220,44 @@ function extractMultiSelectFromPropertyItem(prop: PropertyItemValue | undefined)
     const options = prop.multi_select;
     if (Array.isArray(options)) {
       return options.map((o: any) => o.name);
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Extract unique_id property value (e.g., "PRJ-123", "TIME-LOG-456")
+ * Notion's unique_id property returns { prefix: string, number: number }
+ */
+function extractUniqueIdFromPropertyItem(prop: PropertyItemValue | undefined): string | null {
+  if (!prop) return null;
+  
+  if (prop.type === 'unique_id') {
+    const uniqueId = (prop as any).unique_id;
+    if (uniqueId && typeof uniqueId.number === 'number') {
+      const prefix = uniqueId.prefix || '';
+      return prefix ? `${prefix}-${uniqueId.number}` : String(uniqueId.number);
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * Extract unique_id from page properties (full page response format)
+ */
+function extractUniqueIdFromPageProperty(props: any, propertyName: string | undefined): string | null {
+  if (!propertyName || !props) return null;
+  
+  const prop = props[propertyName];
+  if (!prop) return null;
+  
+  if (prop.type === 'unique_id') {
+    const uniqueId = prop.unique_id;
+    if (uniqueId && typeof uniqueId.number === 'number') {
+      const prefix = uniqueId.prefix || '';
+      return prefix ? `${prefix}-${uniqueId.number}` : String(uniqueId.number);
     }
   }
   
@@ -2246,9 +2367,13 @@ function mapPageToProject(result: PageObjectResponse, logDebug: boolean = false)
       : null;
 
   const url = result.url ?? null;
+  
+  // Extract unique ID if configured
+  const uniqueId = extractUniqueIdFromPageProperty(props, projectsSettings?.idProperty);
 
   return {
     id: result.id,
+    uniqueId: uniqueId ?? undefined,
     title,
     status,
     description,
