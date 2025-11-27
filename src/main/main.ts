@@ -43,9 +43,20 @@ process.on('uncaughtException', (err) => {
   try {
     const logPath = path.join(process.env.APPDATA || '', 'NotionTasksWidget', 'crash.log');
     fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    fs.appendFileSync(logPath, `${new Date().toISOString()} - ${err.stack || err}\n`);
+    fs.appendFileSync(logPath, `${new Date().toISOString()} - UNCAUGHT: ${err.stack || err}\n`);
   } catch { /* ignore logging errors */ }
   throw err;
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  const fs = require('fs');
+  const path = require('path');
+  try {
+    const logPath = path.join(process.env.APPDATA || '', 'NotionTasksWidget', 'crash.log');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
+    fs.appendFileSync(logPath, `${new Date().toISOString()} - UNHANDLED REJECTION: ${reason}\n`);
+  } catch { /* ignore logging errors */ }
 });
 
 process.stdout?.on?.('error', (err) => {
@@ -865,10 +876,30 @@ const createCalendarWindow = async () => {
 };
 
 app.whenReady().then(async () => {
+  try {
+    _fs.appendFileSync(_startupLog, `[whenReady] Starting initialization...\n`);
+  } catch {}
+  
   const userData = app.getPath('userData');
+  
+  try {
+    _fs.appendFileSync(_startupLog, `[whenReady] Initializing database...\n`);
+  } catch {}
   const db = initializeDatabase(userData);
+  
+  try {
+    _fs.appendFileSync(_startupLog, `[whenReady] Starting backup routine...\n`);
+  } catch {}
   stopBackupRoutine = startDatabaseBackupRoutine(db);
+  
+  try {
+    _fs.appendFileSync(_startupLog, `[whenReady] Initializing config store...\n`);
+  } catch {}
   await initConfigStore(userData);
+  
+  try {
+    _fs.appendFileSync(_startupLog, `[whenReady] Config store initialized\n`);
+  } catch {}
 
   // Check for imported tasks JSON file and load into SQLite
   const importJsonPath = path.join(userData, 'imported-tasks.json');
@@ -987,15 +1018,15 @@ app.whenReady().then(async () => {
     }
   });
   
-  // Register global shortcut for calendar widget (Ctrl+K or Cmd+K)
-  const calendarShortcut = process.platform === 'darwin' ? 'Command+K' : 'Control+K';
-  globalShortcut.register(calendarShortcut, async () => {
-    try {
-      await createCalendarWindow();
-    } catch (error) {
-      console.error('Error opening calendar window via shortcut', error);
-    }
-  });
+  try {
+    _fs.appendFileSync(_startupLog, `[whenReady] Initialization complete!\n`);
+  } catch {}
+}).catch((err) => {
+  // Catch any errors during app initialization
+  try {
+    _fs.appendFileSync(_startupLog, `[whenReady] FATAL ERROR: ${err?.stack || err}\n`);
+  } catch {}
+  console.error('Fatal error during app initialization:', err);
 });
 
 app.on('will-quit', () => {

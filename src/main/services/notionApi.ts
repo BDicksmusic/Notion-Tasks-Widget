@@ -26,10 +26,14 @@ const lastRequestTime = new WeakMap<Client, number>();
  * Create a Notion client with extended timeout
  * Using default fetch (no custom wrapper) for better compatibility
  */
+// Use latest API version for Data Sources API support
+const NOTION_API_VERSION = '2025-09-03';  // Latest API version for Data Sources API
+
 export function createNotionClient(apiKey: string): Client {
   return new Client({
     auth: apiKey,
     timeoutMs: REQUEST_TIMEOUT_MS
+    // SDK 5.4.0 automatically uses the correct API version for dataSources
   });
 }
 
@@ -61,7 +65,7 @@ function isRetryableError(error: unknown): error is RetryableError {
     if (error.code === APIErrorCode.InternalServerError) return true;
   }
   
-  // Network errors
+  // Network errors and service availability issues
   const message = String(err.message ?? '');
   const networkPatterns = [
     'ECONNRESET',
@@ -75,7 +79,11 @@ function isRetryableError(error: unknown): error is RetryableError {
     'fetch failed',
     '504',
     '502',
-    'gateway'
+    'gateway',
+    'temporarily unavailable',
+    'service unavailable',
+    'rate_limited',
+    'rate limit'
   ];
   
   return networkPatterns.some(pattern => 
@@ -319,12 +327,22 @@ export async function searchPagesInDatabase(
   );
   
   // Filter results to only pages from our target database
+  // SDK 5.x: parent.type can be 'database_id' (old) or 'data_source_id' (new)
   const pageIds: string[] = [];
   for (const result of response.results) {
     if (result.object !== 'page') continue;
     const parent = (result as any).parent;
-    if (!parent || parent.type !== 'database_id') continue;
-    const parentDbId = parent.database_id.replace(/-/g, '');
+    if (!parent) continue;
+    
+    // Handle both old (database_id) and new (data_source_id) parent types
+    let parentDbId: string | null = null;
+    if (parent.type === 'database_id' && parent.database_id) {
+      parentDbId = parent.database_id.replace(/-/g, '');
+    } else if (parent.type === 'data_source_id' && parent.database_id) {
+      // data_source_id parent also includes database_id for convenience
+      parentDbId = parent.database_id.replace(/-/g, '');
+    }
+    
     if (parentDbId === cleanDbId) {
       pageIds.push(result.id);
     }

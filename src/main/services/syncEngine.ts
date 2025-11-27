@@ -15,6 +15,9 @@ import {
   addTask,
   getTasksPage as fetchNotionTasksPage,
   getTasksBatchReliably,
+  importTasksWithDateChunks,
+  importProjectsWithDateChunks,
+  importTimeLogsWithDateChunks,
   resetSearchFallbackState,
   updateTask,
   createTimeLogEntry,
@@ -73,7 +76,7 @@ const SYNC_KEY_IMPORT_PARTITION_CURSOR = 'import_partition_cursor';
 // Import settings for reliable page-by-page import
 const TASK_PAGE_SIZE = 5;   // For partition fallback only
 const BACKGROUND_IMPORT_DELAY_MS = 200;  // Minimal delay - API calls provide natural pacing
-const RELIABLE_BATCH_SIZE = 1;  // One at a time (guaranteed reliable)
+const RELIABLE_BATCH_SIZE = 25;  // 25 pages per batch - reliable with new API
 const INITIAL_IMPORT_MAX_FAILURES = 10;  // More retries - 504s are often transient
 const INITIAL_IMPORT_BASE_BACKOFF_MS = 1_500;
 const INITIAL_IMPORT_MAX_BACKOFF_MS = 30_000;
@@ -212,6 +215,10 @@ class SyncEngine extends EventEmitter {
     // Notion page IDs ensure proper deduplication via upsert
     console.log('[SyncEngine] Starting (resuming from existing state if any)');
     
+    // Start active tasks sync in background (non-blocking)
+    // This quickly refreshes active tasks without a full import
+    void this.syncActiveTasksOnStartup();
+    
     this.timer = setInterval(() => {
       void this.tick();
     }, SYNC_INTERVAL_MS);
@@ -262,6 +269,63 @@ class SyncEngine extends EventEmitter {
     } finally {
       // Restore original setting
       this.autoImportEnabled = wasEnabled;
+    }
+  }
+
+  /**
+   * Sync active tasks and projects on startup (non-completed only)
+   * This provides a quick refresh of active items without a full import.
+   * Runs in background and doesn't block the app.
+   */
+  async syncActiveTasksOnStartup(): Promise<void> {
+    console.log('[SyncEngine] Starting active sync (tasks + projects)...');
+    
+    const notionSettings = getNotionSettingsSnapshot();
+    if (!notionSettings?.apiKey || !notionSettings?.databaseId) {
+      console.log('[SyncEngine] Notion not configured, skipping active sync');
+      return;
+    }
+    
+    this.updateStatus({ state: 'syncing', message: 'Syncing active items...' });
+    
+    const completedStatuses = ['✅', 'done', 'Done', 'DONE', 'Completed', 'completed', 'Complete', 'Archived'];
+    let totalUpdated = 0;
+    
+    try {
+      // Sync active tasks
+      const { syncActiveTasksOnly, syncActiveProjectsOnly } = await import('./notion');
+      
+      console.log('[SyncEngine] Syncing active tasks...');
+      const taskResult = await syncActiveTasksOnly(completedStatuses);
+      totalUpdated += taskResult.updated;
+      
+      if (taskResult.updated > 0) {
+        this.emit('tasksUpdated');
+      }
+      
+      // Sync active projects
+      console.log('[SyncEngine] Syncing active projects...');
+      const projectResult = await syncActiveProjectsOnly(completedStatuses);
+      totalUpdated += projectResult.updated;
+      
+      if (projectResult.updated > 0) {
+        this.emit('projectsUpdated');
+      }
+      
+      console.log(`[SyncEngine] Active sync complete: ${taskResult.updated} tasks, ${projectResult.updated} projects`);
+      
+      this.updateStatus({
+        state: 'idle',
+        message: `Synced ${taskResult.updated} tasks, ${projectResult.updated} projects`,
+        lastSuccessfulSync: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error('[SyncEngine] Active sync failed:', error);
+      this.updateStatus({
+        state: 'error',
+        message: `Active sync failed: ${error instanceof Error ? error.message : String(error)}`
+      });
     }
   }
 
@@ -334,35 +398,9 @@ class SyncEngine extends EventEmitter {
     }
 
     const existingTaskCount = countTasks();
-    const TARGET_TASK_COUNT = 500;
-    
-    // If we already have enough tasks, switch to incremental sync
-    if (existingTaskCount >= TARGET_TASK_COUNT) {
-      console.log(`[SyncEngine] Already have ${existingTaskCount} tasks (target: ${TARGET_TASK_COUNT}) - switching to incremental sync`);
-      
-      const oldestSync = getOldestSyncTimestamp();
-      if (oldestSync) {
-        setSyncState(SYNC_KEY_TASKS_LAST, oldestSync);
-      }
-      
-      setSyncState(SYNC_KEY_INITIAL_IMPORT_DONE, 'true');
-      
-      this.updateImportProgress({
-        status: 'completed',
-        tasksImported: existingTaskCount,
-        pagesProcessed: 0,
-        message: `${existingTaskCount} tasks imported. Sync active.`,
-        completedAt: new Date().toISOString()
-      });
-      
-      this.updateStatus({
-        state: 'idle',
-        message: `${existingTaskCount} tasks ready.`,
-        lastSuccessfulSync: new Date().toISOString()
-      });
-      
-      return;
-    }
+    // No artificial limit - import ALL tasks from the database
+    // The loop will naturally stop when hasMore is false
+    const TARGET_TASK_COUNT = Infinity;
 
     // Use ImportQueueManager to ensure only one import at a time
     console.log('[SyncEngine] Requesting tasks import via ImportQueueManager');
@@ -446,139 +484,131 @@ class SyncEngine extends EventEmitter {
     this.importRunning = true;
     resetSearchFallbackState();
     
-    console.log(`[SyncEngine] Starting import (have ${existingTaskCount}, target ${TARGET_TASK_COUNT})...`);
+    console.log(`[SyncEngine] Starting import (have ${existingTaskCount} existing tasks, importing all available)...`);
     
     this.updateImportProgress({
       status: 'running',
       tasksImported: existingTaskCount,
       pagesProcessed: 0,
       currentPage: 0,
-      message: 'Initializing import...',
+      message: 'Starting import...',
       startedAt: new Date().toISOString(),
       error: undefined,
       completedAt: undefined
     });
-    importQueueManager.updateProgress('tasks', 1, 'Initializing...');
+    importQueueManager.updateProgress('tasks', 1, 'Starting...');
     this.updateStatus({ state: 'syncing', message: `Importing tasks...` });
 
     try {
-      // Test connection with abort support
+      // Check for cancellation
       if (abortSignal.aborted) throw new Error('Import was cancelled');
       
-      console.log('[SyncEngine] Testing connection...');
-      importQueueManager.updateProgress('tasks', 2, 'Testing connection...');
-      
-      const connectionTest = await this.withAbortAndTimeout(
-        testConnection(),
-        abortSignal,
-        15000,
-        'Connection test'
-      );
-
-      if (!connectionTest.success) {
-        this.updateStatus({ state: 'error', message: `Cannot import: ${connectionTest.message}` });
-        this.updateImportProgress({ status: 'error', error: connectionTest.message, message: 'Connection failed' });
-        importQueueManager.updateProgress('tasks', 0, connectionTest.message);
+      // Quick sanity check - is Notion even configured?
+      const notionSettings = getNotionSettingsSnapshot();
+      if (!notionSettings?.apiKey || !notionSettings?.databaseId) {
+        const errorMsg = 'Notion not configured. Please set API key and database ID in Settings.';
+        console.error('[SyncEngine]', errorMsg);
+        this.updateStatus({ state: 'error', message: errorMsg });
+        this.updateImportProgress({ status: 'error', error: errorMsg, message: errorMsg });
+        importQueueManager.updateProgress('tasks', 0, errorMsg);
         this.importRunning = false;
         return;
       }
       
-      console.log('[SyncEngine] Connection OK, starting batch import...');
-      importQueueManager.updateProgress('tasks', 3, 'Connected, fetching tasks...');
-
-      // Simple cursor-based pagination
-      let cursor: string | null = getSyncState(SYNC_KEY_TASKS_CURSOR) || null;
-      let totalTasksInDB = existingTaskCount;
-      let batchNumber = 0;
-      let consecutiveFailures = 0;
+      console.log('[SyncEngine] Notion configured, testing connection...');
+      importQueueManager.updateProgress('tasks', 2, 'Testing Notion connection...');
+      this.updateImportProgress({ message: 'Testing Notion connection...' });
       
-      while (totalTasksInDB < TARGET_TASK_COUNT) {
-        // Check abort at start of each batch
-        if (abortSignal.aborted) {
-          console.log('[SyncEngine] Import cancelled');
+      // Use a shorter timeout for connection test
+      const connectionTest = await this.withAbortAndTimeout(
+        testConnection(),
+        abortSignal,
+        10000, // 10 second timeout
+        'Connection test'
+      );
+
+      if (!connectionTest.success) {
+        const errorMsg = connectionTest.message || 'Connection failed';
+        console.error('[SyncEngine] Connection failed:', errorMsg);
+        this.updateStatus({ state: 'error', message: `Cannot import: ${errorMsg}` });
+        this.updateImportProgress({ status: 'error', error: errorMsg, message: 'Connection failed' });
+        importQueueManager.updateProgress('tasks', 0, errorMsg);
+        this.importRunning = false;
+        return;
+      }
+      
+      console.log('[SyncEngine] ✓ Connection verified, starting import...');
+      importQueueManager.updateProgress('tasks', 5, 'Connected! Fetching tasks...');
+      this.updateImportProgress({ message: 'Connected! Fetching tasks...' });
+
+      // DATE-CHUNK IMPORT: Bypasses cursor pagination that causes 504 errors
+      // Uses date ranges (last_edited_time) instead of cursor to avoid timeouts
+      console.log('[SyncEngine] Using DATE-CHUNK import strategy (no cursor pagination)');
+      
+      let totalTasksInDB = existingTaskCount;
+      
+      try {
+        // Import tasks using date chunks
+        const tasks = await importTasksWithDateChunks(
+          TARGET_TASK_COUNT,
+          (imported, chunk) => {
+            // Progress callback
+            if (abortSignal.aborted) return;
+            const progressPercent = Math.min(90, 5 + Math.floor((imported / TARGET_TASK_COUNT) * 85));
+            this.updateImportProgress({
+              tasksImported: existingTaskCount + imported,
+              message: `Importing ${chunk}...`
+            });
+            importQueueManager.updateProgress('tasks', progressPercent, `${imported} tasks (${chunk})`);
+          },
+          abortSignal
+        );
+        
+        // Check abort after fetch
+        if (abortSignal.aborted) throw new Error('Import was cancelled');
+        
+        console.log(`[SyncEngine] DATE-CHUNK import complete: ${tasks.length} tasks`);
+        
+        // Save tasks to database
+        if (tasks.length > 0) {
+          const timestamp = new Date().toISOString();
+          let savedCount = 0;
+          
+          for (const task of tasks) {
+            if (abortSignal.aborted) throw new Error('Import was cancelled');
+            
+            const synced = upsertRemoteTask(task, task.id, timestamp);
+            this.notifyTaskUpdated(synced);
+            savedCount++;
+            
+            // Update progress every 10 tasks
+            if (savedCount % 10 === 0) {
+              const progressPercent = Math.min(95, 90 + Math.floor((savedCount / tasks.length) * 5));
+              importQueueManager.updateProgress('tasks', progressPercent, `Saving ${savedCount}/${tasks.length}...`);
+            }
+          }
+          
+          console.log(`[SyncEngine] Saved ${savedCount} tasks`);
+        }
+        
+        // Update final count
+        totalTasksInDB = countTasks();
+        
+      } catch (error) {
+        // Always check for cancellation first
+        if (abortSignal.aborted || (error instanceof Error && error.message.includes('cancelled'))) {
           throw new Error('Import was cancelled');
         }
         
-        batchNumber++;
-        console.log(`[SyncEngine] Fetching batch ${batchNumber}... (cursor: ${cursor ? cursor.substring(0, 8) + '...' : 'start'})`);
-        importQueueManager.updateProgress('tasks', Math.min(95, 3 + batchNumber * 2), `Fetching batch ${batchNumber}...`);
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error(`[SyncEngine] Import error: ${errorMessage}`);
         
-        try {
-          // Fetch with timeout and abort support
-          const result = await this.withAbortAndTimeout(
-            getTasksBatchReliably(cursor, RELIABLE_BATCH_SIZE, abortSignal),
-            abortSignal,
-            60000, // 60 second timeout for batch fetch
-            `Batch ${batchNumber} fetch`
-          );
-          
-          console.log(`[SyncEngine] Batch ${batchNumber}: ${result.tasks.length} tasks, hasMore: ${result.hasMore}`);
-          
-          // Check abort after fetch
-          if (abortSignal.aborted) throw new Error('Import was cancelled');
-          
-          // Save tasks
-          if (result.tasks.length > 0) {
-            const timestamp = new Date().toISOString();
-            for (const task of result.tasks) {
-              const synced = upsertRemoteTask(task, task.id, timestamp);
-              this.notifyTaskUpdated(synced);
-            }
-            console.log(`[SyncEngine] Saved ${result.tasks.length} tasks`);
-          }
-          
-          // Update counts
-          totalTasksInDB = countTasks();
-          cursor = result.nextCursor;
-          consecutiveFailures = 0;
-          
-          // Save progress state
-          setSyncState(SYNC_KEY_TASKS_CURSOR, cursor || '');
-          
-          // Update progress
-          const progressPercent = Math.min(95, Math.round((totalTasksInDB / TARGET_TASK_COUNT) * 100));
-          this.updateImportProgress({
-            tasksImported: totalTasksInDB,
-            pagesProcessed: batchNumber,
-            message: `${totalTasksInDB} tasks imported...`
-          });
-          importQueueManager.updateProgress('tasks', progressPercent, `${totalTasksInDB} tasks imported`);
-          
-          // Check if done
-          if (!result.hasMore || result.tasks.length === 0) {
-            console.log(`[SyncEngine] No more tasks to fetch`);
-            break;
-          }
-          
-          // Small delay between batches (be nice to API)
-          await sleep(BACKGROUND_IMPORT_DELAY_MS);
-          
-        } catch (error) {
-          // Always check for cancellation first
-          if (abortSignal.aborted || (error instanceof Error && error.message.includes('cancelled'))) {
-            throw new Error('Import was cancelled');
-          }
-          
-          consecutiveFailures++;
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.error(`[SyncEngine] Batch ${batchNumber} error (${consecutiveFailures}/${INITIAL_IMPORT_MAX_FAILURES}): ${errorMessage}`);
-          
-          if (consecutiveFailures >= INITIAL_IMPORT_MAX_FAILURES) {
-            console.log('[SyncEngine] Too many failures, pausing import');
-            this.updateImportProgress({
-              status: 'paused',
-              error: errorMessage,
-              message: `Paused at ${totalTasksInDB} tasks. Will retry.`
-            });
-            this.importRunning = false;
-            return;
-          }
-          
-          // Exponential backoff
-          const backoffMs = INITIAL_IMPORT_BASE_BACKOFF_MS * Math.pow(2, consecutiveFailures - 1);
-          console.log(`[SyncEngine] Retrying in ${backoffMs}ms...`);
-          await sleep(backoffMs);
-        }
+        // Set error state but don't fail completely - some tasks may have been imported
+        this.updateImportProgress({
+          status: 'error',
+          error: errorMessage,
+          message: `Import error: ${errorMessage}`
+        });
       }
       
       // Import complete!
@@ -601,7 +631,7 @@ class SyncEngine extends EventEmitter {
         lastSuccessfulSync: new Date().toISOString()
       });
       
-      console.log(`[SyncEngine] ✓ Import finished: ${totalTasksInDB} tasks (target was ${TARGET_TASK_COUNT})`);
+      console.log(`[SyncEngine] ✓ Import finished: ${totalTasksInDB} tasks (all available tasks imported)`);
       
     } catch (error) {
       // Handle cancellation

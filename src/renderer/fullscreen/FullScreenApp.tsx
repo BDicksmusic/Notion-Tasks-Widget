@@ -98,16 +98,16 @@ const SPLIT_SIDEBAR_MAX = 900;
 const CALENDAR_SIDEBAR_MIN = 200;
 const CALENDAR_SIDEBAR_MAX = 800;
 type OrganizerPanel = 'filters' | 'sort' | 'group' | null;
-type FullscreenViewMode = 'tasks' | 'projects' | 'calendar' | 'writing';
+type FullscreenViewMode = 'tasks' | 'projects' | 'calendar' | 'writing' | 'done';
 type TaskPanel = 'list' | 'matrix' | 'kanban' | 'calendar';
 type ProjectSubView = 'list' | 'matrix' | 'kanban' | 'calendar' | 'gantt';
 
 // Navigation sidebar configuration
 const NAV_ITEMS: { id: FullscreenViewMode; icon: string; label: string; description: string }[] = [
-  { id: 'tasks', icon: '☰', label: 'Tasks', description: 'Task dashboard with multiple views' },
+  { id: 'tasks', icon: '☰', label: 'Open', description: 'Open tasks and active work' },
+  { id: 'done', icon: '✓', label: 'Done', description: 'Completed tasks and history' },
   { id: 'projects', icon: '📁', label: 'Projects', description: 'Project management and planning' },
-  { id: 'calendar', icon: '📅', label: 'Calendar', description: 'Calendar view with scheduling' },
-  { id: 'writing', icon: '✏️', label: 'Writing', description: 'Writing logs and entries' }
+  { id: 'calendar', icon: '📅', label: 'Calendar', description: 'Calendar view with scheduling' }
 ];
 const NAV_SIDEBAR_STORAGE_KEY = 'fullscreen.navSidebar.collapsed';
 const HEADER_COLLAPSED_STORAGE_KEY = 'fullscreen.header.collapsed';
@@ -346,6 +346,12 @@ const FullScreenApp = () => {
     return STATUS_FILTERS.some((option) => option.value === stored)
       ? (stored as StatusFilterValue)
       : 'all';
+  });
+  // Hide completed tasks by default (separate from status filter for easy toggling)
+  const [hideDone, setHideDone] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = window.localStorage?.getItem('widget.filter.hideDone');
+    return stored !== 'false'; // Default to true (hide done)
   });
   const [sortRules, setSortRules] = useState<SortRule[]>(() => {
     if (typeof window === 'undefined') return deserializeSortRules();
@@ -1388,6 +1394,11 @@ const FullScreenApp = () => {
     if (typeof window === 'undefined') return;
     window.localStorage?.setItem('widget.filter.status', statusFilter);
   }, [statusFilter]);
+  
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage?.setItem('widget.filter.hideDone', String(hideDone));
+  }, [hideDone]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1944,6 +1955,10 @@ const FullScreenApp = () => {
       if (statusFilter !== 'all' && normalizedStatus !== statusFilter) {
         return false;
       }
+      // Hide completed tasks when hideDone is true (unless explicitly filtering for done)
+      if (hideDone && statusFilter !== 'done' && normalizedStatus === 'done') {
+        return false;
+      }
       if (
         viewMode === 'projects' &&
         selectedProjectId &&
@@ -1959,6 +1974,7 @@ const FullScreenApp = () => {
     matrixFilter,
     deadlineFilter,
     statusFilter,
+    hideDone,
     searchQuery,
     selectedProjectId,
     viewMode
@@ -2858,6 +2874,20 @@ const FullScreenApp = () => {
                                 {option.label}
                               </button>
                             ))}
+                        </div>
+                        
+                        {/* Hide Done Toggle */}
+                        <div className="hide-done-toggle-row">
+                          <button
+                            type="button"
+                            className={`hide-done-toggle ${hideDone ? 'active' : ''}`}
+                            onClick={() => setHideDone(!hideDone)}
+                            aria-pressed={hideDone}
+                            title={hideDone ? 'Show completed tasks' : 'Hide completed tasks'}
+                          >
+                            <span className="hide-done-check">{hideDone ? '✓' : ''}</span>
+                            <span className="hide-done-label">Hide Done</span>
+                          </button>
                         </div>
                       </div>
                       <div className="task-organizer-section-footer">
@@ -4242,27 +4272,65 @@ const FullScreenApp = () => {
 
   const renderCalendarTasksPanel = (variant: 'main' | 'sidebar' = 'main') => {
     const dateStr = calendarDate.toISOString().split('T')[0];
-    const tasksOnDay = orderedTasks.filter((t) => t.dueDate?.startsWith(dateStr));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().split('T')[0];
     
-    // Projects on selected day
-    const projectsOnDay = projects.filter((p) => p.endDate?.startsWith(dateStr));
+    // Determine which tasks to show based on toggle state
+    let tasksToShow: Task[] = [];
+    let panelTitle = '';
+    let panelSubtitle = '';
+    
+    if (calendarOverdueOpen) {
+      // Show overdue tasks
+      tasksToShow = orderedTasks.filter((t) => 
+        t.dueDate && t.normalizedStatus !== 'complete' && t.dueDate < todayStr
+      );
+      panelTitle = '⚠️ Overdue Tasks';
+      panelSubtitle = `${tasksToShow.length} task${tasksToShow.length !== 1 ? 's' : ''} past due`;
+    } else if (calendarUnscheduledOpen) {
+      // Show unscheduled tasks
+      tasksToShow = orderedTasks.filter((t) => 
+        !t.dueDate && t.normalizedStatus !== 'complete'
+      );
+      panelTitle = '📋 Unscheduled Tasks';
+      panelSubtitle = `${tasksToShow.length} task${tasksToShow.length !== 1 ? 's' : ''} without dates`;
+    } else {
+      // Show tasks for selected day
+      tasksToShow = orderedTasks.filter((t) => t.dueDate?.startsWith(dateStr));
+      panelTitle = calendarDate.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    }
+    
+    // Projects on selected day (only show when not in overdue/unscheduled mode)
+    const projectsOnDay = (!calendarOverdueOpen && !calendarUnscheduledOpen)
+      ? projects.filter((p) => p.endDate?.startsWith(dateStr))
+      : [];
     
     const panelClasses = ['calendar-day-view'];
     if (variant === 'sidebar') {
       panelClasses.push('is-compact');
     }
+    if (calendarOverdueOpen) {
+      panelClasses.push('showing-overdue');
+    }
+    if (calendarUnscheduledOpen) {
+      panelClasses.push('showing-unscheduled');
+    }
     
     return (
       <div className={panelClasses.join(' ')}>
-        {/* Selected Day Section */}
+        {/* Panel Title */}
         <h2 className="calendar-day-title">
-          {calendarDate.toLocaleDateString('en-US', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-          })}
+          {panelTitle}
         </h2>
+        {panelSubtitle && (
+          <p className="calendar-day-subtitle">{panelSubtitle}</p>
+        )}
         
         {/* Projects with deadlines on this day */}
         {projectsOnDay.length > 0 && (
@@ -4296,11 +4364,17 @@ const FullScreenApp = () => {
         )}
         
         <div className="calendar-tasks">
-          {tasksOnDay.length === 0 ? (
-            <div className="panel muted">No tasks scheduled for this day</div>
+          {tasksToShow.length === 0 ? (
+            <div className="panel muted">
+              {calendarOverdueOpen 
+                ? 'No overdue tasks! 🎉' 
+                : calendarUnscheduledOpen 
+                  ? 'No unscheduled tasks' 
+                  : 'No tasks scheduled for this day'}
+            </div>
           ) : (
             <TaskList
-              tasks={tasksOnDay}
+              tasks={tasksToShow}
               loading={false}
               error={null}
               statusOptions={statusOptions}
@@ -4425,10 +4499,8 @@ const FullScreenApp = () => {
         </button>
       )}
       <header className={`fullscreen-header ${headerCollapsed ? 'is-collapsed' : ''}`}>
-        {/* Current View Label */}
-        <div className="current-view-label">
-          <span className="view-icon">{NAV_ITEMS.find(n => n.id === viewMode)?.icon}</span>
-          <span className="view-name">{NAV_ITEMS.find(n => n.id === viewMode)?.label}</span>
+        {/* Left side: Projects toggle + Organizer buttons */}
+        <div className="header-left-cluster">
           <button
             type="button"
             className="header-collapse-btn"
@@ -4437,8 +4509,8 @@ const FullScreenApp = () => {
           >
             ▲
           </button>
-          {/* Projects sidebar toggle - inline with Tasks */}
-          {viewMode === 'tasks' && (
+          {/* Projects sidebar toggle */}
+          {(viewMode === 'tasks' || viewMode === 'done') && (
             <button
               type="button"
               className={`projects-inline-toggle ${projectSidebarOpen ? 'is-open' : ''} ${!projectSidebarOpen && selectedProjectId ? 'has-filter' : ''}`}
@@ -4452,6 +4524,8 @@ const FullScreenApp = () => {
               )}
             </button>
           )}
+          {/* Organizer toolbar - now inline for tasks, projects, and calendar views */}
+          {(viewMode === 'tasks' || viewMode === 'projects' || viewMode === 'calendar') && renderOrganizerToolbar('compact')}
         </div>
         
         <div className="fullscreen-toolbar-cluster">
@@ -4752,8 +4826,7 @@ const FullScreenApp = () => {
               })}
             </div>
           )}
-          {/* Master filters for Tasks view - affects all panels */}
-          {viewMode === 'tasks' && renderOrganizerToolbar('full')}
+          {/* Master filters for Tasks view - affects all panels (now in header-left-cluster) */}
         </div>
         <div className="header-actions">
           <div className="widget-switch">
@@ -4762,7 +4835,7 @@ const FullScreenApp = () => {
               className={activeWidget === 'tasks' ? 'active' : ''}
               onClick={() => setActiveWidget('tasks')}
             >
-              Tasks{' '}
+              Open{' '}
               <span style={{ opacity: 0.5, marginLeft: 4 }}>
                 {focusTaskId ? 1 : displayTasks.length}
               </span>
@@ -4772,7 +4845,10 @@ const FullScreenApp = () => {
               className={activeWidget === 'writing' ? 'active' : ''}
               onClick={() => setActiveWidget('writing')}
             >
-              Writing
+              Done{' '}
+              <span style={{ opacity: 0.5, marginLeft: 4 }}>
+                {tasks.filter(t => completedStatus ? t.status === completedStatus : t.normalizedStatus === 'complete').length}
+              </span>
             </button>
           </div>
           <ImportQueueMenu onImportStarted={() => fetchTasks()} />
@@ -4809,12 +4885,54 @@ const FullScreenApp = () => {
       
       {/* Main Content Area */}
       {activeWidget === 'writing' ? (
-        <section className="fullscreen-content">
-          <WritingWidget
-            settings={writingSettings}
-            onCreate={handleCreateWritingEntry}
-          />
-        </section>
+        /* Done/Completed Tasks Widget View */
+        (() => {
+          // Use the configured completedStatus value to filter completed tasks
+          const completedTasks = tasks.filter(t => 
+            completedStatus ? t.status === completedStatus : t.normalizedStatus === 'complete'
+          );
+          const sortedCompleted = [...completedTasks].sort((a, b) => {
+            if (a.dueDate && b.dueDate) {
+              return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
+            }
+            if (a.dueDate) return 1;
+            if (b.dueDate) return -1;
+            return a.title.localeCompare(b.title);
+          });
+          
+          return (
+            <section className="fullscreen-content done-widget-section">
+              <div className="done-widget-header">
+                <span className="done-count">{completedTasks.length} completed</span>
+              </div>
+              <div className="done-widget-list">
+                <TaskList
+                  tasks={sortedCompleted}
+                  loading={false}
+                  error={null}
+                  statusOptions={statusOptions}
+                  manualStatuses={manualStatuses}
+                  completedStatus={notionSettings?.completedStatus}
+                  onUpdateTask={handleUpdateTask}
+                  emptyMessage="No completed tasks yet"
+                  grouping="none"
+                  sortHold={sortHold}
+                  holdDuration={SORT_HOLD_DURATION}
+                  onPopOutTask={
+                    canUseWindowControls
+                      ? (task) => {
+                          void handlePopOutTask(task.id);
+                        }
+                      : undefined
+                  }
+                  scrollContainerRef={taskListScrollRef}
+                  onScrollToCenter={scrollToCenterTaskElement}
+                  projects={projects}
+                />
+              </div>
+            </section>
+          );
+        })()
       ) : viewMode === 'tasks' ? (
         /* Tasks Dashboard - Multi-panel view */
         <div className="tasks-dashboard">
@@ -5355,13 +5473,6 @@ const FullScreenApp = () => {
           <aside className={`calendar-notes-panel ${calendarNotesPanelOpen ? 'is-open' : ''}`}>
             <div className="notes-panel-header">
               <h4>📝 Capture Notes</h4>
-              <button
-                type="button"
-                className="notes-panel-close"
-                onClick={() => setCalendarNotesPanelOpen(false)}
-              >
-                ✕
-              </button>
             </div>
             <div className="notes-panel-content">
               <WritingWidget
@@ -5369,10 +5480,111 @@ const FullScreenApp = () => {
                 onCreate={handleCreateWritingEntry}
               />
             </div>
+            <div className="notes-panel-footer">
+              <button
+                type="button"
+                className="notes-panel-close"
+                onClick={() => setCalendarNotesPanelOpen(false)}
+              >
+                <span className="close-icon">↓</span>
+                <span className="close-label">Close Notes</span>
+              </button>
+            </div>
           </aside>
         </div>
+      ) : viewMode === 'done' ? (
+        /* Done/Completed Tasks View */
+        (() => {
+          // Get all completed tasks using the configured completedStatus value
+          const completedTasks = tasks.filter(t => 
+            completedStatus ? t.status === completedStatus : t.normalizedStatus === 'complete'
+          );
+          
+          // Apply search filter
+          const searchFiltered = searchQuery 
+            ? completedTasks.filter(t => 
+                t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                t.mainEntry?.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+            : completedTasks;
+          
+          // Sort by completion date (most recent first) - using dueDate as proxy
+          const sortedTasks = [...searchFiltered].sort((a, b) => {
+            if (a.dueDate && b.dueDate) {
+              return new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime();
+            }
+            if (a.dueDate) return 1;
+            if (b.dueDate) return -1;
+            return a.title.localeCompare(b.title);
+          });
+          
+          // Group by date
+          const tasksByDate = new Map<string, Task[]>();
+          sortedTasks.forEach(task => {
+            const dateKey = task.dueDate?.split('T')[0] || 'No date';
+            const existing = tasksByDate.get(dateKey) || [];
+            existing.push(task);
+            tasksByDate.set(dateKey, existing);
+          });
+          
+          return (
+            <section className="fullscreen-content done-section">
+              <div className="done-section-header">
+                <h3>✓ Completed Tasks</h3>
+                <span className="done-count">{completedTasks.length} tasks</span>
+                <div className="done-search">
+                  <SearchInput
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder="Search completed tasks..."
+                  />
+                </div>
+              </div>
+              <div className="done-tasks-list">
+                {sortedTasks.length === 0 ? (
+                  <div className="panel muted">
+                    {searchQuery ? 'No matching completed tasks' : 'No completed tasks yet'}
+                  </div>
+                ) : (
+                  <TaskList
+                    tasks={sortedTasks}
+                    loading={false}
+                    error={null}
+                    statusOptions={statusOptions}
+                    manualStatuses={manualStatuses}
+                    completedStatus={notionSettings?.completedStatus}
+                    onUpdateTask={handleUpdateTask}
+                    emptyMessage="No completed tasks"
+                    grouping="dueDate"
+                    groups={Array.from(tasksByDate.entries()).map(([date, dateTasks]) => ({
+                      id: date,
+                      label: date === 'No date' ? 'No date' : new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
+                        weekday: 'long',
+                        month: 'short',
+                        day: 'numeric'
+                      }),
+                      tasks: dateTasks
+                    }))}
+                    sortHold={sortHold}
+                    holdDuration={SORT_HOLD_DURATION}
+                    onPopOutTask={
+                      canUseWindowControls
+                        ? (task) => {
+                            void handlePopOutTask(task.id);
+                          }
+                        : undefined
+                    }
+                    scrollContainerRef={taskListScrollRef}
+                    onScrollToCenter={scrollToCenterTaskElement}
+                    projects={projects}
+                  />
+                )}
+              </div>
+            </section>
+          );
+        })()
       ) : viewMode === 'writing' ? (
-        /* Writing Logs View */
+        /* Writing Logs View (hidden from nav but still accessible) */
         <section className="fullscreen-content writing-section">
           <div className="writing-section-header">
             <h3>Writing Logs</h3>
@@ -5404,8 +5616,9 @@ const FullScreenApp = () => {
             const allProjectTasks = tasks.filter((t) =>
               (t.projectIds ?? []).includes(activeProject.id)
             );
-            const incompleteTasks = allProjectTasks.filter(t => t.normalizedStatus !== 'complete');
-            const completedTasks = allProjectTasks.filter(t => t.normalizedStatus === 'complete');
+            const isTaskComplete = (t: Task) => completedStatus ? t.status === completedStatus : t.normalizedStatus === 'complete';
+            const incompleteTasks = allProjectTasks.filter(t => !isTaskComplete(t));
+            const completedTasks = allProjectTasks.filter(t => isTaskComplete(t));
             
             // Apply search filter
             const searchFiltered = workspaceSearch 

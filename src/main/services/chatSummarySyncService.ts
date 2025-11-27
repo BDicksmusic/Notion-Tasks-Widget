@@ -12,6 +12,9 @@ import {
   updateChatSummarySyncStatus
 } from '../db/repositories/chatSummaryRepository';
 
+// Notion API version - using latest (2025-09-03) for Data Sources API
+const NOTION_API_VERSION = '2025-09-03';
+
 // Notion API request helper
 async function notionRequest(
   apiKey: string,
@@ -23,7 +26,7 @@ async function notionRequest(
     method,
     headers: {
       'Authorization': `Bearer ${apiKey}`,
-      'Notion-Version': '2022-06-28',
+      'Notion-Version': NOTION_API_VERSION,
       'Content-Type': 'application/json'
     },
     body: body ? JSON.stringify(body) : undefined
@@ -35,6 +38,23 @@ async function notionRequest(
   }
 
   return response.json();
+}
+
+// Cache for data source IDs
+const dataSourceIdCache = new Map<string, string>();
+
+/**
+ * Get the data_source_id for a database (SDK 5.x / API 2025-09-03)
+ */
+async function getDataSourceId(apiKey: string, databaseId: string): Promise<string> {
+  if (dataSourceIdCache.has(databaseId)) {
+    return dataSourceIdCache.get(databaseId)!;
+  }
+  
+  const db = await notionRequest(apiKey, `/databases/${databaseId}`, 'GET') as any;
+  const dataSourceId = db.data_sources?.[0]?.id || databaseId;
+  dataSourceIdCache.set(databaseId, dataSourceId);
+  return dataSourceId;
 }
 
 interface NotionPageResponse {
@@ -93,8 +113,11 @@ export async function syncSummaryToNotion(
     })
     .join('\n');
 
+  // SDK 5.x: Get data_source_id for parent
+  const dataSourceId = await getDataSourceId(notionApiKey, databaseId);
+  
   const pageContent = {
-    parent: { database_id: databaseId },
+    parent: { data_source_id: dataSourceId },
     properties: {
       Name: {
         title: [

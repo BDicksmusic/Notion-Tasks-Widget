@@ -64,12 +64,30 @@ function getNotionClient(preferredKey) {
 function formatTaskId(taskId) {
     return taskId ? taskId.replace(/-/g, '').trim() : '';
 }
+// Cache for data source IDs (SDK 5.x / API 2025-09-03)
+const dataSourceIdCache = new Map();
+async function getDataSourceId(client, databaseId) {
+    if (dataSourceIdCache.has(databaseId)) {
+        return dataSourceIdCache.get(databaseId);
+    }
+    const database = await client.databases.retrieve({ database_id: databaseId });
+    const dataSources = database.data_sources;
+    let dataSourceId;
+    if (dataSources && dataSources.length > 0) {
+        dataSourceId = dataSources[0].id;
+    } else {
+        dataSourceId = databaseId;
+    }
+    dataSourceIdCache.set(databaseId, dataSourceId);
+    return dataSourceId;
+}
 async function fetchPages(client, databaseId, params = {}) {
     const pages = [];
     let cursor;
+    const dataSourceId = await getDataSourceId(client, databaseId);
     do {
-        const response = await client.databases.query({
-            database_id: databaseId,
+        const response = await client.dataSources.query({
+            data_source_id: dataSourceId,
             start_cursor: cursor,
             page_size: 50,
             ...params

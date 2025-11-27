@@ -64,6 +64,7 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [statuses, setStatuses] = useState<ImportJobStatus[]>([]);
   const [currentImport, setCurrentImport] = useState<ImportType | null>(null);
+  const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -158,13 +159,24 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
 
   const isAnyRunning = currentImport !== null;
 
+  const handleToggle = () => {
+    if (!isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPosition({
+        top: rect.bottom + 8,
+        right: window.innerWidth - rect.right
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
   return (
     <div className={`import-queue-menu-container ${className}`} style={{ position: 'relative' }}>
       <button
         ref={buttonRef}
         type="button"
         className={`icon-button import-queue-button ${isAnyRunning ? 'importing' : ''}`}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleToggle}
         title={isAnyRunning ? `Importing ${currentImport}...` : 'Import from Notion'}
         aria-label="Import menu"
         aria-expanded={isOpen}
@@ -173,11 +185,12 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
         {isAnyRunning && <span className="import-badge" />}
       </button>
 
-      {isOpen && (
+      {isOpen && dropdownPosition && (
         <div 
           ref={menuRef}
           className="import-queue-dropdown"
           role="menu"
+          style={{ top: dropdownPosition.top, right: dropdownPosition.right }}
         >
           <div className="import-queue-header">
             <span className="import-queue-title">Import from Notion</span>
@@ -332,16 +345,14 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
         }
 
         .import-queue-dropdown {
-          position: absolute;
-          top: calc(100% + 8px);
-          right: 0;
+          position: fixed;
           min-width: 320px;
           max-width: 400px;
           background: var(--notion-bg-secondary);
           border: 1px solid var(--notion-border);
           border-radius: var(--radius-lg, 12px);
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-          z-index: 1000;
+          z-index: 100000;
           animation: dropdownSlideIn 150ms ease-out;
           overflow: hidden;
         }

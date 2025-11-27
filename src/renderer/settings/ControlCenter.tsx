@@ -51,7 +51,7 @@ const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: 'timelog', label: 'Time Tracking', icon: '⏱️' },
   { id: 'projects', label: 'Projects', icon: '📁' },
   { id: 'widget', label: 'Widget', icon: '🪟' },
-  { id: 'import', label: 'Import & Sync', icon: '📥' },
+  { id: 'import', label: 'Sync & Refresh', icon: '🔄' },
   { id: 'reset', label: 'Data Reset', icon: '🔄' },
   { id: 'mcp', label: 'MCP Servers', icon: '🔌' },
   { id: 'shortcuts', label: 'Shortcuts', icon: '⌨️' },
@@ -150,6 +150,10 @@ interface ControlCenterProps {
 
 const ControlCenter = ({ initialSection }: ControlCenterProps) => {
   const [activeSection, setActiveSection] = useState<Section>(initialSection ?? 'setup');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage?.getItem('controlCenter.sidebar.collapsed') === 'true';
+  });
   
   // Settings state
   const [taskSettings, setTaskSettings] = useState<NotionSettings | null>(null);
@@ -532,6 +536,12 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
     const timer = window.setTimeout(() => setFeedback(null), 4000);
     return () => window.clearTimeout(timer);
   }, [feedback]);
+  
+  // Persist sidebar collapsed state
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage?.setItem('controlCenter.sidebar.collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   // Load data counts when reset section is active
   useEffect(() => {
@@ -1212,10 +1222,18 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
 
   return (
     <div className="control-center">
-      <aside className="control-center-sidebar">
+      <aside className={`control-center-sidebar ${sidebarCollapsed ? 'is-collapsed' : ''}`}>
         <div className="sidebar-header">
           <h1>Control Center</h1>
           <p>Configure your widgets</p>
+          <button
+            type="button"
+            className="sidebar-collapse-btn"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? '▶' : '◀'}
+          </button>
         </div>
         <nav className="sidebar-nav">
           {SECTIONS.map((section) => (
@@ -1224,6 +1242,7 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
               type="button"
               className={`nav-item ${activeSection === section.id ? 'active' : ''}`}
               onClick={() => setActiveSection(section.id)}
+              title={sidebarCollapsed ? section.label : undefined}
             >
               <span className="nav-icon">{section.icon}</span>
               <span className="nav-label">{section.label}</span>
@@ -1235,8 +1254,10 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
             type="button"
             className="sidebar-action"
             onClick={handleToggleWidget}
+            title={sidebarCollapsed ? (dockState?.collapsed ? 'Show Widget' : 'Hide Widget') : undefined}
           >
-            {dockState?.collapsed ? '↗ Show Widget' : '↙ Hide Widget'}
+            <span className="sidebar-action-icon">{dockState?.collapsed ? '↗' : '↙'}</span>
+            <span className="sidebar-action-label">{dockState?.collapsed ? 'Show Widget' : 'Hide Widget'}</span>
           </button>
         </div>
       </aside>
@@ -1271,7 +1292,7 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                 <h3>Welcome to Task Widget</h3>
                 <p className="section-description">
                   Your personal productivity command center. The app works fully offline with local data, 
-                  and optionally syncs with Notion for cloud storage.
+                  and syncs with Notion data sources for cloud backup. Active tasks and projects refresh automatically on startup.
                 </p>
               </div>
 
@@ -1291,7 +1312,7 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                     </div>
                     <div className="status-item">
                       <span className="status-check">{connectionStatus?.hasDatabaseId ? '✓' : '○'}</span>
-                      <span>Database ID configured</span>
+                      <span>Notion data source linked</span>
                     </div>
                   </div>
                   {connectionTestResult && (
@@ -1355,9 +1376,9 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                     className="quick-action-card"
                     onClick={() => setActiveSection('import')}
                   >
-                    <span className="quick-action-icon">📥</span>
-                    <span className="quick-action-label">Import & Sync</span>
-                    <span className="quick-action-desc">Sync data with Notion</span>
+                    <span className="quick-action-icon">🔄</span>
+                    <span className="quick-action-label">Sync & Refresh</span>
+                    <span className="quick-action-desc">Refresh data from Notion</span>
                   </button>
                 </div>
               </div>
@@ -1519,54 +1540,54 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
               </div>
 
               <div className="section-group">
-                <h3>Database IDs</h3>
+                <h3>Notion Data Sources</h3>
                 <p className="section-description">
-                  Configure which Notion databases power each widget. You can paste full URLs.
+                  Link your Notion databases. Paste the full URL or just the database ID.
                 </p>
                 <div className="field-grid">
                   <div className="field">
-                    <label>Tasks Database</label>
+                    <label>Tasks Data Source</label>
                     <input
                       type="text"
                       value={taskSettings?.databaseId ?? ''}
                       onChange={(e) => handleTaskFieldChange('databaseId', e.target.value)}
-                      placeholder="Database ID or URL"
+                      placeholder="Notion database URL or ID"
                     />
                   </div>
                   <div className="field">
-                    <label>Writing Database</label>
+                    <label>Writing Data Source</label>
                     <input
                       type="text"
                       value={writingSettings?.databaseId ?? ''}
                       onChange={(e) => handleWritingFieldChange('databaseId', e.target.value)}
-                      placeholder="Database ID or URL"
+                      placeholder="Notion database URL or ID"
                     />
                   </div>
                   <div className="field">
-                    <label>Time Log Database</label>
+                    <label>Time Log Data Source</label>
                     <input
                       type="text"
                       value={timeLogSettings?.databaseId ?? ''}
                       onChange={(e) => handleTimeLogFieldChange('databaseId', e.target.value)}
-                      placeholder="Database ID or URL"
+                      placeholder="Notion database URL or ID"
                     />
                   </div>
                   <div className="field">
-                    <label>Projects Database</label>
+                    <label>Projects Data Source</label>
                     <input
                       type="text"
                       value={projectsSettings?.databaseId ?? ''}
                       onChange={(e) => handleProjectsFieldChange('databaseId', e.target.value)}
-                      placeholder="Database ID or URL"
+                      placeholder="Notion database URL or ID"
                     />
                   </div>
                   <div className="field">
-                    <label>Contacts Database</label>
+                    <label>Contacts Data Source</label>
                     <input
                       type="text"
                       value={contactsSettings?.databaseId ?? ''}
                       onChange={(e) => handleContactsFieldChange('databaseId', e.target.value)}
-                      placeholder="Database ID or URL"
+                      placeholder="Notion database URL or ID"
                     />
                   </div>
                 </div>
@@ -2650,8 +2671,8 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
               </div>
 
               <div className="section-group">
-                <h3>Data Import</h3>
-                <p className="section-description">Import data from Notion on demand. This avoids API overload by letting you control when each data type syncs.</p>
+                <h3>Manual Sync</h3>
+                <p className="section-description">Refresh projects and time logs from Notion. Active items sync automatically on startup.</p>
                 <div className="import-controls" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                     <button
@@ -2660,7 +2681,7 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                       onClick={handleImportProjects}
                       disabled={importingProjects}
                     >
-                      {importingProjects ? 'Importing...' : '📁 Import Projects'}
+                      {importingProjects ? 'Syncing...' : '📁 Sync Projects'}
                     </button>
                     <button
                       type="button"
@@ -2668,7 +2689,7 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                       onClick={handleImportTimeLogs}
                       disabled={importingTimeLogs}
                     >
-                      {importingTimeLogs ? 'Importing...' : '⏱️ Import Time Logs'}
+                      {importingTimeLogs ? 'Syncing...' : '⏱️ Sync Time Logs'}
                     </button>
                   </div>
                   {syncTimestamps && (
@@ -2779,23 +2800,23 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
             </section>
           )}
 
-          {/* IMPORT & SYNC SECTION */}
+          {/* SYNC & REFRESH SECTION */}
           {activeSection === 'import' && (
             <section className="settings-section">
               <div className="section-group">
-                <h3>Data Import</h3>
-                <p className="section-description">Import all your tasks from Notion for a complete local copy.</p>
+                <h3>Task Sync</h3>
+                <p className="section-description">Fetch all tasks from your Notion data source. Active tasks sync automatically on startup.</p>
                 <div className="import-status">
                   {importProgress.status === 'idle' && (
                     <div className="status-box neutral">
-                      Ready to import tasks from Notion.
+                      Ready to sync tasks from Notion.
                     </div>
                   )}
                   {importProgress.status === 'running' && (
                     <div className="status-box info">
-                      <div className="status-title">Importing... {importProgress.tasksImported} tasks</div>
+                      <div className="status-title">Syncing... {importProgress.tasksImported} tasks</div>
                       <div className="status-detail">
-                        {importProgress.message || `Page ${importProgress.currentPage}`}
+                        {importProgress.message || `Batch ${importProgress.currentPage}`}
                       </div>
                       <div className="progress-bar">
                         <div className="progress-fill animate" />
@@ -2804,26 +2825,26 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                   )}
                   {importProgress.status === 'paused' && (
                     <div className="status-box warning">
-                      <div className="status-title">Import paused</div>
+                      <div className="status-title">Sync paused</div>
                       <div className="status-detail">
                         {importProgress.message || 'Will retry automatically...'}
                       </div>
                       <div className="status-detail">
-                        Progress: {importProgress.tasksImported} tasks ({importProgress.pagesProcessed} pages)
+                        Progress: {importProgress.tasksImported} tasks ({importProgress.pagesProcessed} batches)
                       </div>
                     </div>
                   )}
                   {importProgress.status === 'completed' && (
                     <div className="status-box success">
-                      <div className="status-title">✓ Import complete!</div>
+                      <div className="status-title">✓ Sync complete!</div>
                       <div className="status-detail">
-                        {importProgress.tasksImported} tasks imported from {importProgress.pagesProcessed} pages
+                        {importProgress.tasksImported} tasks synced from {importProgress.pagesProcessed} batches
                       </div>
                     </div>
                   )}
                   {importProgress.status === 'error' && (
                     <div className="status-box error">
-                      <div className="status-title">Import failed</div>
+                      <div className="status-title">Sync failed</div>
                       <div className="status-detail">{importProgress.error || 'Unknown error'}</div>
                     </div>
                   )}
@@ -2836,7 +2857,7 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                       onClick={handleStartImport}
                       disabled={isImporting}
                     >
-                      {importProgress.status === 'completed' ? 'Re-import all tasks' : 'Import all tasks'}
+                      {importProgress.status === 'completed' ? 'Sync all tasks again' : 'Sync all tasks'}
                     </button>
                   )}
                   {importProgress.status === 'paused' && (
@@ -2846,12 +2867,12 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                       onClick={handleStartImport}
                       disabled={isImporting}
                     >
-                      Resume import
+                      Resume sync
                     </button>
                   )}
                   {importProgress.status === 'running' && (
                     <button type="button" className="btn-secondary" disabled>
-                      Importing...
+                      Syncing...
                     </button>
                   )}
                   {(importProgress.status === 'completed' || importProgress.status === 'paused' || importProgress.status === 'error') && (

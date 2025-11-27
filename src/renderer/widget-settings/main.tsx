@@ -1,13 +1,19 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../styles.css';
-import { ensureMobileBridge } from '@shared/platform/mobileBridge';
 
-// Initialize mobile bridge BEFORE importing components
-ensureMobileBridge();
+const isElectronRuntime =
+  typeof navigator !== 'undefined' &&
+  navigator.userAgent.toLowerCase().includes('electron');
 
 // Dynamic import to ensure bridge is ready
 async function bootstrap() {
+  // Only initialize mobile bridge on non-Electron platforms
+  if (!isElectronRuntime) {
+    const { ensureMobileBridge } = await import('@shared/platform/mobileBridge');
+    ensureMobileBridge();
+  }
+  
   const container = document.getElementById('root');
 
   if (!container) {

@@ -1,7 +1,7 @@
 {
   "name": "notion-tasks-widget",
   "private": true,
-  "version": "0.6.13",
+  "version": "0.6.14",
   "description": "Electron-based floating widget for viewing and adding Notion tasks",
   "repository": {
     "type": "git",
@@ -165,7 +165,7 @@
     "@capacitor/preferences": "^7.0.2",
     "@huggingface/transformers": "^3.8.0",
     "@modelcontextprotocol/sdk": "^1.22.0",
-    "@notionhq/client": "^2.2.17",
+    "@notionhq/client": "^5.4.0",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node-fetch": "^2.6.13",
     "better-sqlite3": "^12.4.6",

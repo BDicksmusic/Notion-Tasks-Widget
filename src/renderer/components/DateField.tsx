@@ -748,6 +748,37 @@ const deriveVisibleMonth = (start?: string | null, end?: string | null) => {
 
 const formatTextValue = (start?: string | null, end?: string | null) => {
   if (start && end && end !== start) {
+    const startDate = parseIsoToDate(start);
+    const endDate = parseIsoToDate(end);
+    
+    // Check if same day - show compact time range format
+    if (startDate && endDate && isSameDay(startDate, endDate)) {
+      const dateLabel = startDate.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric'
+      });
+      
+      // If both have times, show "Nov 27 · 12:00 PM - 3:00 PM"
+      if (hasTimeComponent(start) && hasTimeComponent(end)) {
+        const startTime = startDate.toLocaleTimeString(undefined, {
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+        const endTime = endDate.toLocaleTimeString(undefined, {
+          hour: 'numeric',
+          minute: '2-digit'
+        });
+        return `${dateLabel} · ${startTime} - ${endTime}`;
+      }
+      
+      // Just one has time
+      if (hasTimeComponent(start)) {
+        return formatDisplayDate(start);
+      }
+      return dateLabel;
+    }
+    
+    // Different days - show full range
     return `${formatDisplayDate(start)} – ${formatDisplayDate(end)}`;
   }
   if (start) return formatDisplayDate(start);

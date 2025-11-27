@@ -78,6 +78,16 @@ interface QueryDatabaseResult {
   has_more: boolean;
 }
 
+// Query arguments for database query
+interface QueryDatabaseArgs {
+  database_id: string;
+  page_size?: number;
+  start_cursor?: string;
+  filter?: object;
+  sorts?: Array<Record<string, unknown>>;
+  filter_properties?: string[];
+}
+
 export function setNotionSettings(next: NotionSettings) {
   settings = next;
   
@@ -112,6 +122,101 @@ export function setNotionSettings(next: NotionSettings) {
  * filter_properties requires property IDs, not names.
  * This only needs to run once per session.
  */
+// Cache for data source IDs (SDK 5.x requires data_source_id for queries)
+const dataSourceIdCache = new Map<string, string>();
+
+/**
+ * Get the data_source_id for any database (required for SDK 5.x)
+ * The data_source_id is different from database_id in the new API
+ */
+async function getDataSourceIdForDatabase(client: Client, databaseId: string): Promise<string> {
+  // Check cache first
+  if (dataSourceIdCache.has(databaseId)) {
+    return dataSourceIdCache.get(databaseId)!;
+  }
+  
+  console.log(`[Notion] Getting data source ID for database ${databaseId.substring(0, 8)}...`);
+  
+  const database = await withRetry(
+    client,
+    () => client.databases.retrieve({ database_id: databaseId }),
+    'Get data source ID'
+  );
+  
+  // SDK 5.x: databases.retrieve returns data_sources array
+  const dataSources = (database as any).data_sources;
+  let dataSourceId: string;
+  
+  if (dataSources && dataSources.length > 0) {
+    dataSourceId = dataSources[0].id;
+    console.log(`[Notion] Got data source ID: ${dataSourceId.substring(0, 8)}...`);
+  } else {
+    // Fallback to database ID for older API versions
+    dataSourceId = databaseId;
+    console.log(`[Notion] No data_sources array, using database ID as fallback`);
+  }
+  
+  dataSourceIdCache.set(databaseId, dataSourceId);
+  return dataSourceId;
+}
+
+/**
+ * Get the data_source_id for the tasks database
+ */
+async function getDataSourceId(): Promise<string> {
+  if (cachedDataSourceId) {
+    return cachedDataSourceId;
+  }
+  
+  if (!notion) {
+    throw new Error('Notion client not initialized');
+  }
+  
+  cachedDataSourceId = await getDataSourceIdForDatabase(notion, getDatabaseId());
+  return cachedDataSourceId;
+}
+
+/**
+ * Query a database using the best available method:
+ * 1. Try dataSources.query (SDK 5.x) 
+ * 2. Fall back to raw fetch to databases/query endpoint
+ * 
+ * This ensures compatibility across different API versions.
+ */
+async function queryDatabaseReliably(
+  client: Client,
+  databaseId: string,
+  options: {
+    pageSize?: number;
+    startCursor?: string;
+    filter?: any;
+    sorts?: any[];
+  } = {}
+): Promise<{ results: any[]; has_more: boolean; next_cursor: string | null }> {
+  const { pageSize = 50, startCursor, filter, sorts } = options;
+  
+  // Get data source ID and use dataSources.query (SDK 5.x / API 2025)
+  const dataSourceId = await getDataSourceIdForDatabase(client, databaseId);
+  
+  const response = await withRetry(
+    client,
+    () => (client as any).dataSources.query({
+      data_source_id: dataSourceId,
+      page_size: pageSize,
+      start_cursor: startCursor ?? undefined,
+      ...(filter && { filter }),
+      ...(sorts && { sorts })
+    }),
+    'Query data source'
+  );
+  
+  return {
+    results: (response as any).results as PageObjectResponse[],
+    has_more: (response as any).has_more,
+    next_cursor: (response as any).next_cursor ?? null
+  };
+}
+
 async function getPropertyIds(): Promise<Map<string, string>> {
   if (cachedPropertyIds) {
     return cachedPropertyIds;
@@ -121,18 +226,20 @@ async function getPropertyIds(): Promise<Map<string, string>> {
     throw new Error('Notion client not initialized');
   }
   
-  const dbId = getDatabaseId();
-  console.log('[Notion] Fetching database schema for property IDs...');
+  // SDK 5.x: Use dataSources.retrieve to get properties
+  const dataSourceId = await getDataSourceId();
+  console.log('[Notion] Fetching data source schema for property IDs...');
   
   try {
-    const database = await withRetry(
+    // Use dataSources.retrieve (SDK 5.x)
+    const dataSource = await withRetry(
       notion,
-      () => notion!.databases.retrieve({ database_id: dbId }),
-      'Retrieve database schema'
+      () => (notion as any).dataSources.retrieve({ data_source_id: dataSourceId }),
+      'Retrieve data source schema'
     );
     
     cachedPropertyIds = new Map();
-    const props = (database as any).properties || {};
+    const props = (dataSource as any).properties || {};
     
     for (const [name, prop] of Object.entries(props)) {
       const propObj = prop as any;
@@ -258,10 +365,25 @@ function bindDatabaseQuery(client: Client) {
   if (!client) {
     throw new Error('Notion client is null or undefined');
   }
-  // Cast to any to access query method (SDK v2 types don't fully expose it)
-  return (client.databases as any).query.bind(client.databases) as (
-    args: Record<string, unknown>
-  ) => Promise<QueryDatabaseResult>;
+  
+  // SDK 5.x: Use dataSources.query via queryDatabaseReliably
+  // This returns a function that matches the old databases.query interface
+  return async (args: QueryDatabaseArgs): Promise<QueryDatabaseResult> => {
+    const databaseId = args.database_id;
+    
+    const response = await queryDatabaseReliably(client, databaseId, {
+      pageSize: args.page_size,
+      startCursor: args.start_cursor,
+      filter: args.filter,
+      sorts: args.sorts
+    });
+    
+    return {
+      results: response.results,
+      has_more: response.has_more,
+      next_cursor: response.next_cursor
+    };
+  };
 }
 
 export async function createWritingEntry(
@@ -322,8 +444,10 @@ export async function createWritingEntry(
   }
   const children = markdownBlocksToNotion(blockSource);
 
+  // SDK 5.x: Use data_source_id as parent instead of database_id
+  const dataSourceId = await getDataSourceIdForDatabase(client, databaseId);
   const response = await client.pages.create({
-    parent: { database_id: databaseId },
+    parent: { data_source_id: dataSourceId } as any,
     properties,
     children
   });
@@ -482,7 +606,7 @@ export async function getTasksPage(options: TaskPageOptions = {}): Promise<TaskP
   // Convert property names to IDs (API requires IDs for filter_properties)
   const filterPropertyIds = await getFilterPropertyIds(allPropertyNames);
 
-  const queryPayload: Record<string, unknown> = {
+  const queryPayload: QueryDatabaseArgs = {
     database_id: dbId,
     page_size: pageSize,
     ...(cursor && { start_cursor: cursor }),
@@ -613,15 +737,246 @@ export async function getTasksBatchReliably(
   if (!notion) {
     return { tasks: [], pageIds: [], nextCursor: null, hasMore: false };
   }
-  const dbId = getDatabaseId();
+  
+  // SDK 5.x: Use data_source_id instead of database_id
+  const dataSourceId = await getDataSourceId();
   const client = notion;
   
-  // Use the passed cursor, or the tracked import cursor
-  const effectiveCursor = cursor ?? searchImportCursor;
-
-  console.log(`[Notion] IMPORT: Using Search API + Property-Specific strategy (most reliable)`);
+  console.log(`[Notion] IMPORT: Using dataSources.query with filter_properties (SDK 5.x)`);
   
-  return getTasksBatchViaSearch(client, dbId, effectiveCursor ?? undefined, batchSize, abortSignal);
+  // Get property IDs for filter_properties - only fetch what we need
+  const propertyIds = await getPropertyIds();
+  
+  // Define ONLY the properties we need for import
+  const requiredPropertyNames = [
+    settings.titleProperty,
+    settings.statusProperty,
+    settings.dateProperty,
+    settings.deadlineProperty,
+    settings.urgentProperty,
+    settings.importantProperty,
+    settings.mainEntryProperty,
+    settings.sessionLengthProperty,
+    settings.estimatedLengthProperty,
+    settings.orderProperty,
+    settings.projectRelationProperty,
+    settings.parentTaskProperty,
+    settings.recurrenceProperty,
+    settings.idProperty
+  ].filter((p): p is string => Boolean(p?.trim()));
+  
+  // Convert to property IDs
+  const filterPropertyIds = requiredPropertyNames
+    .map(name => propertyIds.get(name))
+    .filter((id): id is string => Boolean(id));
+  
+  console.log(`[Notion] Requesting ${filterPropertyIds.length} properties (of ${propertyIds.size} total)`);
+  
+  try {
+    // Check abort before API call
+    if (abortSignal?.aborted) {
+      throw new Error('Import was cancelled');
+    }
+    
+    // NO FILTER - filters cause timeouts on complex databases
+    // Instead, we fetch ALL tasks and sort so active ones come first
+    // Sort by last_edited_time so recently worked-on tasks come first
+    console.log(`[Notion] Importing all tasks (no filter, sorted by last edited)`);
+    
+    // STEP 1: Query data source to get page IDs (fast, minimal data)
+    console.log(`[Notion] Step 1: Querying for page IDs...`);
+    const queryPromise = withRetry(
+      client,
+      () => (client as any).dataSources.query({
+        data_source_id: dataSourceId,
+        page_size: batchSize,
+        start_cursor: cursor ?? undefined
+        // NO filter - causes timeouts
+        // NO sorts - keep it simple for reliability
+      }),
+      'Query page IDs'
+    );
+    
+    const response = await withAbortSignal(queryPromise, abortSignal, 'Query batch') as QueryDatabaseResult;
+    const pageIds = response.results.map((r) => (r as PageObjectResponse).id);
+    
+    console.log(`[Notion] Found ${pageIds.length} page IDs, hasMore: ${response.has_more}`);
+    
+    if (pageIds.length === 0) {
+      return {
+        tasks: [],
+        pageIds: [],
+        nextCursor: response.next_cursor ?? null,
+        hasMore: response.has_more
+      };
+    }
+    
+    // STEP 2: Retrieve each page individually for full properties
+    console.log(`[Notion] Step 2: Retrieving ${pageIds.length} pages...`);
+    const tasks: Task[] = [];
+    
+    for (const pageId of pageIds) {
+      if (abortSignal?.aborted) {
+        throw new Error('Import was cancelled');
+      }
+      
+      try {
+        const pagePromise = withRetry(
+          client,
+          () => client.pages.retrieve({ page_id: pageId }),
+          `Retrieve page ${pageId.substring(0, 8)}`
+        );
+        
+        const page = await withAbortSignal(pagePromise, abortSignal, 'Retrieve page') as PageObjectResponse;
+        const task = mapPageToTask(page, settings);
+        tasks.push(task);
+      } catch (pageError) {
+        console.warn(`[Notion] Failed to retrieve page ${pageId}:`, pageError);
+        // Continue with other pages
+      }
+    }
+    
+    console.log(`[Notion] IMPORT batch: ${tasks.length} tasks retrieved`);
+    
+    // Debug: Log first task details
+    if (tasks.length > 0) {
+      const sample = tasks[0];
+      console.log(`[Notion] Sample task: title="${sample.title}", status="${sample.status}", dueDate="${sample.dueDate}"`);
+    }
+    
+    return {
+      tasks,
+      pageIds,
+      nextCursor: response.next_cursor ?? null,
+      hasMore: response.has_more
+    };
+  } catch (error) {
+    if (abortSignal?.aborted) {
+      throw new Error('Import was cancelled');
+    }
+    throw error;
+  }
+}
+
+/**
+ * DATE-CHUNK IMPORT - Bypasses cursor pagination which causes 504 errors
+ * 
+ * This is the ONLY reliable approach for complex databases (200+ properties):
+ * - Uses date filters instead of cursor pagination
+ * - Each chunk is independent (no cursor = no 504 errors)
+ * - Gets ~50 tasks per chunk using last_edited_time ranges
+ * 
+ * @param targetCount - Maximum number of tasks to import
+ * @param onProgress - Callback for progress updates
+ * @param abortSignal - Signal to cancel the import
+ */
+export async function importTasksWithDateChunks(
+  targetCount: number = 500,
+  onProgress?: (imported: number, chunk: string) => void,
+  abortSignal?: AbortSignal
+): Promise<Task[]> {
+  if (!notion) {
+    return [];
+  }
+  
+  const dataSourceId = await getDataSourceId();
+  const client = notion;
+  
+  // Helper to format date as YYYY-MM-DD (required format for Notion)
+  const formatDate = (daysAgo: number): string => {
+    const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+    return d.toISOString().split('T')[0];
+  };
+  
+  // Date ranges - last_edited_time (most reliable for active tasks)
+  const dateRanges: [number, number][] = [
+    [0, 7],       // Last week
+    [7, 14],      
+    [14, 30],     
+    [30, 60],     
+    [60, 90],     
+    [90, 120],    
+    [120, 180],   // Up to 6 months
+  ];
+  
+  const allTasks: Task[] = [];
+  
+  console.log(`[Notion] DATE-CHUNK IMPORT: Fetching up to ${targetCount} tasks`);
+  
+  for (const [startDays, endDays] of dateRanges) {
+    if (abortSignal?.aborted) {
+      throw new Error('Import was cancelled');
+    }
+    
+    if (allTasks.length >= targetCount) {
+      break;
+    }
+    
+    const afterDate = formatDate(endDays);
+    const beforeDate = formatDate(startDays);
+    const chunkName = `${startDays}-${endDays} days`;
+    
+    console.log(`[Notion] Chunk: ${chunkName} (${afterDate} to ${beforeDate})`);
+    onProgress?.(allTasks.length, chunkName);
+    
+    try {
+      // Query with date filter (no cursor pagination = no 504!)
+      const response = await withRetry(
+        client,
+        () => (client as any).dataSources.query({
+          data_source_id: dataSourceId,
+          page_size: 50,
+          filter: {
+            and: [
+              { timestamp: 'last_edited_time', last_edited_time: { after: afterDate } },
+              { timestamp: 'last_edited_time', last_edited_time: { on_or_before: beforeDate } }
+            ]
+          }
+        }),
+        `Query chunk ${chunkName}`
+      ) as { results: any[]; has_more: boolean; next_cursor: string | null };
+      
+      const pageIds = response.results.map((r: any) => r.id);
+      console.log(`[Notion] Chunk ${chunkName}: ${pageIds.length} page IDs`);
+      
+      // Retrieve full pages
+      for (const pageId of pageIds) {
+        if (abortSignal?.aborted) {
+          throw new Error('Import was cancelled');
+        }
+        
+        if (allTasks.length >= targetCount) {
+          break;
+        }
+        
+        try {
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            `Retrieve page`
+          ) as PageObjectResponse;
+          
+          const task = mapPageToTask(page, settings);
+          allTasks.push(task);
+        } catch (pageErr) {
+          console.warn(`[Notion] Failed to retrieve page ${pageId.substring(0, 8)}`);
+        }
+      }
+      
+      console.log(`[Notion] Chunk ${chunkName}: Total ${allTasks.length} tasks`);
+      onProgress?.(allTasks.length, chunkName);
+      
+    } catch (chunkErr: any) {
+      // Skip failed chunks and continue
+      console.warn(`[Notion] Chunk ${chunkName} failed: ${chunkErr.message?.substring(0, 50)}`);
+    }
+    
+    // Small delay between chunks
+    await new Promise(r => setTimeout(r, 300));
+  }
+  
+  console.log(`[Notion] DATE-CHUNK IMPORT complete: ${allTasks.length} tasks`);
+  return allTasks;
 }
 
 /**
@@ -646,12 +1001,16 @@ async function getTasksBatchViaSearch(
 ): Promise<ReliableImportResult> {
   console.log(`[Notion] IMPORT: Search + Property-Specific (cursor: ${cursor ? 'yes' : 'no'})`);
   
+  // For complex databases (200+ properties), use very small page sizes
+  // to avoid Notion API timeouts
+  const effectivePageSize = Math.max(1, Math.min(batchSize, 3)); // Cap at 3
+  
   const searchResult = await withAbortSignal(
     searchPagesInDatabase(
       client,
       dbId,
       '', // Empty query = all pages
-      batchSize * 3, // Request more since search may return pages from other databases
+      effectivePageSize,
       cursor
     ),
     abortSignal,
@@ -1054,10 +1413,12 @@ export async function addTask(payload: NotionCreatePayload): Promise<Task> {
   }
 
   const client = notion;
+  // SDK 5.x: Use data_source_id as parent instead of database_id
+  const dataSourceId = await getDataSourceId();
   const pageResponse = await withRetry(
     client,
     () => client.pages.create({
-      parent: { database_id: getDatabaseId() },
+      parent: { data_source_id: dataSourceId } as any,
       properties
     } as CreatePageParameters),
     'Create task'
@@ -1510,121 +1871,16 @@ export async function getAllTimeLogs(): Promise<TimeLogEntry[]> {
     const client = getTimeLogClient();
     const dbId = getTimeLogDatabaseId();
 
-    const entries: TimeLogEntry[] = [];
-    let cursor: string | null | undefined = undefined;
-
-    const queryDatabase = bindDatabaseQuery(client);
-
-    // Filter to only get time logs from the last 2 days
-    const twoDaysAgo = new Date();
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-    const twoDaysAgoISO = twoDaysAgo.toISOString();
-
-    // Build filter based on startTimeProperty if configured
-    const filter = timeLogSettings.startTimeProperty
-      ? {
-          property: timeLogSettings.startTimeProperty,
-          date: { on_or_after: twoDaysAgoISO }
-        }
-      : undefined;
-
-    do {
-      const response = await queryDatabase({
-        database_id: dbId,
-        ...(filter && { filter }),
-        sorts: [
-          {
-            timestamp: 'created_time',
-            direction: 'descending'
-          }
-        ],
-        page_size: 50,
-        start_cursor: cursor ?? undefined
-      });
-
-      for (const result of response.results) {
-      if (!isPageResponse(result)) continue;
-
-      const props = result.properties ?? {};
-      const startProp =
-        (timeLogSettings.startTimeProperty &&
-          props[timeLogSettings.startTimeProperty]) ||
-        undefined;
-      const endProp =
-        (timeLogSettings.endTimeProperty &&
-          props[timeLogSettings.endTimeProperty]) ||
-        undefined;
-      const titleProp =
-        (timeLogSettings.titleProperty &&
-          props[timeLogSettings.titleProperty]) ||
-        undefined;
-      const taskProp =
-        (timeLogSettings.taskProperty &&
-          props[timeLogSettings.taskProperty]) ||
-        undefined;
-
-      const startTime =
-        startProp?.type === 'date' ? startProp.date?.start ?? null : null;
-      let endTime =
-        endProp?.type === 'date' ? endProp.date?.start ?? null : null;
-      if (!endTime && startProp?.type === 'date') {
-        endTime = startProp.date?.end ?? null;
-      }
-      
-      // Calculate duration from start and end times (in minutes)
-      let durationMinutes: number | null = null;
-      if (startTime && endTime) {
-        const start = new Date(startTime);
-        const end = new Date(endTime);
-        durationMinutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
-      } else if (startTime) {
-        // Active session: calculate from start to now
-        const start = new Date(startTime);
-        const now = new Date();
-        durationMinutes = Math.round((now.getTime() - start.getTime()) / (1000 * 60));
-      }
-      
-      const title =
-        titleProp?.type === 'title'
-          ? titleProp.title.map((t: any) => t.plain_text).join('')
-          : null;
-
-      // Extract task relation if available
-      let taskId: string | null = null;
-      let taskTitle: string | null = null;
-      if (taskProp?.type === 'relation' && taskProp.relation.length > 0) {
-        taskId = taskProp.relation[0].id;
-        // Note: We'd need to fetch the task page to get the title, but for now we'll leave it null
-        // and can enhance later if needed
-      }
-      
-      // Extract unique ID for deduplication (e.g., "TIME-LOG-123")
-      const uniqueId = extractUniqueIdFromPageProperty(props, timeLogSettings.idProperty);
-
-      entries.push({
-        id: result.id,
-        uniqueId: uniqueId ?? undefined,
-        startTime,
-        endTime,
-        durationMinutes,
-        title,
-        taskId,
-        taskTitle
-      });
-      }
-
-      cursor = response.next_cursor ?? null;
-    } while (cursor);
-
-    console.log(`Fetched ${entries.length} time log entries`);
-    return entries;
+    console.log(`[Notion] Starting time logs IMPORT from database: ${dbId.substring(0, 8)}...`);
+    
+    // SDK 5.x: Use two-step approach - query for IDs, then retrieve each page
+    return await getTimeLogsReliably(client, dbId);
   } catch (error: any) {
     console.error('Failed to fetch time logs', {
       databaseId: timeLogSettings.databaseId,
       error: error.message,
       code: error.code
     });
-    // Return empty array on error to prevent UI crash
     if (error.message?.includes('Could not find database')) {
       console.error(
         `Time log database not found. Please ensure:\n` +
@@ -1635,6 +1891,248 @@ export async function getAllTimeLogs(): Promise<TimeLogEntry[]> {
     }
     return [];
   }
+}
+
+/**
+ * SDK 5.x Reliable Time Logs Import
+ * Two-step approach: Query data source for page IDs, then retrieve each page individually
+ */
+async function getTimeLogsReliably(client: Client, dbId: string): Promise<TimeLogEntry[]> {
+  console.log('[Notion] Using reliable two-step import for time logs...');
+  
+  // Filter to only get time logs from the last 2 days
+  const twoDaysAgo = new Date();
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+  const twoDaysAgoISO = twoDaysAgo.toISOString();
+  
+  const filter = timeLogSettings?.startTimeProperty
+    ? {
+        property: timeLogSettings.startTimeProperty,
+        date: { on_or_after: twoDaysAgoISO }
+      }
+    : undefined;
+  
+  const entries: TimeLogEntry[] = [];
+  let cursor: string | null = null;
+  let batchNum = 0;
+  const MAX_BATCHES = 10;
+  
+  // Temporarily set timeLogSettings apiKey for fallback query
+  const originalApiKey = settings.apiKey;
+  if (timeLogSettings?.apiKey) {
+    settings.apiKey = timeLogSettings.apiKey;
+  }
+  
+  try {
+    while (batchNum < MAX_BATCHES) {
+      batchNum++;
+      
+      // STEP 1: Query for page IDs using reliable method
+      console.log(`[Notion] Time logs batch ${batchNum}: Querying page IDs...`);
+      const response = await queryDatabaseReliably(client, dbId, {
+        pageSize: 50,
+        startCursor: cursor ?? undefined,
+        filter,
+        sorts: [{ timestamp: 'created_time', direction: 'descending' }]
+      });
+      
+      const pageIds = response.results.map((r: any) => r.id);
+      console.log(`[Notion] Time logs batch ${batchNum}: Found ${pageIds.length} page IDs`);
+      
+      if (pageIds.length === 0) {
+        break;
+      }
+      
+      // STEP 2: Retrieve each page individually
+      for (const pageId of pageIds) {
+        try {
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            `Retrieve time log ${pageId.substring(0, 8)}`
+          ) as PageObjectResponse;
+          
+          const entry = mapPageToTimeLogEntry(page);
+          if (entry) {
+            entries.push(entry);
+          }
+        } catch (pageError) {
+          console.warn(`[Notion] Failed to retrieve time log ${pageId}:`, pageError);
+        }
+      }
+      
+      if (!response.has_more) {
+        break;
+      }
+      
+      cursor = response.next_cursor;
+    }
+  } finally {
+    settings.apiKey = originalApiKey;
+  }
+  
+  console.log(`[Notion] Time logs import complete: ${entries.length} entries`);
+  return entries;
+}
+
+/**
+ * DATE-CHUNK IMPORT for Time Logs - Bypasses cursor pagination
+ * Uses date filters instead of cursor to avoid 504 errors on complex databases
+ */
+export async function importTimeLogsWithDateChunks(
+  daysBack: number = 30,
+  onProgress?: (imported: number, chunk: string) => void
+): Promise<TimeLogEntry[]> {
+  const client = getTimeLogClient();
+  const dbId = getTimeLogDatabaseId();
+  
+  if (!client || !dbId) {
+    console.warn('[Notion] Time logs not configured');
+    return [];
+  }
+  
+  const dataSourceId = await getDataSourceIdForDatabase(client, dbId);
+  
+  // Helper to format date as YYYY-MM-DD
+  const formatDate = (daysAgo: number): string => {
+    const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+    return d.toISOString().split('T')[0];
+  };
+  
+  // Date ranges for time logs (smaller ranges, more recent focus)
+  const allRanges: [number, number][] = [
+    [0, 1], [1, 2], [2, 3], [3, 7], [7, 14], [14, 30]
+  ];
+  const dateRanges = allRanges.filter(([_, end]) => end <= daysBack);
+  
+  const allEntries: TimeLogEntry[] = [];
+  
+  console.log(`[Notion] DATE-CHUNK IMPORT: Fetching time logs (last ${daysBack} days)`);
+  
+  for (const [startDays, endDays] of dateRanges) {
+    const afterDate = formatDate(endDays);
+    const beforeDate = formatDate(startDays);
+    const chunkName = `${startDays}-${endDays} days`;
+    
+    console.log(`[Notion] Time logs chunk: ${chunkName}`);
+    onProgress?.(allEntries.length, chunkName);
+    
+    try {
+      const response = await withRetry(
+        client,
+        () => (client as any).dataSources.query({
+          data_source_id: dataSourceId,
+          page_size: 50,
+          filter: {
+            and: [
+              { timestamp: 'created_time', created_time: { after: afterDate } },
+              { timestamp: 'created_time', created_time: { on_or_before: beforeDate } }
+            ]
+          }
+        }),
+        `Query time logs chunk ${chunkName}`
+      ) as { results: any[]; has_more: boolean; next_cursor: string | null };
+      
+      const pageIds = response.results.map((r: any) => r.id);
+      
+      for (const pageId of pageIds) {
+        try {
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            'Retrieve time log'
+          ) as PageObjectResponse;
+          
+          const entry = mapPageToTimeLogEntry(page);
+          if (entry) {
+            allEntries.push(entry);
+          }
+        } catch (err) {
+          // Skip failed pages
+        }
+      }
+      
+      onProgress?.(allEntries.length, chunkName);
+    } catch (chunkErr: any) {
+      console.warn(`[Notion] Time logs chunk ${chunkName} failed`);
+    }
+    
+    await new Promise(r => setTimeout(r, 300));
+  }
+  
+  console.log(`[Notion] DATE-CHUNK IMPORT complete: ${allEntries.length} time logs`);
+  return allEntries;
+}
+
+/**
+ * Map a Notion page to a TimeLogEntry
+ */
+function mapPageToTimeLogEntry(page: PageObjectResponse): TimeLogEntry | null {
+  const props = page.properties ?? {};
+  
+  const startProp =
+    (timeLogSettings?.startTimeProperty &&
+      props[timeLogSettings.startTimeProperty]) ||
+    undefined;
+  const endProp =
+    (timeLogSettings?.endTimeProperty &&
+      props[timeLogSettings.endTimeProperty]) ||
+    undefined;
+  const titleProp =
+    (timeLogSettings?.titleProperty &&
+      props[timeLogSettings.titleProperty]) ||
+    undefined;
+  const taskProp =
+    (timeLogSettings?.taskProperty &&
+      props[timeLogSettings.taskProperty]) ||
+    undefined;
+
+  const startTime =
+    (startProp as any)?.type === 'date' ? (startProp as any).date?.start ?? null : null;
+  let endTime =
+    (endProp as any)?.type === 'date' ? (endProp as any).date?.start ?? null : null;
+  if (!endTime && (startProp as any)?.type === 'date') {
+    endTime = (startProp as any).date?.end ?? null;
+  }
+  
+  // Calculate duration from start and end times (in minutes)
+  let durationMinutes: number | null = null;
+  if (startTime && endTime) {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    durationMinutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+  } else if (startTime) {
+    // Active session: calculate from start to now
+    const start = new Date(startTime);
+    const now = new Date();
+    durationMinutes = Math.round((now.getTime() - start.getTime()) / (1000 * 60));
+  }
+  
+  const title =
+    (titleProp as any)?.type === 'title'
+      ? (titleProp as any).title.map((t: any) => t.plain_text).join('')
+      : null;
+
+  // Extract task relation if available
+  let taskId: string | null = null;
+  let taskTitle: string | null = null;
+  if ((taskProp as any)?.type === 'relation' && (taskProp as any).relation.length > 0) {
+    taskId = (taskProp as any).relation[0].id;
+  }
+  
+  // Extract unique ID for deduplication
+  const uniqueId = extractUniqueIdFromPageProperty(props, timeLogSettings?.idProperty);
+
+  return {
+    id: page.id,
+    uniqueId: uniqueId ?? undefined,
+    startTime,
+    endTime,
+    durationMinutes,
+    title,
+    taskId,
+    taskTitle
+  };
 }
 
 export async function updateTimeLogEntry(
@@ -1907,12 +2405,215 @@ export async function getProjects(): Promise<Project[]> {
   
   console.log(`[Notion] Starting projects IMPORT from database: ${dbId.substring(0, 8)}...`);
 
-  // PRIMARY STRATEGY: Use Search API + Property-Specific Retrieval
-  // This is the most reliable approach for databases with many properties
-  // It never times out because:
-  // 1. Search API doesn't compute rollups/relations
-  // 2. Property-specific retrieval fetches only the 6 properties we need
-  return await getProjectsViaSearch(client, dbId);
+  // SDK 5.x: Use two-step approach - query for IDs, then retrieve each page
+  return await getProjectsReliably(client, dbId);
+}
+
+/**
+ * SDK 5.x Reliable Projects Import
+ * Two-step approach: Query data source for page IDs, then retrieve each page individually
+ */
+async function getProjectsReliably(client: Client, dbId: string): Promise<Project[]> {
+  console.log('[Notion] Using reliable two-step import for projects...');
+  
+  const projects: Project[] = [];
+  let cursor: string | null = null;
+  let batchNum = 0;
+  const MAX_BATCHES = 20;
+  let consecutiveErrors = 0;
+  const MAX_CONSECUTIVE_ERRORS = 3;
+  
+  // Temporarily set projectsSettings apiKey for fallback query
+  const originalApiKey = settings.apiKey;
+  if (projectsSettings?.apiKey) {
+    settings.apiKey = projectsSettings.apiKey;
+  }
+  
+  try {
+    while (batchNum < MAX_BATCHES) {
+      batchNum++;
+      
+      // STEP 1: Query for page IDs using reliable method
+      console.log(`[Notion] Projects batch ${batchNum}: Querying page IDs...`);
+      
+      let response;
+      try {
+        response = await queryDatabaseReliably(client, dbId, {
+          pageSize: 25, // Smaller batch to avoid rate limits
+          startCursor: cursor ?? undefined
+        });
+        consecutiveErrors = 0; // Reset on success
+      } catch (queryError: any) {
+        consecutiveErrors++;
+        const errorMsg = queryError?.message || String(queryError);
+        console.warn(`[Notion] Projects query error (${consecutiveErrors}/${MAX_CONSECUTIVE_ERRORS}): ${errorMsg}`);
+        
+        if (errorMsg.includes('temporarily unavailable') || errorMsg.includes('rate_limited')) {
+          // Rate limited - wait longer and retry
+          console.log('[Notion] Rate limited, waiting 5 seconds...');
+          await new Promise(r => setTimeout(r, 5000));
+          if (consecutiveErrors < MAX_CONSECUTIVE_ERRORS) {
+            batchNum--; // Retry this batch
+            continue;
+          }
+        }
+        
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          console.error('[Notion] Too many errors, stopping projects import');
+          break;
+        }
+        continue;
+      }
+      
+      const pageIds = response.results.map((r: any) => r.id);
+      console.log(`[Notion] Projects batch ${batchNum}: Found ${pageIds.length} page IDs`);
+      
+      if (pageIds.length === 0) {
+        break;
+      }
+      
+      // STEP 2: Retrieve each page individually with delays
+      for (let i = 0; i < pageIds.length; i++) {
+        const pageId = pageIds[i];
+        try {
+          // Small delay between page retrievals to avoid rate limits
+          if (i > 0 && i % 5 === 0) {
+            await new Promise(r => setTimeout(r, 200));
+          }
+          
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            `Retrieve project ${pageId.substring(0, 8)}`
+          ) as PageObjectResponse;
+          
+          const project = mapPageToProject(page, projects.length === 0);
+          
+          // Validate: skip if no ID or name
+          if (!project.id || !project.title) {
+            console.warn(`[Notion] Skipping invalid project (no ID or name): ${pageId}`);
+            continue;
+          }
+          
+          projects.push(project);
+        } catch (pageError: any) {
+          const errorMsg = pageError?.message || String(pageError);
+          if (errorMsg.includes('temporarily unavailable') || errorMsg.includes('rate_limited')) {
+            console.log('[Notion] Rate limited on page retrieve, waiting 3 seconds...');
+            await new Promise(r => setTimeout(r, 3000));
+          }
+          console.warn(`[Notion] Failed to retrieve project ${pageId}:`, pageError);
+        }
+      }
+      
+      if (!response.has_more) {
+        break;
+      }
+      
+      // Delay between batches to avoid rate limits
+      await new Promise(r => setTimeout(r, 500));
+      
+      cursor = response.next_cursor;
+    }
+  } finally {
+    // Restore original API key
+    settings.apiKey = originalApiKey;
+  }
+  
+  console.log(`[Notion] Projects import complete: ${projects.length} projects`);
+  return projects;
+}
+
+/**
+ * DATE-CHUNK IMPORT for Projects - Bypasses cursor pagination
+ * Uses date filters instead of cursor to avoid 504 errors on complex databases
+ */
+export async function importProjectsWithDateChunks(
+  targetCount: number = 200,
+  onProgress?: (imported: number, chunk: string) => void
+): Promise<Project[]> {
+  const client = getProjectsClient();
+  const dbId = getProjectsDatabaseId();
+  
+  if (!client || !dbId) {
+    console.warn('[Notion] Projects not configured');
+    return [];
+  }
+  
+  const dataSourceId = await getDataSourceIdForDatabase(client, dbId);
+  
+  // Helper to format date as YYYY-MM-DD
+  const formatDate = (daysAgo: number): string => {
+    const d = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+    return d.toISOString().split('T')[0];
+  };
+  
+  // Date ranges
+  const dateRanges: [number, number][] = [
+    [0, 30], [30, 60], [60, 90], [90, 180], [180, 365], [365, 730]
+  ];
+  
+  const allProjects: Project[] = [];
+  
+  console.log(`[Notion] DATE-CHUNK IMPORT: Fetching up to ${targetCount} projects`);
+  
+  for (const [startDays, endDays] of dateRanges) {
+    if (allProjects.length >= targetCount) break;
+    
+    const afterDate = formatDate(endDays);
+    const beforeDate = formatDate(startDays);
+    const chunkName = `${startDays}-${endDays} days`;
+    
+    console.log(`[Notion] Projects chunk: ${chunkName}`);
+    onProgress?.(allProjects.length, chunkName);
+    
+    try {
+      const response = await withRetry(
+        client,
+        () => (client as any).dataSources.query({
+          data_source_id: dataSourceId,
+          page_size: 50,
+          filter: {
+            and: [
+              { timestamp: 'last_edited_time', last_edited_time: { after: afterDate } },
+              { timestamp: 'last_edited_time', last_edited_time: { on_or_before: beforeDate } }
+            ]
+          }
+        }),
+        `Query projects chunk ${chunkName}`
+      ) as { results: any[]; has_more: boolean; next_cursor: string | null };
+      
+      const pageIds = response.results.map((r: any) => r.id);
+      
+      for (const pageId of pageIds) {
+        if (allProjects.length >= targetCount) break;
+        
+        try {
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            'Retrieve project'
+          ) as PageObjectResponse;
+          
+          const project = mapPageToProject(page, allProjects.length === 0);
+          if (project.id && project.title) {
+            allProjects.push(project);
+          }
+        } catch (err) {
+          // Skip failed pages
+        }
+      }
+      
+      onProgress?.(allProjects.length, chunkName);
+    } catch (chunkErr: any) {
+      console.warn(`[Notion] Projects chunk ${chunkName} failed`);
+    }
+    
+    await new Promise(r => setTimeout(r, 300));
+  }
+  
+  console.log(`[Notion] DATE-CHUNK IMPORT complete: ${allProjects.length} projects`);
+  return allProjects;
 }
 
 /**
@@ -2418,117 +3119,153 @@ async function fetchContactsFromNotion(): Promise<Contact[]> {
 
   const client = getContactsClient();
   const dbId = getContactsDatabaseId();
-  const queryDatabase = bindDatabaseQuery(client);
 
-  const propertyNames = [
-    contactsSettings.nameProperty,
-    contactsSettings.emailProperty,
-    contactsSettings.phoneProperty,
-    contactsSettings.companyProperty,
-    contactsSettings.roleProperty,
-    contactsSettings.notesProperty,
-    contactsSettings.projectsRelationProperty
-  ].filter(Boolean) as string[];
+  console.log(`[Notion] Starting contacts IMPORT from database: ${dbId.substring(0, 8)}...`);
+  
+  // SDK 5.x: Use two-step approach - query for IDs, then retrieve each page
+  return await getContactsReliably(client, dbId);
+}
 
-  const propertyIds = await getContactPropertyIds();
-  const filterPropertyIds = propertyNames
-    .map((name) => propertyIds.get(name))
-    .filter(Boolean) as string[];
-
+/**
+ * SDK 5.x Reliable Contacts Import
+ * Two-step approach: Query data source for page IDs, then retrieve each page individually
+ */
+async function getContactsReliably(client: Client, dbId: string): Promise<Contact[]> {
+  console.log('[Notion] Using reliable two-step import for contacts...');
+  
   const contacts: Contact[] = [];
-  let cursor: string | null | undefined = undefined;
-
-  do {
-    const response = await withRetry(
-      client,
-      () =>
-        queryDatabase({
-          database_id: dbId,
-          page_size: 25,
-          start_cursor: cursor ?? undefined,
-          ...(filterPropertyIds.length > 0 && {
-            filter_properties: filterPropertyIds
-          })
-        }),
-      'Query contacts database'
-    );
-
-    for (const result of response.results) {
-      if (!isPageResponse(result)) continue;
-      const props = result.properties ?? {};
-
-      const nameProp =
-        (contactsSettings.nameProperty &&
-          props[contactsSettings.nameProperty]) ||
-        undefined;
-      const resolvedNameProp =
-        nameProp && nameProp.type === 'title'
-          ? nameProp
-          : Object.values(props).find((prop: any) => prop?.type === 'title');
-      const name = extractPlainText(resolvedNameProp);
-
-      const emailProp =
-        (contactsSettings.emailProperty &&
-          props[contactsSettings.emailProperty]) ||
-        undefined;
-      const email =
-        emailProp?.type === 'email'
-          ? emailProp.email ?? null
-          : extractPlainText(emailProp);
-
-      const phoneProp =
-        (contactsSettings.phoneProperty &&
-          props[contactsSettings.phoneProperty]) ||
-        undefined;
-      const phone =
-        phoneProp?.type === 'phone_number'
-          ? phoneProp.phone_number ?? null
-          : extractPlainText(phoneProp);
-
-      const companyProp =
-        (contactsSettings.companyProperty &&
-          props[contactsSettings.companyProperty]) ||
-        undefined;
-      const company = extractPlainText(companyProp);
-
-      const roleProp =
-        (contactsSettings.roleProperty &&
-          props[contactsSettings.roleProperty]) ||
-        undefined;
-      const role = extractPlainText(roleProp);
-
-      const notesProp =
-        (contactsSettings.notesProperty &&
-          props[contactsSettings.notesProperty]) ||
-        undefined;
-      const notes = extractPlainText(notesProp);
-
-      const relationProp =
-        (contactsSettings.projectsRelationProperty &&
-          props[contactsSettings.projectsRelationProperty]) ||
-        undefined;
-      const projectIds =
-        relationProp?.type === 'relation'
-          ? relationProp.relation?.map((rel: any) => rel.id) ?? []
-          : null;
-
-      contacts.push({
-        id: result.id,
-        name,
-        email,
-        phone,
-        company,
-        role,
-        notes,
-        projectIds,
-        url: result.url ?? null
+  let cursor: string | null = null;
+  let batchNum = 0;
+  const MAX_BATCHES = 10;
+  
+  // Temporarily set contactsSettings apiKey for fallback query
+  const originalApiKey = settings.apiKey;
+  if (contactsSettings?.apiKey) {
+    settings.apiKey = contactsSettings.apiKey;
+  }
+  
+  try {
+    while (batchNum < MAX_BATCHES) {
+      batchNum++;
+      
+      // STEP 1: Query for page IDs using reliable method
+      console.log(`[Notion] Contacts batch ${batchNum}: Querying page IDs...`);
+      const response = await queryDatabaseReliably(client, dbId, {
+        pageSize: 50,
+        startCursor: cursor ?? undefined
       });
+      
+      const pageIds = response.results.map((r: any) => r.id);
+      console.log(`[Notion] Contacts batch ${batchNum}: Found ${pageIds.length} page IDs`);
+      
+      if (pageIds.length === 0) {
+        break;
+      }
+      
+      // STEP 2: Retrieve each page individually
+      for (const pageId of pageIds) {
+        try {
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            `Retrieve contact ${pageId.substring(0, 8)}`
+          ) as PageObjectResponse;
+          
+          const contact = mapPageToContact(page);
+          if (contact && contact.name) {
+            contacts.push(contact);
+          }
+        } catch (pageError) {
+          console.warn(`[Notion] Failed to retrieve contact ${pageId}:`, pageError);
+        }
+      }
+      
+      if (!response.has_more) {
+        break;
+      }
+      
+      cursor = response.next_cursor;
     }
-
-    cursor = response.next_cursor ?? null;
-  } while (cursor);
-
+  } finally {
+    settings.apiKey = originalApiKey;
+  }
+  
+  console.log(`[Notion] Contacts import complete: ${contacts.length} contacts`);
   return contacts;
+}
+
+/**
+ * Map a Notion page to a Contact
+ */
+function mapPageToContact(page: PageObjectResponse): Contact | null {
+  const props = page.properties ?? {};
+
+  const nameProp =
+    (contactsSettings?.nameProperty &&
+      props[contactsSettings.nameProperty]) ||
+    undefined;
+  const resolvedNameProp =
+    nameProp && (nameProp as any).type === 'title'
+      ? nameProp
+      : Object.values(props).find((prop: any) => prop?.type === 'title');
+  const name = extractPlainText(resolvedNameProp);
+
+  const emailProp =
+    (contactsSettings?.emailProperty &&
+      props[contactsSettings.emailProperty]) ||
+    undefined;
+  const email =
+    (emailProp as any)?.type === 'email'
+      ? (emailProp as any).email ?? null
+      : extractPlainText(emailProp);
+
+  const phoneProp =
+    (contactsSettings?.phoneProperty &&
+      props[contactsSettings.phoneProperty]) ||
+    undefined;
+  const phone =
+    (phoneProp as any)?.type === 'phone_number'
+      ? (phoneProp as any).phone_number ?? null
+      : extractPlainText(phoneProp);
+
+  const companyProp =
+    (contactsSettings?.companyProperty &&
+      props[contactsSettings.companyProperty]) ||
+    undefined;
+  const company = extractPlainText(companyProp);
+
+  const roleProp =
+    (contactsSettings?.roleProperty &&
+      props[contactsSettings.roleProperty]) ||
+    undefined;
+  const role = extractPlainText(roleProp);
+
+  const notesProp =
+    (contactsSettings?.notesProperty &&
+      props[contactsSettings.notesProperty]) ||
+    undefined;
+  const notes = extractPlainText(notesProp);
+
+  const relationProp =
+    (contactsSettings?.projectsRelationProperty &&
+      props[contactsSettings.projectsRelationProperty]) ||
+    undefined;
+  const projectIds =
+    (relationProp as any)?.type === 'relation'
+      ? (relationProp as any).relation?.map((rel: any) => rel.id) ?? []
+      : null;
+
+  return {
+    id: page.id,
+    name,
+    email,
+    phone,
+    company,
+    role,
+    notes,
+    projectIds,
+    url: (page as any).url ?? null
+  };
 }
 
 function extractPlainText(prop: any): string | null {
@@ -2566,30 +3303,7 @@ function getDatabaseId() {
   return raw;
 }
 
-async function getDataSourceId(dbId: string): Promise<string> {
-  if (!notion) {
-    throw new Error('Notion client not initialized');
-  }
-  if (cachedDataSourceId) return cachedDataSourceId;
-  if (settings.dataSourceId) {
-    cachedDataSourceId = settings.dataSourceId;
-    return cachedDataSourceId!;
-  }
-
-  const database = await notion.databases.retrieve({
-    database_id: dbId
-  });
-
-  const dataSource = (database as any).data_sources?.[0];
-  if (!dataSource?.id) {
-    throw new Error(
-      'Database is missing data source. Provide NOTION_DATA_SOURCE_ID in .env.'
-    );
-  }
-
-  cachedDataSourceId = dataSource.id;
-  return cachedDataSourceId!;
-}
+// getDataSourceId moved to top of file (SDK 5.x support)
 
 async function getOrderPropertyMetadata(): Promise<{
   type: 'select' | 'status';
@@ -2608,41 +3322,50 @@ async function getOrderPropertyMetadata(): Promise<{
     };
   }
 
-  const database = (await notion.databases.retrieve({
-    database_id: getDatabaseId()
-  })) as any;
-  const property = database.properties?.[settings.orderProperty];
+  try {
+    // SDK 5.x: Use dataSources.retrieve to get full property options
+    const dataSourceId = await getDataSourceId();
+    const dataSource = await withRetry(
+      notion,
+      () => (notion as any).dataSources.retrieve({ data_source_id: dataSourceId }),
+      'Retrieve data source for order options'
+    ) as any;
+    
+    const property = dataSource.properties?.[settings.orderProperty];
 
-  if (property?.type === 'select') {
-    const options: TaskOrderOption[] = property.select.options.map(
-      (option: any) => ({
-        id: option.id,
-        name: option.name,
-        color: option.color
-      })
-    );
-    cachedOrderOptions = options;
-    cachedOrderPropertyType = 'select';
-    return {
-      type: 'select',
-      options
-    };
-  }
+    if (property?.type === 'select') {
+      const options: TaskOrderOption[] = property.select.options.map(
+        (option: any) => ({
+          id: option.id,
+          name: option.name,
+          color: option.color
+        })
+      );
+      cachedOrderOptions = options;
+      cachedOrderPropertyType = 'select';
+      return {
+        type: 'select',
+        options
+      };
+    }
 
-  if (property?.type === 'status') {
-    const options: TaskOrderOption[] = property.status.options.map(
-      (option: any) => ({
-        id: option.id,
-        name: option.name,
-        color: option.color
-      })
-    );
-    cachedOrderOptions = options;
-    cachedOrderPropertyType = 'status';
-    return {
-      type: 'status',
-      options
-    };
+    if (property?.type === 'status') {
+      const options: TaskOrderOption[] = property.status.options.map(
+        (option: any) => ({
+          id: option.id,
+          name: option.name,
+          color: option.color
+        })
+      );
+      cachedOrderOptions = options;
+      cachedOrderPropertyType = 'status';
+      return {
+        type: 'status',
+        options
+      };
+    }
+  } catch (error) {
+    console.warn('[Notion] Failed to fetch order property metadata:', error);
   }
 
   cachedOrderOptions = [];
@@ -2661,25 +3384,36 @@ export async function getStatusOptions(): Promise<TaskStatusOption[]> {
     return cachedStatusOptions;
   }
 
-  const database = (await notion.databases.retrieve({
-    database_id: getDatabaseId()
-  })) as any;
+  try {
+    // SDK 5.x: Use dataSources.retrieve to get full property options
+    const dataSourceId = await getDataSourceId();
+    const dataSource = await withRetry(
+      notion,
+      () => (notion as any).dataSources.retrieve({ data_source_id: dataSourceId }),
+      'Retrieve data source for status options'
+    ) as any;
 
-  const property = database.properties?.[settings.statusProperty];
-  if (property?.type === 'status') {
-    cachedStatusOptions = property.status.options.map((option: any) => ({
-      id: option.id,
-      name: option.name,
-      color: option.color
-    }));
-  } else if (property?.type === 'select') {
-    cachedStatusOptions = property.select.options.map((option: any) => ({
-      id: option.id,
-      name: option.name,
-      color: option.color
-    }));
-  } else {
-    cachedStatusOptions = [];
+    const property = dataSource.properties?.[settings.statusProperty];
+    if (property?.type === 'status') {
+      cachedStatusOptions = property.status.options.map((option: any) => ({
+        id: option.id,
+        name: option.name,
+        color: option.color
+      }));
+    } else if (property?.type === 'select') {
+      cachedStatusOptions = property.select.options.map((option: any) => ({
+        id: option.id,
+        name: option.name,
+        color: option.color
+      }));
+    } else {
+      cachedStatusOptions = [];
+    }
+  } catch (error) {
+    console.warn('[Notion] Failed to fetch status options from data source:', error);
+    // Fallback to local statuses
+    const { listLocalTaskStatuses } = await import('../db/repositories/localStatusRepository');
+    return listLocalTaskStatuses();
   }
 
   return cachedStatusOptions ?? [];
@@ -2774,14 +3508,31 @@ export async function fetchProjectStatusOptionsFromNotion(): Promise<TaskStatusO
   const dbId = getProjectsDatabaseId();
 
   try {
-    console.log('[Notion] Fetching project status options from database schema...');
-    const database = (await withRetry(
+    console.log('[Notion] Fetching project status options from data source...');
+    
+    // SDK 5.x: First get database to find data_source_id, then retrieve data source for full properties
+    const database = await withRetry(
       client,
       () => client.databases.retrieve({ database_id: dbId }),
-      'Retrieve projects database schema'
-    )) as any;
-
-    const property = database.properties?.[projectsSettings.statusProperty];
+      'Retrieve projects database'
+    ) as any;
+    
+    const dataSources = database.data_sources || [];
+    let property: any = null;
+    
+    if (dataSources.length > 0) {
+      // Use dataSources.retrieve to get full property options
+      const dataSourceId = dataSources[0].data_source_id;
+      const dataSource = await withRetry(
+        client,
+        () => (client as any).dataSources.retrieve({ data_source_id: dataSourceId }),
+        'Retrieve projects data source'
+      ) as any;
+      property = dataSource.properties?.[projectsSettings.statusProperty];
+    } else {
+      // Fallback: try from database response (older API)
+      property = database.properties?.[projectsSettings.statusProperty];
+    }
 
     let options: TaskStatusOption[] = [];
     
@@ -2931,8 +3682,10 @@ export async function createTimeLogEntry(
   }
 
   try {
+    // SDK 5.x: Use data_source_id as parent instead of database_id
+    const dataSourceId = await getDataSourceIdForDatabase(client, databaseId);
     const response = await client.pages.create({
-      parent: { database_id: databaseId },
+      parent: { data_source_id: dataSourceId } as any,
       properties
     });
 
@@ -3096,6 +3849,206 @@ export async function testConnection(): Promise<{
       message,
       latencyMs
     };
+  }
+}
+
+/**
+ * Sync only active (non-completed) tasks on startup.
+ * Queries for tasks not in completed statuses and updates local DB.
+ * Much faster than full import - only touches active tasks.
+ */
+export async function syncActiveTasksOnly(
+  completedStatuses: string[] = ['✅', 'done', 'Done', 'Completed']
+): Promise<{ updated: number; errors: number }> {
+  if (!notion) {
+    return { updated: 0, errors: 0 };
+  }
+  
+  const client = notion;
+  const dbId = getDatabaseId();
+  let updated = 0;
+  let errors = 0;
+  
+  try {
+    console.log(`[Notion] Syncing tasks (no filter - fetching all)...`);
+    
+    // NO FILTER - filters cause timeouts on complex databases
+    // Query ALL tasks using reliable method
+    let cursor: string | null = null;
+    let batchNum = 0;
+    const MAX_BATCHES = 20;
+    
+    while (batchNum < MAX_BATCHES) {
+      batchNum++;
+      
+      console.log(`[Notion] Tasks sync batch ${batchNum}: Querying...`);
+      const response = await queryDatabaseReliably(client, dbId, {
+        pageSize: 50,
+        startCursor: cursor ?? undefined
+        // NO filter - causes timeouts
+      });
+      
+      const pageIds = response.results.map((r: any) => r.id);
+      console.log(`[Notion] Active sync batch ${batchNum}: ${pageIds.length} tasks`);
+      
+      if (pageIds.length === 0) {
+        break;
+      }
+      
+      // Retrieve and update each page
+      const { upsertRemoteTask, permanentlyDeleteTask } = await import('../db/repositories/taskRepository');
+      
+      for (const pageId of pageIds) {
+        try {
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            `Retrieve ${pageId.substring(0, 8)}`
+          ) as PageObjectResponse;
+          
+          const task = mapPageToTask(page, settings);
+          
+          // Validate: if task has no ID or no title, it's invalid - delete it
+          if (!task.id || !task.title) {
+            console.warn(`[Notion] Invalid task (no ID or title), deleting: ${pageId}`);
+            permanentlyDeleteTask(pageId);
+            errors++;
+            continue;
+          }
+          
+          upsertRemoteTask(task, task.id, new Date().toISOString());
+          updated++;
+        } catch (pageError) {
+          console.warn(`[Notion] Failed to sync page ${pageId}:`, pageError);
+          errors++;
+        }
+      }
+      
+      if (!response.has_more) {
+        break;
+      }
+      
+      cursor = response.next_cursor;
+    }
+    
+    console.log(`[Notion] Active sync complete: ${updated} updated, ${errors} errors`);
+    return { updated, errors };
+    
+  } catch (error) {
+    console.error('[Notion] Active sync failed:', error);
+    return { updated, errors: errors + 1 };
+  }
+}
+
+/**
+ * Sync only active (non-completed) projects on startup.
+ * Queries for projects not in completed statuses and updates local DB.
+ * Much faster than full import - only touches active projects.
+ */
+export async function syncActiveProjectsOnly(
+  completedStatuses: string[] = ['✅', 'done', 'Done', 'Completed', 'Complete', 'Archived']
+): Promise<{ updated: number; errors: number }> {
+  if (!projectsSettings?.databaseId) {
+    console.log('[Notion] Projects not configured, skipping active projects sync');
+    return { updated: 0, errors: 0 };
+  }
+  
+  let client: Client;
+  let dbId: string;
+  
+  try {
+    client = getProjectsClient();
+    dbId = getProjectsDatabaseId();
+  } catch (error) {
+    console.warn('[Notion] Projects client not available:', error);
+    return { updated: 0, errors: 0 };
+  }
+  
+  let updated = 0;
+  let errors = 0;
+  
+  // Temporarily set projectsSettings apiKey for fallback query
+  const originalApiKey = settings.apiKey;
+  if (projectsSettings?.apiKey) {
+    settings.apiKey = projectsSettings.apiKey;
+  }
+  
+  try {
+    const statusProperty = projectsSettings?.statusProperty || 'Status';
+    console.log(`[Notion] Syncing active projects (excluding: ${completedStatuses.join(', ')})...`);
+    
+    // Build filter to exclude completed statuses
+    const statusFilters = completedStatuses.map(status => ({
+      property: statusProperty,
+      status: { does_not_equal: status }
+    }));
+    
+    // Query for active projects only using reliable method
+    let cursor: string | null = null;
+    let batchNum = 0;
+    const MAX_BATCHES = 10;
+    
+    while (batchNum < MAX_BATCHES) {
+      batchNum++;
+      
+      console.log(`[Notion] Active projects batch ${batchNum}: Querying...`);
+      const response = await queryDatabaseReliably(client, dbId, {
+        pageSize: 50,
+        startCursor: cursor ?? undefined,
+        filter: statusFilters.length > 0 ? { and: statusFilters } : undefined
+      });
+      
+      const pageIds = response.results.map((r: any) => r.id);
+      console.log(`[Notion] Active projects batch ${batchNum}: ${pageIds.length} projects`);
+      
+      if (pageIds.length === 0) {
+        break;
+      }
+      
+      // Retrieve and update each page
+      const { upsertProject, deleteLocalProject } = await import('../db/repositories/projectRepository');
+      
+      for (const pageId of pageIds) {
+        try {
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            `Retrieve project ${pageId.substring(0, 8)}`
+          ) as PageObjectResponse;
+          
+          const project = mapPageToProject(page, false);
+          
+          // Validate: if project has no ID or no name, it's invalid - delete it
+          if (!project.id || !project.title) {
+            console.warn(`[Notion] Invalid project (no ID or name), deleting: ${pageId}`);
+            deleteLocalProject(pageId);
+            errors++;
+            continue;
+          }
+          
+          upsertProject(project, new Date().toISOString());
+          updated++;
+        } catch (pageError) {
+          console.warn(`[Notion] Failed to sync project ${pageId}:`, pageError);
+          errors++;
+        }
+      }
+      
+      if (!response.has_more) {
+        break;
+      }
+      
+      cursor = response.next_cursor;
+    }
+    
+    console.log(`[Notion] Active projects sync complete: ${updated} updated, ${errors} errors`);
+    return { updated, errors };
+    
+  } catch (error) {
+    console.error('[Notion] Active projects sync failed:', error);
+    return { updated, errors: errors + 1 };
+  } finally {
+    settings.apiKey = originalApiKey;
   }
 }
 

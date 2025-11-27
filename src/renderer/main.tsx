@@ -2,7 +2,6 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles.css';
 import { setPlatformApis } from '@shared/platform';
-import { ensureMobileBridge } from '@shared/platform/mobileBridge';
 import type { SettingsAPI, WidgetAPI } from '@shared/ipc';
 
 const globalWithBridge = window as typeof window & {
@@ -46,6 +45,8 @@ async function bootstrap() {
       console.log('[Platform] Desktop bridge detected and configured');
     } else if (!isElectronRuntime) {
       console.log('[Platform] Initializing mobile bridge...');
+      // Dynamic import to reduce initial bundle size
+      const { ensureMobileBridge } = await import('@shared/platform/mobileBridge');
       ensureMobileBridge();
       
       if (globalWithBridge.widgetAPI && globalWithBridge.settingsAPI) {

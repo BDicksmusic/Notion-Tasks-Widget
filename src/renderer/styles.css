@@ -1392,6 +1392,61 @@ html:has(.fullscreen-app) {
     --filter-accent-color: #1f1300;
 }
 
+/* Hide Done Toggle - inline style matching other filter buttons */
+.hide-done-toggle-row {
+    display: inline-flex;
+    margin-left: 8px;
+}
+
+.hide-done-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    background: transparent;
+    border: 1px solid var(--notion-border);
+    border-radius: var(--radius-sm);
+    color: var(--notion-text-muted);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.hide-done-toggle:hover {
+    background: var(--notion-bg-hover);
+    color: var(--notion-text);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.hide-done-toggle.active {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: rgba(34, 197, 94, 0.5);
+    color: #4ade80;
+}
+
+.hide-done-check {
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.hide-done-toggle.active .hide-done-check {
+    background: #22c55e;
+    border-color: #22c55e;
+    color: white;
+}
+
+.hide-done-label {
+    font-weight: 500;
+}
+
 .status-inline-select {
     border-radius: 999px;
     padding: 4px 16px;
@@ -1408,6 +1463,12 @@ html:has(.fullscreen-app) {
   padding: 0;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Virtualization spacers for lazy loading */
+.task-list-spacer {
+  flex-shrink: 0;
+  pointer-events: none;
 }
 
 .task-row.has-active-session {
@@ -1979,20 +2040,17 @@ html:has(.fullscreen-app) {
 .task-project-picker-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 99;
+  z-index: 99999;
   background: transparent;
 }
 
 .task-project-picker {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 100;
+  position: fixed;
+  z-index: 100000;
   min-width: 300px;
   max-width: 420px;
   max-height: 450px;
   overflow-y: auto;
-  margin-top: 8px;
   padding: 10px;
   background: var(--notion-bg-secondary);
   border: 1px solid var(--notion-border);
@@ -2668,7 +2726,8 @@ html:has(.fullscreen-app) {
 .date-field {
   position: relative;
   display: inline-flex;
-  max-width: 138px;
+  max-width: fit-content;
+  min-width: 90px;
 }
 
 .date-field.is-open {
@@ -5000,6 +5059,18 @@ select option {
 }
 
 /* Current view label in header */
+/* Header left cluster - projects toggle + organizer buttons */
+.header-left-cluster {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.header-left-cluster .task-organizer-toolbar {
+    margin-left: 8px;
+}
+
+/* Legacy current-view-label (kept for compatibility) */
 .current-view-label {
     display: flex;
     align-items: center;
@@ -5023,7 +5094,6 @@ select option {
     justify-content: center;
     width: 24px;
     height: 24px;
-    margin-left: 8px;
     background: transparent;
     border: 1px solid transparent;
     border-radius: var(--radius-sm);
@@ -10877,10 +10947,34 @@ select option {
 }
 
 .calendar-day-title {
-    margin: 0 0 20px;
+    margin: 0 0 8px;
     font-size: 24px;
     font-weight: 600;
     color: var(--notion-text);
+}
+
+.calendar-day-subtitle {
+    margin: 0 0 16px;
+    font-size: 13px;
+    color: var(--notion-text-muted);
+}
+
+/* Overdue mode styling */
+.calendar-day-view.showing-overdue .calendar-day-title {
+    color: #f87171;
+}
+
+.calendar-day-view.showing-overdue .calendar-day-subtitle {
+    color: #fca5a5;
+}
+
+/* Unscheduled mode styling */
+.calendar-day-view.showing-unscheduled .calendar-day-title {
+    color: #60a5fa;
+}
+
+.calendar-day-view.showing-unscheduled .calendar-day-subtitle {
+    color: #93c5fd;
 }
 
 .calendar-tasks {
@@ -13215,24 +13309,41 @@ select option {
     color: var(--notion-text);
 }
 
+.notes-panel-footer {
+    flex-shrink: 0;
+    padding: 12px 16px;
+    border-top: 1px solid var(--notion-border);
+    background: var(--notion-bg-secondary);
+}
+
 .notes-panel-close {
-    width: 32px;
-    height: 32px;
+    width: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-    color: var(--notion-text-secondary);
-    font-size: 16px;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--notion-bg-hover);
+    border: 1px solid var(--notion-border);
+    border-radius: 8px;
+    color: var(--notion-text-muted);
+    font-size: 14px;
     cursor: pointer;
-    transition: all 100ms ease;
+    transition: all 150ms ease;
 }
 
 .notes-panel-close:hover {
-    background: var(--notion-bg-hover);
+    background: var(--notion-bg-active);
     color: var(--notion-text);
+    border-color: var(--notion-text-muted);
+}
+
+.notes-panel-close .close-icon {
+    font-size: 16px;
+}
+
+.notes-panel-close .close-label {
+    font-weight: 500;
 }
 
 .notes-panel-content {
@@ -18341,6 +18452,96 @@ select option {
 /* ============================================
    Writing Log View Styles
    ============================================ */
+/* Done/Completed Tasks Section (fullscreen view) */
+.done-section {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.done-section-header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--notion-border);
+    background: var(--notion-bg-secondary);
+    flex-shrink: 0;
+}
+
+.done-section-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #4ade80;
+}
+
+.done-count {
+    font-size: 12px;
+    color: var(--notion-text-muted);
+    padding: 3px 8px;
+    background: rgba(34, 197, 94, 0.15);
+    border-radius: 999px;
+}
+
+.done-search {
+    flex: 1;
+    max-width: 300px;
+    margin-left: auto;
+}
+
+.done-tasks-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 24px;
+}
+
+.done-tasks-list .task-list {
+    max-width: 800px;
+}
+
+.done-tasks-list .task-group-header {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.2);
+}
+
+.done-tasks-list .task-group-title {
+    color: #4ade80;
+}
+
+/* Done Widget Section (in widget header toggle) */
+.done-widget-section {
+    padding: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.done-widget-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--notion-border);
+}
+
+.done-widget-header .done-count {
+    font-size: 12px;
+    color: #4ade80;
+}
+
+.done-widget-list {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.done-widget-list .task-list {
+    max-width: 100%;
+}
+
+/* Writing Section */
 .writing-section {
     padding: 0;
     overflow: hidden;
@@ -21105,7 +21306,7 @@ select option {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  width: 100%;
+  width: auto; /* Changed from 100% - let it fit content on left */
   background: transparent;
   border: none;
   color: var(--notion-text-muted);
@@ -21113,6 +21314,7 @@ select option {
   font-size: 14px;
   text-align: left;
   transition: all 150ms ease;
+  margin-right: auto; /* Push to left side */
 }
 
 .quick-add-toggle:hover {
@@ -21540,8 +21742,9 @@ select option {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   transition: background 150ms ease;
+  position: relative;
 }
 
 .simple-calendar-day:hover {
@@ -21577,7 +21780,8 @@ select option {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 
 .simple-calendar-task {
@@ -21598,7 +21802,11 @@ select option {
   background: rgba(255, 255, 255, 0.15);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-  z-index: 10;
+  z-index: 1000;
+}
+
+.simple-calendar-day:has(.simple-calendar-task:hover) {
+  z-index: 100;
 }
 
 .simple-calendar-task.is-clicked {
@@ -21628,7 +21836,7 @@ select option {
   transform: translateY(4px);
   transition: all 150ms ease;
   pointer-events: none;
-  z-index: 100;
+  z-index: 10000;
 }
 
 .simple-calendar-task:hover::after {
@@ -21648,7 +21856,7 @@ select option {
   opacity: 0;
   visibility: hidden;
   transition: all 150ms ease;
-  z-index: 101;
+  z-index: 10001;
 }
 
 .simple-calendar-task:hover::before {

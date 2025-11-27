@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   MouseEvent as ReactMouseEvent,
   DragEvent as ReactDragEvent
@@ -21,6 +21,11 @@ import DateField from './DateField';
 import { getStatusColorClass } from '../utils/statusColors';
 import type { GroupingOption, TaskGroup } from '../utils/sorting';
 import MassEditToolbar from './MassEditToolbar';
+
+// Virtualization constants
+const TASK_ROW_HEIGHT = 56; // Approximate height of a task row in pixels
+const BUFFER_SIZE = 10; // Number of extra items to render above/below viewport
+const INITIAL_RENDER_COUNT = 30; // Initial number of tasks to render for fast first paint
 
 const POP_OUT_INTERACTIVE_SELECTOR = [
   'button',
@@ -213,6 +218,7 @@ const TaskList = ({
   } | null>(null);
   const [groupDropTarget, setGroupDropTarget] = useState<string | null>(null);
   const [expandedProjectPicker, setExpandedProjectPicker] = useState<string | null>(null);
+  const [pickerPosition, setPickerPosition] = useState<{ top: number; left: number } | null>(null);
   const [expandedSubtasks, setExpandedSubtasks] = useState<Record<string, boolean>>({});
   const [subtaskCache, setSubtaskCache] = useState<Record<string, Task[]>>({});
   const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
@@ -226,8 +232,64 @@ const TaskList = ({
   // Anchor index is where the selection started (for rubber-band selection)
   const [selectionAnchorIndex, setSelectionAnchorIndex] = useState<number>(-1);
   
+  // Virtualization state for lazy loading
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_RENDER_COUNT });
+  const virtualListRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  
   const manualOrderingActive = Boolean(manualOrderingEnabled && onManualReorder);
   const hasGroups = grouping !== 'none' && Boolean(groups?.length);
+  
+  // Virtualization: calculate visible range based on scroll position
+  const updateVisibleRange = useCallback(() => {
+    const container = scrollContainerRef?.current || virtualListRef.current;
+    if (!container) return;
+    
+    const scrollTop = container.scrollTop;
+    const viewportHeight = container.clientHeight;
+    
+    // Calculate which items should be visible
+    const startIndex = Math.max(0, Math.floor(scrollTop / TASK_ROW_HEIGHT) - BUFFER_SIZE);
+    const visibleCount = Math.ceil(viewportHeight / TASK_ROW_HEIGHT);
+    const endIndex = startIndex + visibleCount + BUFFER_SIZE * 2;
+    
+    setVisibleRange(prev => {
+      // Only update if range changed significantly to avoid excessive re-renders
+      if (Math.abs(prev.start - startIndex) > 3 || Math.abs(prev.end - endIndex) > 3) {
+        return { start: startIndex, end: endIndex };
+      }
+      return prev;
+    });
+  }, [scrollContainerRef]);
+  
+  // Set up scroll listener for virtualization
+  useEffect(() => {
+    const container = scrollContainerRef?.current || virtualListRef.current;
+    if (!container) return;
+    
+    // Initial calculation
+    updateVisibleRange();
+    
+    // Throttled scroll handler
+    let ticking = false;
+    const handleScroll = () => {
+      if (!ticking) {
+        requestAnimationFrame(() => {
+          updateVisibleRange();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [scrollContainerRef, updateVisibleRange]);
+  
+  // Reset visible range when tasks change significantly
+  useEffect(() => {
+    setVisibleRange({ start: 0, end: Math.max(INITIAL_RENDER_COUNT, visibleRange.end) });
+  }, [tasks.length > 0 ? tasks[0]?.id : null]);
   const orderOptionMap = useMemo(() => {
     const map = new Map<string, { index: number; color?: string }>();
     orderOptions.forEach((option, index) => {
@@ -1813,7 +1875,14 @@ const TaskList = ({
                         className="task-project-label"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setExpandedProjectPicker(isPickerOpen ? null : task.id);
+                          if (isPickerOpen) {
+                            setExpandedProjectPicker(null);
+                            setPickerPosition(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setPickerPosition({ top: rect.bottom + 4, left: rect.left });
+                            setExpandedProjectPicker(task.id);
+                          }
                         }}
                         title="Change project"
                       >
@@ -1829,7 +1898,14 @@ const TaskList = ({
                         className="task-project-label task-project-add"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setExpandedProjectPicker(isPickerOpen ? null : task.id);
+                          if (isPickerOpen) {
+                            setExpandedProjectPicker(null);
+                            setPickerPosition(null);
+                          } else {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setPickerPosition({ top: rect.bottom + 4, left: rect.left });
+                            setExpandedProjectPicker(task.id);
+                          }
                         }}
                         title="Add to project"
                       >
@@ -1838,22 +1914,27 @@ const TaskList = ({
                       </button>
                     ) : null}
                     
-                    {isPickerOpen && openProjects.length > 0 && (
+                    {isPickerOpen && openProjects.length > 0 && pickerPosition && (
                       <>
                         <div 
                           className="task-project-picker-backdrop"
                           onClick={(e) => {
                             e.stopPropagation();
                             setExpandedProjectPicker(null);
+                            setPickerPosition(null);
                           }}
                         />
-                        <div className="task-project-picker">
+                        <div 
+                          className="task-project-picker"
+                          style={{ top: pickerPosition.top, left: pickerPosition.left }}
+                        >
                           <button
                             type="button"
                             className={`project-option ${!hasProjects ? 'is-selected' : ''}`}
                             onClick={() => {
                               void handleUpdate(task.id, { projectIds: null });
                               setExpandedProjectPicker(null);
+                              setPickerPosition(null);
                             }}
                           >
                             No project
@@ -1868,6 +1949,7 @@ const TaskList = ({
                                 onClick={() => {
                                   void handleUpdate(task.id, { projectIds: [project.id] });
                                   setExpandedProjectPicker(null);
+                                  setPickerPosition(null);
                                 }}
                               >
                                 {project.title || 'Untitled'}
@@ -2644,6 +2726,65 @@ const TaskList = ({
     );
   };
 
+  // Virtualized rendering for ungrouped tasks
+  const renderVirtualizedTasks = () => {
+    // Always render active tasks (they're usually few and at the top)
+    const activeTasksRendered = ungroupedActiveTasks.map((task) => renderTask(task));
+    
+    // For inactive tasks, use virtualization if there are many
+    const totalInactive = ungroupedInactiveTasks.length;
+    const shouldVirtualize = totalInactive > INITIAL_RENDER_COUNT && !manualOrderingActive;
+    
+    if (!shouldVirtualize) {
+      // Render all tasks normally if count is small or manual ordering is active
+      return (
+        <>
+          {ungroupedActiveTasks.length > 0 && (
+            <div className="task-active-stack">
+              {activeTasksRendered}
+            </div>
+          )}
+          {ungroupedInactiveTasks.map((task) => renderTask(task))}
+        </>
+      );
+    }
+    
+    // Virtualized rendering: only render visible tasks with spacers
+    const { start, end } = visibleRange;
+    const clampedStart = Math.max(0, Math.min(start, totalInactive));
+    const clampedEnd = Math.min(end, totalInactive);
+    
+    const topSpacerHeight = clampedStart * TASK_ROW_HEIGHT;
+    const bottomSpacerHeight = Math.max(0, (totalInactive - clampedEnd) * TASK_ROW_HEIGHT);
+    
+    const visibleTasks = ungroupedInactiveTasks.slice(clampedStart, clampedEnd);
+    
+    return (
+      <>
+        {ungroupedActiveTasks.length > 0 && (
+          <div className="task-active-stack">
+            {activeTasksRendered}
+          </div>
+        )}
+        {topSpacerHeight > 0 && (
+          <div 
+            className="task-list-spacer" 
+            style={{ height: topSpacerHeight, minHeight: topSpacerHeight }}
+            aria-hidden="true"
+          />
+        )}
+        {visibleTasks.map((task) => renderTask(task))}
+        {bottomSpacerHeight > 0 && (
+          <div 
+            className="task-list-spacer" 
+            style={{ height: bottomSpacerHeight, minHeight: bottomSpacerHeight }}
+            aria-hidden="true"
+          />
+        )}
+      </>
+    );
+  };
+
   return (
     <>
       {multiSelectMode && (
@@ -2657,7 +2798,13 @@ const TaskList = ({
         />
       )}
       <div
-        ref={scrollContainerRef}
+        ref={(node) => {
+          // Support both external scrollContainerRef and internal virtualListRef
+          if (virtualListRef) virtualListRef.current = node;
+          if (scrollContainerRef && 'current' in scrollContainerRef) {
+            (scrollContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
+          }
+        }}
         className={`task-list ${hasGroups ? 'with-groups' : ''} ${multiSelectMode ? 'in-multi-select-mode' : ''} ${draggingTaskId ? 'is-dragging' : ''}`}
         onDragOver={manualOrderingActive ? handleListDragOver : undefined}
         onDrop={manualOrderingActive ? handleListDrop : undefined}
@@ -2665,14 +2812,7 @@ const TaskList = ({
         {hasGroups && groups ? (
           groups.map((group) => renderGroup(group))
         ) : (
-          <>
-            {ungroupedActiveTasks.length > 0 && (
-              <div className="task-active-stack">
-                {ungroupedActiveTasks.map((task) => renderTask(task))}
-              </div>
-            )}
-            {ungroupedInactiveTasks.map((task) => renderTask(task))}
-          </>
+          renderVirtualizedTasks()
         )}
         {renderDropZone('drop-end', '__end', 'below')}
       </div>

@@ -53,6 +53,7 @@ export interface FullVerificationResult {
 
 /**
  * Fetch database schema and return available properties
+ * SDK 5.x: Use dataSources.retrieve to get properties (databases.retrieve doesn't return them)
  */
 async function fetchDatabaseSchema(
   client: Client,
@@ -64,23 +65,41 @@ async function fetchDatabaseSchema(
       return null;
     }
 
+    // First get the database to find its data_source_id
     const database = await withRetry(
       client,
       () => client.databases.retrieve({ database_id: cleanId }),
-      'Retrieve database schema'
+      'Retrieve database'
     ) as any;
 
+    // Get database name from title
+    const titleArray = database.title || [];
+    const dbName = titleArray.map((t: any) => t.plain_text).join('') || 'Untitled Database';
+
+    // SDK 5.x: Get properties from data source
+    const dataSourceId = database.data_sources?.[0]?.id;
+    
+    let dbProps: Record<string, any> = {};
+    
+    if (dataSourceId) {
+      // Use dataSources.retrieve to get properties
+      const dataSource = await withRetry(
+        client,
+        () => (client as any).dataSources.retrieve({ data_source_id: dataSourceId }),
+        'Retrieve data source schema'
+      ) as any;
+      dbProps = dataSource.properties || {};
+    } else {
+      // Fallback: try to get properties from database response (older API)
+      dbProps = database.properties || {};
+    }
+
     const props = new Map<string, { type: string; id: string }>();
-    const dbProps = database.properties || {};
     
     for (const [name, prop] of Object.entries(dbProps)) {
       const propObj = prop as any;
       props.set(name, { type: propObj.type, id: propObj.id });
     }
-
-    // Get database name from title
-    const titleArray = database.title || [];
-    const dbName = titleArray.map((t: any) => t.plain_text).join('') || 'Untitled Database';
 
     return { name: dbName, properties: props };
   } catch (error) {

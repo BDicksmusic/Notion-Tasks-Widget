@@ -25,7 +25,7 @@ export default defineConfig({
   },
   server: {
     port: 5174,
-    host: 'localhost',
+    host: '127.0.0.1',  // Use IPv4 explicitly for wait-on compatibility
     strictPort: true
   },
   optimizeDeps: {
