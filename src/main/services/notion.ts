@@ -29,7 +29,7 @@ import type {
   WritingSettings
 } from '../../shared/types';
 import { convertMarkdown } from '../../shared/markdown';
-import { createNotionClient, withRetry, andFilters, classifyError, getErrorMessage } from './notionApi';
+import { createNotionClient, withRetry, andFilters, classifyError, getErrorMessage, is504Error, searchPagesInDatabase, retrievePagesById } from './notionApi';
 
 let notion: Client | null = null;
 let settings: NotionSettings;
@@ -520,9 +520,9 @@ export async function getTasks(
  * RELIABLE import strategy for complex databases that timeout
  * 
  * Strategy:
- * 1. Use small page_size queries to collect page IDs (reliable)
- * 2. Use pages.retrieve to fetch each page individually (fast, never times out)
- * 3. Retrieve pages in parallel for speed (2-3 at a time)
+ * 1. Try small page_size query first
+ * 2. If that times out (504), fall back to Search API + pages.retrieve
+ * 3. pages.retrieve NEVER times out because it only fetches one page
  * 
  * This is GUARANTEED to work even on databases with 50+ relations/rollups
  */
@@ -539,6 +539,18 @@ export interface TimeWindowFilter {
   on_or_before?: string; // ISO timestamp
 }
 
+// Track if we should use Search API fallback (persists across calls)
+let useSearchFallback = false;
+let searchFallbackCursor: string | undefined = undefined;
+
+/**
+ * Reset the search fallback state (call when starting a new import)
+ */
+export function resetSearchFallbackState(): void {
+  useSearchFallback = false;
+  searchFallbackCursor = undefined;
+}
+
 export async function getTasksBatchReliably(
   cursor?: string | null,
   batchSize: number = 5,
@@ -550,6 +562,11 @@ export async function getTasksBatchReliably(
   }
   const dbId = getDatabaseId();
   const client = notion;
+
+  // If we've switched to search fallback mode, use that
+  if (useSearchFallback) {
+    return getTasksBatchViaSearch(client, dbId, searchFallbackCursor, batchSize);
+  }
 
   // Build time window filter if provided
   let filter: Record<string, unknown> | undefined;
@@ -566,7 +583,7 @@ export async function getTasksBatchReliably(
     }
   }
 
-  // Step 1: Get multiple page IDs using small batch query
+  // Step 1: Try to get page IDs using database query
   const queryPayload: Record<string, unknown> = {
     database_id: dbId,
     page_size: batchSize,
@@ -576,31 +593,104 @@ export async function getTasksBatchReliably(
     sorts: [{ timestamp: 'last_edited_time', direction: 'descending' }]
   };
 
-  const queryStart = Date.now();
-  const response = (await withRetry(
+  try {
+    const queryStart = Date.now();
+    const response = (await withRetry(
+      client,
+      () => client.databases.query(queryPayload as Parameters<typeof client.databases.query>[0]),
+      'Get page IDs'
+    )) as QueryDatabaseResult;
+
+    console.log(`[Notion] Got ${response.results.length} page IDs in ${Date.now() - queryStart}ms`);
+
+    if (response.results.length === 0) {
+      return {
+        tasks: [],
+        pageIds: [],
+        nextCursor: null,
+        hasMore: false
+      };
+    }
+
+    const pageIds = response.results.map(r => (r as PageObjectResponse).id);
+    const nextCursor: string | null = response.next_cursor ?? null;
+    const hasMore = response.has_more;
+
+    // Step 2: Fetch pages in parallel
+    const tasks = await fetchTasksFromPageIds(client, pageIds);
+    
+    // Summary logging
+    const withStatus = tasks.filter(t => t.status).length;
+    console.log(`[Notion] Reliable batch complete: ${tasks.length} tasks (${withStatus} with status)`);
+
+    return {
+      tasks,
+      pageIds,
+      nextCursor,
+      hasMore
+    };
+  } catch (error) {
+    // If we get a 504, switch to Search API fallback
+    if (is504Error(error)) {
+      console.warn('[Notion] Database query timed out (504). Switching to Search API fallback...');
+      useSearchFallback = true;
+      searchFallbackCursor = undefined;
+      return getTasksBatchViaSearch(client, dbId, undefined, batchSize);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Search API fallback for tasks - used when database.query times out
+ */
+async function getTasksBatchViaSearch(
+  client: Client,
+  dbId: string,
+  cursor: string | undefined,
+  batchSize: number
+): Promise<ReliableImportResult> {
+  console.log(`[Notion] Using Search API fallback for tasks (cursor: ${cursor ? 'yes' : 'no'})`);
+  
+  const searchResult = await searchPagesInDatabase(
     client,
-    () => client.databases.query(queryPayload as Parameters<typeof client.databases.query>[0]),
-    'Get page IDs'
-  )) as QueryDatabaseResult;
-
-  console.log(`[Notion] Got ${response.results.length} page IDs in ${Date.now() - queryStart}ms`);
-
-  if (response.results.length === 0) {
+    dbId,
+    '', // Empty query = all pages
+    batchSize * 2, // Request more since we filter by database
+    cursor
+  );
+  
+  // Update our fallback cursor for next call
+  searchFallbackCursor = searchResult.nextCursor ?? undefined;
+  
+  if (searchResult.pageIds.length === 0) {
     return {
       tasks: [],
       pageIds: [],
-      nextCursor: null,
-      hasMore: false
+      nextCursor: searchResult.nextCursor,
+      hasMore: searchResult.hasMore
     };
   }
+  
+  // Retrieve each page individually (this never times out)
+  const tasks = await fetchTasksFromPageIds(client, searchResult.pageIds);
+  
+  console.log(`[Notion] Search fallback batch: ${tasks.length} tasks from ${searchResult.pageIds.length} pages`);
+  
+  return {
+    tasks,
+    pageIds: searchResult.pageIds,
+    nextCursor: searchResult.nextCursor,
+    hasMore: searchResult.hasMore
+  };
+}
 
-  const pageIds = response.results.map(r => (r as PageObjectResponse).id);
-  const nextCursor: string | null = response.next_cursor ?? null;
-  const hasMore = response.has_more;
-
-  // Step 2: Fetch pages in parallel (all at once since batch is small)
-  const PARALLEL_LIMIT = batchSize;
+/**
+ * Fetch tasks from a list of page IDs using pages.retrieve
+ */
+async function fetchTasksFromPageIds(client: Client, pageIds: string[]): Promise<Task[]> {
   const tasks: Task[] = [];
+  const PARALLEL_LIMIT = 3; // Conservative parallelism
   
   for (let i = 0; i < pageIds.length; i += PARALLEL_LIMIT) {
     const batch = pageIds.slice(i, i + PARALLEL_LIMIT);
@@ -630,10 +720,9 @@ export async function getTasksBatchReliably(
         const task = mapPageToTask(page, settings);
         tasks.push(task);
         
-        // Log task status for debugging
-        if (!task.status) {
+        // Log task status for debugging (only first few without status)
+        if (!task.status && tasks.filter(t => !t.status).length <= 3) {
           console.log(`[Notion] Task without status: "${task.title}" (checking property "${settings.statusProperty}")`);
-          // Debug: log available properties on this page
           const propNames = Object.keys(page.properties || {});
           console.log(`[Notion] Available properties: ${propNames.join(', ')}`);
         }
@@ -641,16 +730,7 @@ export async function getTasksBatchReliably(
     }
   }
   
-  // Summary logging
-  const withStatus = tasks.filter(t => t.status).length;
-  console.log(`[Notion] Reliable batch complete: ${tasks.length} tasks (${withStatus} with status)`);
-
-  return {
-    tasks,
-    pageIds,
-    nextCursor,
-    hasMore
-  };
+  return tasks;
 }
 
 export async function addTask(payload: NotionCreatePayload): Promise<Task> {
@@ -1587,188 +1667,262 @@ export async function getProjects(): Promise<Project[]> {
   
   console.log(`[Notion] Starting projects fetch from database: ${dbId.substring(0, 8)}...`);
 
+  // Try standard query first, fall back to Search API if it times out
   try {
-    const projects: Project[] = [];
-    let cursor: string | null | undefined = undefined;
-
-    const queryDatabase = bindDatabaseQuery(client);
-
-    // ULTRA-MINIMAL QUERY: No filter, only title property, small page size
-    // This is the fastest possible query for complex databases
-    
-    // Get property IDs for filter_properties optimization
-    const propertyIds = await getProjectPropertyIds();
-    
-    // Find the title property ID - that's all we absolutely need
-    const titlePropName = projectsSettings.titleProperty || 'Name';
-    const titlePropId = propertyIds.get(titlePropName);
-    
-    // Get status property ID - try configured property first, then common fallbacks
-    const statusPropertyName = projectsSettings.statusProperty || 'Status';
-    let statusPropId = propertyIds.get(statusPropertyName);
-    
-    // If configured status property not found, try common fallback names
-    if (!statusPropId) {
-      const fallbackNames = ['Status', 'Statuses', 'State', 'Project Status'];
-      for (const name of fallbackNames) {
-        statusPropId = propertyIds.get(name);
-        if (statusPropId) {
-          console.log(`[Notion] Using fallback status property: "${name}"`);
-          break;
-        }
-      }
-    }
-    
-    const filterPropertyIds = [titlePropId, statusPropId].filter(Boolean) as string[];
-    
-    console.log(`[Notion] Projects ULTRA-MINIMAL query - ${filterPropertyIds.length} properties only, page_size=10`);
-
-    do {
-      const response = await withRetry(
-        client,
-        () => queryDatabase({
-          database_id: dbId,
-          // NO filter, NO sort - absolute minimum query
-          ...(filterPropertyIds.length > 0 && { filter_properties: filterPropertyIds }),
-          page_size: 10, // Very small page size
-          start_cursor: cursor ?? undefined
-        }),
-        'Query projects database'
-      );
-
-      for (const result of response.results) {
-        if (!isPageResponse(result)) continue;
-
-        const props = result.properties ?? {};
-        
-        // Debug: log available properties for first result
-        if (projects.length === 0) {
-          console.log('Projects - Available properties:', Object.keys(props));
-          console.log('Projects - Looking for titleProperty:', projectsSettings.titleProperty);
-          console.log('Projects - Looking for statusProperty:', projectsSettings.statusProperty);
-        }
-        
-        // Try configured title property first, then fall back to finding any title property
-        let titleProp =
-          (projectsSettings.titleProperty &&
-            props[projectsSettings.titleProperty]) ||
-          undefined;
-        
-        // Fallback: find any property of type 'title' if configured one doesn't exist
-        if (!titleProp) {
-          for (const [key, value] of Object.entries(props)) {
-            if ((value as any)?.type === 'title') {
-              console.log('Projects - Found title property at:', key);
-              titleProp = value as any;
-              break;
-            }
-          }
-        }
-        
-        // Try configured status property first, then fall back to common names
-        let statusProp =
-          (projectsSettings.statusProperty &&
-            props[projectsSettings.statusProperty]) ||
-          undefined;
-        
-        // Fallback: try common status property names if not configured or not found
-        if (!statusProp) {
-          const commonStatusNames = ['Status', 'Statuses', 'State', 'Project Status'];
-          for (const name of commonStatusNames) {
-            const prop = props[name];
-            if (prop && ((prop as any)?.type === 'status' || (prop as any)?.type === 'select')) {
-              if (projects.length === 0) {
-                console.log('Projects - Found status property at:', name, 'type:', (prop as any)?.type);
-              }
-              statusProp = prop as any;
-              break;
-            }
-          }
-        }
-        const descriptionProp =
-          (projectsSettings.descriptionProperty &&
-            props[projectsSettings.descriptionProperty]) ||
-          undefined;
-        const startDateProp =
-          (projectsSettings.startDateProperty &&
-            props[projectsSettings.startDateProperty]) ||
-          undefined;
-        const endDateProp =
-          (projectsSettings.endDateProperty &&
-            props[projectsSettings.endDateProperty]) ||
-          undefined;
-        const tagsProp =
-          (projectsSettings.tagsProperty &&
-            props[projectsSettings.tagsProperty]) ||
-          undefined;
-
-        const title =
-          titleProp?.type === 'title'
-            ? titleProp.title.map((t: any) => t.plain_text).join('')
-            : null;
-
-        const status =
-          statusProp?.type === 'status'
-            ? statusProp.status?.name ?? null
-            : statusProp?.type === 'select'
-              ? statusProp.select?.name ?? null
-              : null;
-
-        const description =
-          descriptionProp?.type === 'rich_text'
-            ? descriptionProp.rich_text
-                .map((t: any) => t.plain_text)
-                .join('')
-            : null;
-
-        const startDate =
-          startDateProp?.type === 'date'
-            ? startDateProp.date?.start ?? null
-            : null;
-
-        const endDate =
-          endDateProp?.type === 'date'
-            ? endDateProp.date?.start ?? null
-            : null;
-
-        const tags =
-          tagsProp?.type === 'multi_select'
-            ? tagsProp.multi_select.map((t: any) => t.name)
-            : null;
-
-        const url = result.url ?? null;
-
-        const project: Project = {
-          id: result.id,
-          title,
-          status,
-          description,
-          startDate,
-          endDate,
-          tags,
-          url
-        };
-        
-        projects.push(project);
-        
-        // Log first few projects to verify status extraction
-        if (projects.length <= 3) {
-          console.log(`[Notion] Project ${projects.length}: "${title}" → status="${status}"`);
-        }
-      }
-
-      cursor = response.next_cursor ?? null;
-    } while (cursor);
-
-    console.log(`[Notion] Fetched ${projects.length} projects from Notion`);
-    const withStatus = projects.filter(p => p.status).length;
-    console.log(`[Notion] Projects with status: ${withStatus}/${projects.length}`);
-    
-    return projects;
+    return await getProjectsViaQuery(client, dbId);
   } catch (error) {
-    console.error('Notion projects query failed', { dbId }, error);
+    if (is504Error(error)) {
+      console.warn('[Notion] Projects query timed out (504). Falling back to Search API strategy...');
+      return await getProjectsViaSearch(client, dbId);
+    }
     throw error;
   }
+}
+
+/**
+ * Standard approach: Use database.query with minimal properties
+ */
+async function getProjectsViaQuery(client: Client, dbId: string): Promise<Project[]> {
+  const projects: Project[] = [];
+  let cursor: string | null | undefined = undefined;
+
+  const queryDatabase = bindDatabaseQuery(client);
+
+  // ULTRA-MINIMAL QUERY: No filter, only title property, small page size
+  // This is the fastest possible query for complex databases
+  
+  // Get property IDs for filter_properties optimization
+  const propertyIds = await getProjectPropertyIds();
+  
+  // Find the title property ID - that's all we absolutely need
+  const titlePropName = projectsSettings!.titleProperty || 'Name';
+  const titlePropId = propertyIds.get(titlePropName);
+  
+  // Get status property ID - try configured property first, then common fallbacks
+  const statusPropertyName = projectsSettings!.statusProperty || 'Status';
+  let statusPropId = propertyIds.get(statusPropertyName);
+  
+  // If configured status property not found, try common fallback names
+  if (!statusPropId) {
+    const fallbackNames = ['Status', 'Statuses', 'State', 'Project Status'];
+    for (const name of fallbackNames) {
+      statusPropId = propertyIds.get(name);
+      if (statusPropId) {
+        console.log(`[Notion] Using fallback status property: "${name}"`);
+        break;
+      }
+    }
+  }
+  
+  const filterPropertyIds = [titlePropId, statusPropId].filter(Boolean) as string[];
+  
+  console.log(`[Notion] Projects query - ${filterPropertyIds.length} properties, page_size=5`);
+
+  do {
+    const response = await withRetry(
+      client,
+      () => queryDatabase({
+        database_id: dbId,
+        // NO filter, NO sort - absolute minimum query
+        ...(filterPropertyIds.length > 0 && { filter_properties: filterPropertyIds }),
+        page_size: 5, // Even smaller page size for reliability
+        start_cursor: cursor ?? undefined
+      }),
+      'Query projects database'
+    );
+
+    for (const result of response.results) {
+      if (!isPageResponse(result)) continue;
+      const project = mapPageToProject(result, projects.length === 0);
+      projects.push(project);
+    }
+
+    cursor = response.next_cursor ?? null;
+  } while (cursor);
+
+  console.log(`[Notion] Fetched ${projects.length} projects via query`);
+  const withStatus = projects.filter(p => p.status).length;
+  console.log(`[Notion] Projects with status: ${withStatus}/${projects.length}`);
+  
+  return projects;
+}
+
+/**
+ * Fallback approach: Use Search API + pages.retrieve
+ * This is MUCH more reliable for complex databases with many rollups/relations
+ */
+async function getProjectsViaSearch(client: Client, dbId: string): Promise<Project[]> {
+  console.log('[Notion] Using Search API fallback for projects...');
+  
+  const projects: Project[] = [];
+  let cursor: string | undefined = undefined;
+  let totalPagesFound = 0;
+  let emptySearchCount = 0;
+  const MAX_EMPTY_SEARCHES = 5; // Stop after 5 consecutive empty results
+  
+  // Search API may return results from other databases, so we filter by database ID
+  // Also, search doesn't support database_id filter, so we fetch and filter
+  while (emptySearchCount < MAX_EMPTY_SEARCHES) {
+    const searchResult = await searchPagesInDatabase(
+      client,
+      dbId,
+      '', // Empty query = all pages
+      20, // Larger page size since we're filtering
+      cursor
+    );
+    
+    if (searchResult.pageIds.length === 0) {
+      emptySearchCount++;
+      if (!searchResult.hasMore) break;
+      cursor = searchResult.nextCursor ?? undefined;
+      continue;
+    }
+    
+    emptySearchCount = 0; // Reset counter on successful find
+    totalPagesFound += searchResult.pageIds.length;
+    
+    console.log(`[Notion] Found ${searchResult.pageIds.length} project pages, retrieving...`);
+    
+    // Retrieve each page individually (this never times out)
+    const pages = await retrievePagesById<PageObjectResponse>(
+      client,
+      searchResult.pageIds,
+      3 // 3 concurrent requests
+    );
+    
+    for (const page of pages) {
+      const project = mapPageToProject(page, projects.length === 0);
+      projects.push(project);
+    }
+    
+    if (!searchResult.hasMore) break;
+    cursor = searchResult.nextCursor ?? undefined;
+    
+    // Brief delay between search batches
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  
+  console.log(`[Notion] Fetched ${projects.length} projects via Search API (total pages found: ${totalPagesFound})`);
+  const withStatus = projects.filter(p => p.status).length;
+  console.log(`[Notion] Projects with status: ${withStatus}/${projects.length}`);
+  
+  return projects;
+}
+
+/**
+ * Map a Notion page response to a Project object
+ */
+function mapPageToProject(result: PageObjectResponse, logDebug: boolean = false): Project {
+  const props = result.properties ?? {};
+  
+  // Debug: log available properties for first result
+  if (logDebug) {
+    console.log('Projects - Available properties:', Object.keys(props));
+    console.log('Projects - Looking for titleProperty:', projectsSettings?.titleProperty);
+    console.log('Projects - Looking for statusProperty:', projectsSettings?.statusProperty);
+  }
+  
+  // Try configured title property first, then fall back to finding any title property
+  let titleProp =
+    (projectsSettings?.titleProperty &&
+      props[projectsSettings.titleProperty]) ||
+    undefined;
+  
+  // Fallback: find any property of type 'title' if configured one doesn't exist
+  if (!titleProp) {
+    for (const [key, value] of Object.entries(props)) {
+      if ((value as any)?.type === 'title') {
+        if (logDebug) console.log('Projects - Found title property at:', key);
+        titleProp = value as any;
+        break;
+      }
+    }
+  }
+  
+  // Try configured status property first, then fall back to common names
+  let statusProp =
+    (projectsSettings?.statusProperty &&
+      props[projectsSettings.statusProperty]) ||
+    undefined;
+  
+  // Fallback: try common status property names if not configured or not found
+  if (!statusProp) {
+    const commonStatusNames = ['Status', 'Statuses', 'State', 'Project Status'];
+    for (const name of commonStatusNames) {
+      const prop = props[name];
+      if (prop && ((prop as any)?.type === 'status' || (prop as any)?.type === 'select')) {
+        if (logDebug) {
+          console.log('Projects - Found status property at:', name, 'type:', (prop as any)?.type);
+        }
+        statusProp = prop as any;
+        break;
+      }
+    }
+  }
+  
+  const descriptionProp =
+    (projectsSettings?.descriptionProperty &&
+      props[projectsSettings.descriptionProperty]) ||
+    undefined;
+  const startDateProp =
+    (projectsSettings?.startDateProperty &&
+      props[projectsSettings.startDateProperty]) ||
+    undefined;
+  const endDateProp =
+    (projectsSettings?.endDateProperty &&
+      props[projectsSettings.endDateProperty]) ||
+    undefined;
+  const tagsProp =
+    (projectsSettings?.tagsProperty &&
+      props[projectsSettings.tagsProperty]) ||
+    undefined;
+
+  const title =
+    titleProp?.type === 'title'
+      ? titleProp.title.map((t: any) => t.plain_text).join('')
+      : null;
+
+  const status =
+    statusProp?.type === 'status'
+      ? statusProp.status?.name ?? null
+      : statusProp?.type === 'select'
+        ? statusProp.select?.name ?? null
+        : null;
+
+  const description =
+    descriptionProp?.type === 'rich_text'
+      ? descriptionProp.rich_text
+          .map((t: any) => t.plain_text)
+          .join('')
+      : null;
+
+  const startDate =
+    startDateProp?.type === 'date'
+      ? startDateProp.date?.start ?? null
+      : null;
+
+  const endDate =
+    endDateProp?.type === 'date'
+      ? endDateProp.date?.start ?? null
+      : null;
+
+  const tags =
+    tagsProp?.type === 'multi_select'
+      ? tagsProp.multi_select.map((t: any) => t.name)
+      : null;
+
+  const url = result.url ?? null;
+
+  return {
+    id: result.id,
+    title,
+    status,
+    description,
+    startDate,
+    endDate,
+    tags,
+    url
+  };
 }
 
 export async function getContacts(forceRefresh = false): Promise<Contact[]> {

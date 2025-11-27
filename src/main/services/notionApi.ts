@@ -8,10 +8,10 @@ import fetch from 'node-fetch';
 
 // Notion rate limits: 3 requests/second average
 const MIN_REQUEST_INTERVAL_MS = 350; // ~2.8 req/sec to stay under limit
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 1000;
-const MAX_BACKOFF_MS = 30000;
-const REQUEST_TIMEOUT_MS = 120000; // 2 minutes for large Notion databases
+const MAX_RETRIES = 5; // Increased from 3 - 504s are often transient
+const INITIAL_BACKOFF_MS = 2000; // Increased from 1000 - give Notion time to recover
+const MAX_BACKOFF_MS = 60000; // Increased from 30000 - longer max backoff
+const REQUEST_TIMEOUT_MS = 180000; // 3 minutes (increased from 2)
 
 type RetryableError = {
   code: string;
@@ -258,5 +258,131 @@ export function getErrorMessage(error: unknown, type: SyncErrorType): string {
     default:
       return error instanceof Error ? error.message : 'An unknown error occurred.';
   }
+}
+
+/**
+ * Check if an error is a 504 Gateway Timeout
+ */
+export function is504Error(error: unknown): boolean {
+  if (!error) return false;
+  
+  const status = (error as any)?.status;
+  if (status === 504) return true;
+  
+  const message = String((error as any)?.message ?? '');
+  return message.includes('504') || message.toLowerCase().includes('gateway timeout');
+}
+
+/**
+ * Use Notion Search API to find pages in a database.
+ * This is MUCH faster than databases.query for complex databases because:
+ * 1. It doesn't compute rollups/relations
+ * 2. Returns minimal data
+ * 3. Uses Notion's search index instead of scanning the database
+ * 
+ * @param client - Notion client
+ * @param databaseId - Database ID to search within
+ * @param query - Optional search query (empty = all pages)
+ * @param pageSize - Number of results per page
+ * @param cursor - Pagination cursor
+ * @returns Page IDs and pagination info
+ */
+export async function searchPagesInDatabase(
+  client: Client,
+  databaseId: string,
+  query: string = '',
+  pageSize: number = 10,
+  cursor?: string
+): Promise<{
+  pageIds: string[];
+  nextCursor: string | null;
+  hasMore: boolean;
+}> {
+  const cleanDbId = databaseId.replace(/-/g, '').trim();
+  
+  console.log(`[NotionAPI] Using Search API for database ${cleanDbId.substring(0, 8)}... (query: "${query || '*'}", pageSize: ${pageSize})`);
+  
+  const searchParams: Parameters<typeof client.search>[0] = {
+    query,
+    page_size: pageSize,
+    filter: {
+      property: 'object',
+      value: 'page'
+    },
+    ...(cursor && { start_cursor: cursor })
+  };
+  
+  const response = await withRetry(
+    client,
+    () => client.search(searchParams),
+    'Search for pages'
+  );
+  
+  // Filter results to only pages from our target database
+  const pageIds: string[] = [];
+  for (const result of response.results) {
+    if (result.object !== 'page') continue;
+    const parent = (result as any).parent;
+    if (!parent || parent.type !== 'database_id') continue;
+    const parentDbId = parent.database_id.replace(/-/g, '');
+    if (parentDbId === cleanDbId) {
+      pageIds.push(result.id);
+    }
+  }
+  
+  console.log(`[NotionAPI] Search found ${pageIds.length} pages in target database (total results: ${response.results.length})`);
+  
+  return {
+    pageIds,
+    nextCursor: response.next_cursor ?? null,
+    hasMore: response.has_more
+  };
+}
+
+/**
+ * Retrieve multiple pages by their IDs in parallel.
+ * pages.retrieve NEVER times out on complex databases because it only fetches one page.
+ * 
+ * @param client - Notion client
+ * @param pageIds - Array of page IDs to retrieve
+ * @param concurrency - Number of parallel requests (default 3)
+ * @returns Array of page responses
+ */
+export async function retrievePagesById<T>(
+  client: Client,
+  pageIds: string[],
+  concurrency: number = 3
+): Promise<T[]> {
+  const pages: T[] = [];
+  
+  // Process in batches for controlled concurrency
+  for (let i = 0; i < pageIds.length; i += concurrency) {
+    const batch = pageIds.slice(i, i + concurrency);
+    
+    const results = await Promise.all(
+      batch.map(async (pageId) => {
+        try {
+          const page = await withRetry(
+            client,
+            () => client.pages.retrieve({ page_id: pageId }),
+            `Retrieve page ${pageId.substring(0, 8)}`
+          );
+          return page as T;
+        } catch (error) {
+          console.error(`[NotionAPI] Failed to retrieve page ${pageId}:`, error);
+          return null;
+        }
+      })
+    );
+    
+    // Filter out nulls and add to pages array
+    for (const result of results) {
+      if (result !== null) {
+        pages.push(result);
+      }
+    }
+  }
+  
+  return pages;
 }
 

@@ -15,6 +15,7 @@ import {
   addTask,
   getTasksPage as fetchNotionTasksPage,
   getTasksBatchReliably,
+  resetSearchFallbackState,
   updateTask,
   createTimeLogEntry,
   updateTimeLogEntry as updateRemoteTimeLogEntry,
@@ -405,6 +406,8 @@ class SyncEngine extends EventEmitter {
     TARGET_TASK_COUNT: number
   ): Promise<void> {
     this.importRunning = true;
+    // Reset search fallback state at the start of each import
+    resetSearchFallbackState();
     console.log(`[SyncEngine] Starting TIME WINDOW import (have ${existingTaskCount}, target ${TARGET_TASK_COUNT})...`);
     
     this.updateImportProgress({
@@ -640,6 +643,8 @@ class SyncEngine extends EventEmitter {
     setSyncState(SYNC_KEY_IMPORT_PARTITION, '');
     setSyncState(SYNC_KEY_IMPORT_PARTITION_CURSOR, '');
     clearSyncState(SYNC_KEY_INITIAL_IMPORT_DONE);
+    // Reset the Search API fallback state so we try query first again
+    resetSearchFallbackState();
     this.updateImportProgress({
       status: 'idle',
       tasksImported: 0,
@@ -650,7 +655,7 @@ class SyncEngine extends EventEmitter {
       startedAt: undefined,
       completedAt: undefined
     });
-    console.log('[SyncEngine] Import state reset (including partitions)');
+    console.log('[SyncEngine] Import state reset (including partitions and search fallback)');
   }
 
   /**
