@@ -337,6 +337,12 @@ const widgetAPI: WidgetAPI = {
   importContacts() {
     return ipcRenderer.invoke('sync:importContacts');
   },
+  importActiveTasksOnly() {
+    return ipcRenderer.invoke('sync:importActiveTasksOnly');
+  },
+  importActiveProjectsOnly() {
+    return ipcRenderer.invoke('sync:importActiveProjectsOnly');
+  },
   testConnection() {
     return ipcRenderer.invoke('sync:testConnection');
   },

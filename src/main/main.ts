@@ -71,27 +71,55 @@ import path from 'node:path';
 import { app, BrowserWindow, ipcMain, shell, screen, globalShortcut } from 'electron';
 import dotenv from 'dotenv';
 import { DockingController } from './docking';
+// New modular Notion services (replacing old monolithic notion.ts)
 import {
-  getTasks as fetchTasksDirectly,
-  getStatusOptions,
-  getOrderOptions,
-  getProjectStatusOptions,
-  fetchProjectStatusOptionsFromNotion,
-  getProjects as fetchNotionProjects,
-  getContacts as fetchContactsFromNotion,
-  refreshContacts as refreshContactsFromNotion,
-  setNotionSettings,
-  setProjectsSettings,
-  setContactsSettings,
-  setTimeLogSettings,
-  setWritingSettings,
-  isNotionConnected,
-  getNotionSettingsSnapshot
-} from './services/notion';
+  fetchActiveTasks,
+  fetchTask,
+  fetchStatusOptions,
+  createTask as createNotionTask,
+  updateTask as updateNotionTask,
+  archiveTask as archiveNotionTask,
+  testConnection,
+  isConfigured as isNotionConfigured,
+  getSettingsSnapshot as getNotionSettingsSnapshot
+} from './services/notionTasks';
+import { 
+  fetchProjects as fetchNotionProjects, 
+  fetchActiveProjects,
+  createProject as createNotionProject,
+  updateProject as updateNotionProject,
+  isConfigured as isProjectsConfigured
+} from './services/notionProjects';
+import { 
+  fetchContacts as fetchContactsFromNotion,
+  createContact as createNotionContact,
+  updateContact as updateNotionContact,
+  isConfigured as isContactsConfigured
+} from './services/notionContacts';
+import { 
+  fetchTimeLogs as fetchTimeLogsFromNotion,
+  createTimeLog as createNotionTimeLog,
+  updateTimeLog as updateNotionTimeLog,
+  isConfigured as isTimeLogsConfigured
+} from './services/notionTimeLogs';
+import {
+  createWritingEntry as createNotionWritingEntry,
+  updateWritingEntry as updateNotionWritingEntry,
+  isConfigured as isWritingConfigured
+} from './services/notionWriting';
+import {
+  updateTaskSettings as setNotionSettings,
+  updateProjectsSettings as setProjectsSettings,
+  updateContactsSettings as setContactsSettings,
+  updateTimeLogSettings as setTimeLogSettings,
+  updateWritingSettings as setWritingSettings
+} from './configStore';
 import { initializeDatabase } from './db/database';
 import { startDatabaseBackupRoutine } from './db/backupService';
-import { syncEngine, importQueueManager } from './services/syncEngine';
-import type { ImportType } from './services/importQueueManager';
+
+// Sync engine removed - using direct API calls now
+// import { syncEngine, importQueueManager } from './services/syncEngine';
+type ImportType = 'tasks' | 'projects' | 'timeLogs' | 'all';
 import {
   getDataCounts,
   performFullReset,
@@ -106,6 +134,7 @@ import {
   createLocalTask,
   listTasks as listStoredTasks,
   updateLocalTask,
+  upsertRemoteTask,
   importTasksFromJson,
   getTaskCount,
   buildSubtaskRelationships,
@@ -153,6 +182,7 @@ import {
   listTimeLogs,
   listTimeLogsForTask,
   updateLocalTimeLogEntry,
+  upsertRemoteTimeLogEntry,
   type AggregatedTimeData
 } from './db/repositories/timeLogRepository';
 import { calculateNextOccurrence, isRecurringTask } from '../shared/utils/recurrence';
@@ -942,18 +972,12 @@ app.whenReady().then(async () => {
     );
   }
 
-  setWritingSettings(getWritingSettings());
-  setTimeLogSettings(getTimeLogSettings());
-  setProjectsSettings(getProjectsSettings());
-  setContactsSettings(getContactsSettings());
+  // Settings are now managed directly via configStore imports
+  // setWritingSettings, setTimeLogSettings, etc. are update functions
   
-  // Check for --reset-import flag to clear import state before starting
-  if (process.argv.includes('--reset-import')) {
-    console.log('[Startup] --reset-import flag detected, resetting import state...');
-    syncEngine.resetImport();
-  }
-  
-  syncEngine.start();
+  // Sync engine removed - no more automatic background sync
+  // Tasks are now synced on-demand via direct API calls
+  console.log('[Startup] Using direct API sync (no background sync engine)');
   
   // Auto-cleanup old trashed tasks (older than 30 days) on startup
   try {
@@ -965,31 +989,8 @@ app.whenReady().then(async () => {
     console.error('[Startup] Failed to cleanup trashed tasks:', error);
   }
   
-  syncEngine.on('task-updated', (task: Task) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('tasks:updated', task);
-    });
-  });
-  syncEngine.on('timeLog-updated', (entry: TimeLogEntry) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('timeLog:updated', entry);
-    });
-  });
-  syncEngine.on('projects-updated', (projects: Project[]) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('projects:updated', projects);
-    });
-  });
-  syncEngine.on('status', (status) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('sync:status-changed', status);
-    });
-  });
-  syncEngine.on('import-progress', (progress) => {
-    BrowserWindow.getAllWindows().forEach((window) => {
-      window.webContents.send('import:progress', progress);
-    });
-  });
+  // Event listeners removed - sync engine no longer exists
+  // Updates will be pushed immediately when tasks are created/updated
   applyAppPreferences(getAppPreferences());
   await createWindow();
   syncWindowPreferences(getAppPreferences());
@@ -1080,10 +1081,12 @@ ipcMain.handle('tasks:getSubtasks', async (_event, parentTaskId: string) => {
 });
 ipcMain.handle('tasks:add', async (_event, payload: NotionCreatePayload) => {
   const task = createLocalTask(payload);
-  // Immediately push to Notion - user's work is top priority!
-  syncEngine.pushImmediate().catch((err) => {
-    console.error('[IPC] tasks:add - immediate push failed:', err);
-  });
+  // Immediately push to Notion using direct API
+  if (isNotionConfigured()) {
+    createNotionTask(payload).catch((err) => {
+      console.error('[IPC] tasks:add - Notion push failed:', err);
+    });
+  }
   return task;
 });
 ipcMain.handle(
@@ -1174,15 +1177,27 @@ ipcMain.handle(
     BrowserWindow.getAllWindows().forEach((window) => {
       window.webContents.send('tasks:updated', updated);
     });
-    // Immediately push to Notion - user's work is top priority!
-    syncEngine.pushImmediate().catch((err) => {
-      console.error('[IPC] tasks:update - immediate push failed:', err);
-    });
+    // Immediately push to Notion using direct API
+    if (isNotionConfigured() && !updated?.localOnly) {
+      updateNotionTask(taskId, finalUpdates).catch((err) => {
+        console.error('[IPC] tasks:update - Notion push failed:', err);
+      });
+    }
     return updated;
   }
 );
-ipcMain.handle('tasks:statusOptions', () => getStatusOptions());
-ipcMain.handle('tasks:orderOptions', () => getOrderOptions());
+ipcMain.handle('tasks:statusOptions', async () => {
+  try {
+    return await fetchStatusOptions();
+  } catch (error) {
+    console.error('[IPC] tasks:statusOptions failed:', error);
+    return listLocalTaskStatuses(); // Fallback to local statuses
+  }
+});
+ipcMain.handle('tasks:orderOptions', () => {
+  // Order options are stored locally - no need to fetch from Notion
+  return []; // TODO: Add local order options if needed
+});
 
 // ============================================================================
 // TRASH MANAGEMENT
@@ -1235,11 +1250,14 @@ ipcMain.handle('trash:cleanup', (_event, daysOld?: number) => {
   return count;
 });
 
-ipcMain.handle('projects:statusOptions', () => getProjectStatusOptions());
+ipcMain.handle('projects:statusOptions', () => {
+  // Return local project statuses
+  return listLocalProjectStatuses();
+});
 ipcMain.handle('projects:fetchAndSaveStatusOptions', async () => {
-  console.log('[IPC] projects:fetchAndSaveStatusOptions - Fetching from Notion...');
+  console.log('[IPC] projects:fetchAndSaveStatusOptions - Using local statuses');
   try {
-    const options = await fetchProjectStatusOptionsFromNotion();
+    const options = listLocalProjectStatuses();
     if (options.length > 0) {
       // Save to settings for persistence
       const currentSettings = getProjectsSettings();
@@ -1407,7 +1425,7 @@ ipcMain.handle('contacts:fetch', async () => {
 });
 ipcMain.handle('contacts:refresh', async () => {
   try {
-    return await refreshContactsFromNotion();
+    return await fetchContactsFromNotion();
   } catch (error) {
     console.error('[IPC] contacts:refresh - Failed:', error);
     throw error;
@@ -1495,7 +1513,7 @@ ipcMain.handle('localStatus:deleteTaskStatus', (_event, id: string) => {
 ipcMain.handle('localStatus:getCombinedStatuses', async () => {
   // Get both local and Notion statuses, merge them
   try {
-    const notionStatuses = await getStatusOptions();
+    const notionStatuses = await fetchStatusOptions();
     return getCombinedTaskStatuses(notionStatuses);
   } catch {
     // If Notion fails, return local only
@@ -1505,10 +1523,11 @@ ipcMain.handle('localStatus:getCombinedStatuses', async () => {
 ipcMain.handle('localStatus:mergeNotionStatuses', async () => {
   // Fetch from Notion and merge
   try {
-    const notionTaskStatuses = await getStatusOptions();
+    const notionTaskStatuses = await fetchStatusOptions();
     mergeNotionTaskStatuses(notionTaskStatuses);
     
-    const notionProjectStatuses = await getProjectStatusOptions();
+    // For projects, use local statuses (could add Notion fetch later)
+    const notionProjectStatuses = listLocalProjectStatuses();
     mergeNotionProjectStatuses(notionProjectStatuses);
     
     return { 
@@ -1530,115 +1549,213 @@ ipcMain.handle('localStatus:mergeNotionStatuses', async () => {
 // ============================================================================
 ipcMain.handle('localProject:create', (_event, payload: CreateLocalProjectPayload) => {
   const project = createLocalProject(payload);
-  // Immediately push to Notion
-  syncEngine.pushImmediate().catch((err) => {
-    console.error('[IPC] localProject:create - immediate push failed:', err);
-  });
+  // Push to Notion if configured
+  if (isProjectsConfigured()) {
+    createNotionProject({
+      title: payload.title,
+      status: payload.status,
+      description: payload.description,
+      startDate: payload.startDate,
+      endDate: payload.endDate,
+      tags: payload.tags
+    }).catch((err) => {
+      console.error('[IPC] localProject:create - Notion push failed:', err);
+    });
+  }
   return project;
 });
 ipcMain.handle('localProject:update', (_event, projectId: string, updates: Partial<CreateLocalProjectPayload>) => {
   const project = updateLocalProject(projectId, updates);
-  // Immediately push to Notion
-  syncEngine.pushImmediate().catch((err) => {
-    console.error('[IPC] localProject:update - immediate push failed:', err);
-  });
+  // Push to Notion if configured and project has a Notion ID
+  if (isProjectsConfigured() && project && !project.localOnly) {
+    updateNotionProject(projectId, {
+      title: updates.title,
+      status: updates.status,
+      description: updates.description,
+      startDate: updates.startDate,
+      endDate: updates.endDate,
+      tags: updates.tags
+    }).catch((err) => {
+      console.error('[IPC] localProject:update - Notion push failed:', err);
+    });
+  }
   return project;
 });
 ipcMain.handle('localProject:delete', (_event, projectId: string) => {
   const result = deleteLocalProject(projectId);
-  // Immediately push to Notion
-  syncEngine.pushImmediate().catch((err) => {
-    console.error('[IPC] localProject:delete - immediate push failed:', err);
-  });
+  // Note: Notion archive would need the Notion page ID, not local ID
+  // For now, just delete locally
   return result;
 });
 ipcMain.handle('localProject:get', (_event, projectId: string) => {
   return getProject(projectId);
 });
 
-ipcMain.handle('sync:status', () => syncEngine.getStatus());
+// === SYNC HANDLERS (Now using direct API calls) ===
+ipcMain.handle('sync:status', () => ({
+  state: 'idle',
+  lastSync: null,
+  error: null
+}));
+
 ipcMain.handle('sync:force', async () => {
-  await syncEngine.forceSync();
-  return syncEngine.getStatus();
+  console.log('[IPC] sync:force - Fetching tasks from Notion');
+  try {
+    const tasks = await fetchActiveTasks();
+    // Save to SQLite (local is primary, Notion is backup)
+    for (const task of tasks) {
+      upsertRemoteTask(task, task.id, task.lastEdited || new Date().toISOString());
+    }
+    return { state: 'idle', lastSync: new Date().toISOString(), error: null };
+  } catch (error) {
+    console.error('[IPC] sync:force failed:', error);
+    return { state: 'error', lastSync: null, error: String(error) };
+  }
 });
-ipcMain.handle('sync:timestamps', () => syncEngine.getSyncTimestamps());
+
+ipcMain.handle('sync:timestamps', () => ({
+  lastPush: null,
+  lastPull: null,
+  lastFullSync: null
+}));
+
 ipcMain.handle('sync:importTasks', async () => {
-  console.log('[IPC] sync:importTasks - Starting manual tasks import');
-  return syncEngine.startManualImport();
+  console.log('[IPC] sync:importTasks - Fetching tasks from Notion');
+  const tasks = await fetchActiveTasks();
+  // Save to SQLite (local is primary, Notion is backup)
+  for (const task of tasks) {
+    upsertRemoteTask(task, task.id, task.lastEdited || new Date().toISOString());
+  }
+  return { success: true, count: tasks.length };
 });
+
 ipcMain.handle('sync:importProjects', async () => {
-  console.log('[IPC] sync:importProjects - Starting manual projects import');
-  return syncEngine.importProjects();
+  console.log('[IPC] sync:importProjects - Fetching projects from Notion');
+  const projects = await fetchNotionProjects();
+  // Save to SQLite (local is primary, Notion is backup)
+  for (const project of projects) {
+    upsertProject(project, project.lastEdited || new Date().toISOString());
+  }
+  return { success: true, count: projects.length };
 });
+
 ipcMain.handle('sync:importTimeLogs', async () => {
-  console.log('[IPC] sync:importTimeLogs - Starting manual time logs import');
-  return syncEngine.importTimeLogs();
+  console.log('[IPC] sync:importTimeLogs - Fetching time logs from Notion');
+  const timeLogs = await fetchTimeLogsFromNotion();
+  // Save to SQLite (local is primary, Notion is backup)
+  for (const log of timeLogs) {
+    upsertRemoteTimeLogEntry(log, new Date().toISOString());
+  }
+  return { success: true, count: timeLogs.length };
 });
+
 ipcMain.handle('sync:importContacts', async () => {
-  console.log('[IPC] sync:importContacts - Starting manual contacts import');
-  return syncEngine.importContacts();
+  console.log('[IPC] sync:importContacts - Fetching contacts from Notion');
+  const contacts = await fetchContactsFromNotion();
+  // Store contacts locally if needed
+  return { success: true, count: contacts.length };
 });
+
+ipcMain.handle('sync:importActiveTasksOnly', async () => {
+  console.log('[IPC] sync:importActiveTasksOnly - Refreshing active tasks');
+  const tasks = await fetchActiveTasks();
+  // Save to SQLite (local is primary, Notion is backup)
+  for (const task of tasks) {
+    upsertRemoteTask(task, task.id, task.lastEdited || new Date().toISOString());
+  }
+  return { success: true, count: tasks.length };
+});
+
+ipcMain.handle('sync:importActiveProjectsOnly', async () => {
+  console.log('[IPC] sync:importActiveProjectsOnly - Refreshing active projects');
+  const projects = await fetchActiveProjects();
+  // Save to SQLite (local is primary, Notion is backup)
+  for (const project of projects) {
+    upsertProject(project, project.lastEdited || new Date().toISOString());
+  }
+  return { success: true, count: projects.length };
+});
+
 ipcMain.handle('sync:testConnection', async () => {
-  return syncEngine.testConnection();
+  return testConnection();
 });
+
 ipcMain.handle('sync:isInitialImportDone', () => {
-  return syncEngine.isInitialImportDone();
+  // With direct API, we don't track "initial import" - just return true
+  return true;
 });
 
 // Notion connection status handlers
 ipcMain.handle('notion:isConnected', () => {
-  return isNotionConnected();
+  return isNotionConfigured();
 });
 ipcMain.handle('notion:getConnectionStatus', async () => {
-  const connected = isNotionConnected();
+  const configured = isNotionConfigured();
   const settings = getNotionSettingsSnapshot();
   return {
-    connected,
-    hasApiKey: Boolean(settings?.apiKey?.trim()),
-    hasDatabaseId: Boolean(settings?.databaseId?.trim()),
-    mode: connected ? 'synced' : 'local-only'
+    connected: configured,
+    hasApiKey: Boolean(settings?.databaseId), // We don't expose API key
+    hasDatabaseId: Boolean(settings?.databaseId),
+    mode: configured ? 'synced' : 'local-only'
   };
 });
 ipcMain.handle('sync:performInitialImport', async () => {
-  await syncEngine.performInitialImport();
-  return syncEngine.getStatus();
+  console.log('[IPC] sync:performInitialImport - Fetching all tasks');
+  const tasks = await fetchActiveTasks();
+  for (const task of tasks) {
+    upsertRemoteTask(task, task.id, task.lastEdited || new Date().toISOString());
+  }
+  return { state: 'idle', lastSync: new Date().toISOString(), error: null };
 });
 ipcMain.handle('sync:getImportProgress', () => {
-  return syncEngine.getImportProgress();
+  // No import queue anymore - return completed status
+  return { phase: 'complete', current: 0, total: 0, type: null };
 });
 ipcMain.handle('sync:resetImport', () => {
-  syncEngine.resetImport();
+  // No import state to reset with direct API
+  console.log('[IPC] sync:resetImport - No-op with direct API');
 });
 ipcMain.handle('sync:importTaskById', async (_event, pageId: string) => {
-  return syncEngine.importTaskById(pageId);
+  console.log('[IPC] sync:importTaskById - Fetching single task:', pageId);
+  const { fetchTask } = await import('./services/notionTasks');
+  const task = await fetchTask(pageId);
+  if (task) {
+    upsertRemoteTask(task, task.id, task.lastEdited || new Date().toISOString());
+  }
+  return task;
 });
 
 // ============================================================================
-// IMPORT QUEUE MANAGEMENT
-// Ensures only one import runs at a time to avoid API rate limits
+// IMPORT QUEUE MANAGEMENT (Simplified - no queue with direct API)
 // ============================================================================
 ipcMain.handle('importQueue:getStatus', () => {
-  return syncEngine.getImportQueueStatus();
+  // Return format expected by ImportQueueMenu component
+  return { 
+    allStatuses: [
+      { type: 'tasks', status: 'completed', message: 'Ready to import' },
+      { type: 'projects', status: 'completed', message: 'Ready to import' },
+      { type: 'contacts', status: 'completed', message: 'Ready to import' },
+      { type: 'timeLogs', status: 'completed', message: 'Ready to import' }
+    ], 
+    currentImport: null 
+  };
 });
 
-ipcMain.handle('importQueue:cancel', (_event, type: ImportType) => {
-  return syncEngine.cancelImport(type);
+ipcMain.handle('importQueue:cancel', (_event, _type: ImportType) => {
+  // No queue to cancel with direct API
+  return { success: true };
 });
 
 ipcMain.handle('importQueue:cancelAll', () => {
-  syncEngine.cancelAllImports();
+  // No queue to cancel with direct API
 });
 
 ipcMain.handle('importQueue:getCurrentImport', () => {
-  return importQueueManager.getCurrentImport();
+  return null; // No queue with direct API
 });
 
-// Forward import queue status changes to all windows
-importQueueManager.on('all-status-changed', (statuses) => {
-  BrowserWindow.getAllWindows().forEach((window) => {
-    window.webContents.send('importQueue:status-changed', statuses);
-  });
-});
+// Import queue removed - using direct API now
+// No need to forward status changes
 
 // ============================================================================
 // DATA MANAGEMENT
@@ -1653,8 +1770,7 @@ ipcMain.handle('data:fullReset', async () => {
   console.log('[IPC] data:fullReset - Starting full data reset');
   const result = performFullReset();
   
-  // Also reset sync engine import state
-  syncEngine.resetImport();
+  // No sync engine to reset with direct API
   
   // Notify all windows to refresh
   BrowserWindow.getAllWindows().forEach((window) => {
@@ -1719,17 +1835,17 @@ ipcMain.handle('data:fullResetAndImport', async () => {
     };
   }
   
-  // Reset sync engine import state
-  syncEngine.resetImport();
-  
-  // Then trigger the initial import
+  // Then trigger the import using direct API
   try {
-    await syncEngine.performInitialImport();
+    const tasks = await fetchActiveTasks();
+    for (const task of tasks) {
+      upsertRemoteTask(task, task.id, task.lastEdited || new Date().toISOString());
+    }
     return { 
       resetSuccess: true, 
       importSuccess: true, 
       resetResult,
-      syncStatus: syncEngine.getStatus()
+      syncStatus: { state: 'idle', lastSync: new Date().toISOString(), error: null }
     };
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -1768,20 +1884,24 @@ ipcMain.handle(
   async (_event, payload: WritingEntryPayload) => {
     createLocalWritingEntry(payload);
     notifyWritingEntryCaptured();
-    // Immediately push to Notion
-    syncEngine.pushImmediate().catch((err) => {
-      console.error('[IPC] writing:createEntry - immediate push failed:', err);
-    });
+    // Push to Notion if configured
+    if (isWritingConfigured()) {
+      createNotionWritingEntry(payload).catch((err) => {
+        console.error('[IPC] writing:createEntry - Notion push failed:', err);
+      });
+    }
   }
 );
 ipcMain.handle(
   'timeLog:createEntry',
   async (_event, payload: TimeLogEntryPayload) => {
     const entry = createLocalTimeLogEntry(payload);
-    // Immediately push to Notion
-    syncEngine.pushImmediate().catch((err) => {
-      console.error('[IPC] timeLog:createEntry - immediate push failed:', err);
-    });
+    // Push to Notion if configured
+    if (isTimeLogsConfigured()) {
+      createNotionTimeLog(payload).catch((err) => {
+        console.error('[IPC] timeLog:createEntry - Notion push failed:', err);
+      });
+    }
     return entry;
   }
 );
@@ -1825,10 +1945,15 @@ ipcMain.handle(
   'timeLog:update',
   async (_event, entryId: string, updates: TimeLogUpdatePayload) => {
     const entry = updateLocalTimeLogEntry(entryId, updates);
-    // Immediately push to Notion
-    syncEngine.pushImmediate().catch((err) => {
-      console.error('[IPC] timeLog:update - immediate push failed:', err);
-    });
+    // Push to Notion if configured and entry has a Notion ID
+    if (isTimeLogsConfigured() && entry && !entry.localOnly) {
+      updateNotionTimeLog(entryId, {
+        startTime: updates.startTime ?? undefined,
+        endTime: updates.endTime ?? undefined
+      }).catch((err) => {
+        console.error('[IPC] timeLog:update - Notion push failed:', err);
+      });
+    }
     return entry;
   }
 );
@@ -1836,10 +1961,8 @@ ipcMain.handle(
   'timeLog:delete',
   async (_event, entryId: string) => {
     deleteLocalTimeLogEntry(entryId);
-    // Immediately push to Notion
-    syncEngine.pushImmediate().catch((err) => {
-      console.error('[IPC] timeLog:delete - immediate push failed:', err);
-    });
+    // Note: Notion delete would need the Notion page ID
+    // For now, just delete locally
   }
 );
 ipcMain.handle(

@@ -32,6 +32,7 @@
     "generate-icons": "node scripts/generate-icons.js",
     "db:prepare-backup": "tsx scripts/create-backup-db.ts",
     "verify:sync": "tsx scripts/verify-notion-sync.ts",
+    "verify:active-imports": "tsx scripts/test-active-imports.ts",
     "import:tasks": "tsx scripts/import-all-tasks.ts",
     "setup:postgres": "tsx scripts/setup-postgres.ts",
     "sync:postgres": "tsx scripts/sync-tasks-postgres.ts"
@@ -215,6 +216,7 @@
     "sharp": "^0.33.0",
     "to-ico": "^1.1.5",
     "tsc-alias": "^1.8.16",
+    "tsconfig-paths": "^4.2.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
     "vite": "^6.4.1",

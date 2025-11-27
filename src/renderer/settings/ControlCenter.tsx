@@ -198,6 +198,8 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
   // Modular import state
   const [importingProjects, setImportingProjects] = useState(false);
   const [importingTimeLogs, setImportingTimeLogs] = useState(false);
+  const [refreshingActiveTasks, setRefreshingActiveTasks] = useState(false);
+  const [refreshingActiveProjects, setRefreshingActiveProjects] = useState(false);
   const [syncTimestamps, setSyncTimestamps] = useState<{ tasks: string | null; projects: string | null; timeLogs: string | null } | null>(null);
   const [statusDiagnostics, setStatusDiagnostics] = useState<StatusDiagnostics | null>(null);
   const [statusDiagnosticsLoading, setStatusDiagnosticsLoading] = useState(false);
@@ -833,6 +835,69 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
       setImportingTimeLogs(false);
     }
   }, []);
+
+  const handleRefreshActiveTasks = useCallback(async () => {
+    if (!isDesktopRuntime) {
+      setFeedback({ kind: 'error', message: 'Not available in preview mode' });
+      return;
+    }
+    try {
+      setRefreshingActiveTasks(true);
+      const result = await widgetAPI.importActiveTasksOnly();
+      if (result.success) {
+        setFeedback({
+          kind: 'success',
+          message: `Refreshed ${result.count} active tasks`
+        });
+        const timestamps = await widgetAPI.getSyncTimestamps();
+        setSyncTimestamps(timestamps);
+      } else {
+        setFeedback({
+          kind: 'error',
+          message: result.error || 'Failed to refresh active tasks'
+        });
+      }
+    } catch (err) {
+      setFeedback({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Failed to refresh active tasks'
+      });
+    } finally {
+      setRefreshingActiveTasks(false);
+    }
+  }, []);
+
+  const handleRefreshActiveProjects = useCallback(async () => {
+    if (!isDesktopRuntime) {
+      setFeedback({ kind: 'error', message: 'Not available in preview mode' });
+      return;
+    }
+    try {
+      setRefreshingActiveProjects(true);
+      const result = await widgetAPI.importActiveProjectsOnly();
+      if (result.success) {
+        setFeedback({
+          kind: 'success',
+          message: `Refreshed ${result.count} active projects`
+        });
+        const timestamps = await widgetAPI.getSyncTimestamps();
+        setSyncTimestamps(timestamps);
+        await loadStatusDiagnostics();
+      } else {
+        setFeedback({
+          kind: 'error',
+          message: result.error || 'Failed to refresh active projects'
+        });
+      }
+    } catch (err) {
+      setFeedback({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Failed to refresh active projects'
+      });
+    } finally {
+      setRefreshingActiveProjects(false);
+    }
+  }, [loadStatusDiagnostics]);
 
   const loadSyncTimestamps = useCallback(async () => {
     if (!isDesktopRuntime) return;
@@ -2683,6 +2748,14 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                     >
                       {importingProjects ? 'Syncing...' : '📁 Sync Projects'}
                     </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={handleRefreshActiveProjects}
+                    disabled={refreshingActiveProjects}
+                  >
+                    {refreshingActiveProjects ? 'Refreshing active projects…' : 'Refresh active projects'}
+                  </button>
                     <button
                       type="button"
                       className="btn-secondary"
@@ -2884,6 +2957,14 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                       Reset
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={handleRefreshActiveTasks}
+                    disabled={refreshingActiveTasks}
+                  >
+                    {refreshingActiveTasks ? 'Refreshing active tasks…' : 'Refresh active tasks'}
+                  </button>
                 </div>
               </div>
             </section>

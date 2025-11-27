@@ -237,6 +237,8 @@ export interface WidgetAPI {
   importProjects(): Promise<{ success: boolean; count: number; error?: string }>;
   importTimeLogs(): Promise<{ success: boolean; count: number; error?: string }>;
   importContacts(): Promise<{ success: boolean; count: number; error?: string }>;
+  importActiveTasksOnly(): Promise<{ success: boolean; count: number; error?: string }>;
+  importActiveProjectsOnly(): Promise<{ success: boolean; count: number; error?: string }>;
   testConnection(): Promise<{ success: boolean; message: string; latencyMs?: number }>;
   isInitialImportDone(): Promise<boolean>;
   

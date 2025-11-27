@@ -1723,25 +1723,8 @@ const FullScreenApp = () => {
     };
   }, [appPreferences?.autoRefreshTasks, fetchTasks]);
 
-  // Focus-based sync: trigger sync when window gains focus
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
-    const handleWindowFocus = () => {
-      const api = getWidgetAPI();
-      if (typeof api.forceSync === 'function') {
-        api.forceSync().catch((error: Error) => {
-          console.error('Focus-triggered sync failed', error);
-        });
-      }
-      fetchTasks();
-    };
-    
-    window.addEventListener('focus', handleWindowFocus);
-    return () => {
-      window.removeEventListener('focus', handleWindowFocus);
-    };
-  }, [fetchTasks]);
+  // Focus-based sync REMOVED - was causing hidden automatic syncs
+  // User can manually refresh using the refresh button if they want to pull from Notion
 
   const handleAddTask = useCallback(
     async (payload: NotionCreatePayload) => {

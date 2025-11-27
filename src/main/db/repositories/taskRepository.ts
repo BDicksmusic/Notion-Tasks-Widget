@@ -8,10 +8,9 @@ import type {
 } from '../../../shared/types';
 import { mapStatusToFilterValue } from '../../../shared/statusFilters';
 import { getDb } from '../database';
-import {
-  clearEntriesForEntity,
-  enqueueSyncEntry
-} from './syncQueueRepository';
+
+// Sync queue removed - tasks are stored locally only
+// Sync to Notion will be handled separately when rebuilt
 
 /**
  * Task row with dedicated columns for performance.
@@ -530,13 +529,8 @@ export function createLocalTask(payload: NotionCreatePayload) {
     fieldLocal: touchFields({}, extractChangedFields(payload))
   });
 
-  enqueueSyncEntry(
-    'task',
-    clientId,
-    'create',
-    { payload, clientId },
-    extractChangedFields(payload)
-  );
+  // Sync disabled - local only for now
+  // enqueueSyncEntry('task', clientId, 'create', { payload, clientId }, extractChangedFields(payload));
 
   // If this is a subtask, update the parent's subtaskIds and subtaskProgress
   if (payload.parentTaskId) {
@@ -685,17 +679,10 @@ export function updateLocalTask(taskId: string, updates: TaskUpdatePayload) {
         clientId: row.client_id
       };
 
-  // Only enqueue sync if there are Notion-syncable changes
-  if (notionChangedFields.length > 0) {
-    enqueueSyncEntry(
-      'task',
-      row.client_id,
-      row.notion_id ? 'update' : 'create',
-      queuePayload,
-      notionChangedFields,
-      row.notion_id
-    );
-  }
+  // Sync disabled - local only for now
+  // if (notionChangedFields.length > 0) {
+  //   enqueueSyncEntry('task', row.client_id, row.notion_id ? 'update' : 'create', queuePayload, notionChangedFields, row.notion_id);
+  // }
 
   return nextTask;
 }
@@ -785,7 +772,7 @@ export function upsertRemoteTask(entity: Task, notionId: string, notionUpdatedAt
     throw error;
   }
 
-  clearEntriesForEntity('task', clientId);
+  // clearEntriesForEntity('task', clientId); // Sync disabled
   return payload;
 }
 
@@ -794,7 +781,7 @@ export function removeLocalTask(taskId: string) {
   if (!row) return;
   const db = getDb();
   db.prepare(`DELETE FROM ${TABLE} WHERE client_id = ?`).run(row.client_id);
-  clearEntriesForEntity('task', row.client_id);
+  // clearEntriesForEntity('task', row.client_id); // Sync disabled
 }
 
 export function clearAllTasks(): number {
@@ -1007,7 +994,7 @@ export function permanentlyDeleteTask(taskId: string): boolean {
     `DELETE FROM ${TABLE} WHERE client_id = ? OR notion_id = ?`
   ).run(taskId, taskId);
   
-  clearEntriesForEntity('task', taskId);
+  // clearEntriesForEntity('task', taskId); // Sync disabled
   
   if (result.changes > 0) {
     console.log(`[TaskRepo] Permanently deleted task: ${taskId}`);
@@ -1027,7 +1014,7 @@ export function emptyTrash(): number {
         `DELETE FROM ${TABLE} WHERE client_id = ? OR notion_id = ?`
       ).run(task.id, task.id);
       deleted += result.changes;
-      clearEntriesForEntity('task', task.id);
+      // clearEntriesForEntity('task', task.id); // Sync disabled
     }
   });
   
@@ -1056,7 +1043,7 @@ export function cleanupOldTrashedTasks(daysOld: number = 30): number {
   const cleanup = db.transaction(() => {
     for (const row of oldTrashedRows) {
       db.prepare(`DELETE FROM ${TABLE} WHERE client_id = ?`).run(row.client_id);
-      clearEntriesForEntity('task', row.client_id);
+      // clearEntriesForEntity('task', row.client_id); // Sync disabled
       deleted++;
     }
   });

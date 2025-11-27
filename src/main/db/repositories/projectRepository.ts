@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Project, SyncStatus, StatusBreakdown } from '../../../shared/types';
 import { getDb } from '../database';
-import { enqueueSyncEntry, clearEntriesForEntity } from './syncQueueRepository';
+
+// Sync queue removed - projects stored locally only
 
 const TABLE = 'projects';
 
@@ -343,15 +344,8 @@ export function createLocalProject(payload: CreateLocalProjectPayload): ProjectW
     lastModifiedNotion: 0
   });
   
-  // Queue for sync to Notion
-  const payloadRecord = payload as unknown as Record<string, unknown>;
-  enqueueSyncEntry(
-    'project',
-    clientId,
-    'create',
-    { payload, clientId },
-    Object.keys(payload).filter(k => payloadRecord[k] !== undefined)
-  );
+  // Sync disabled - local only
+  // enqueueSyncEntry('project', clientId, 'create', { payload, clientId }, Object.keys(payload).filter(k => payloadRecord[k] !== undefined));
   
   console.log(`[DB] Created local project: "${project.title}" (id: ${clientId})`);
   
@@ -397,17 +391,10 @@ export function updateLocalProject(
     lastModifiedNotion: row.last_modified_notion
   });
   
-  // Queue for sync (only if it has a Notion ID)
-  if (row.notion_id) {
-    enqueueSyncEntry(
-      'project',
-      row.client_id,
-      'update',
-      { updates, clientId: row.client_id },
-      Object.keys(updates).filter(k => (updates as Record<string, unknown>)[k] !== undefined),
-      row.notion_id
-    );
-  }
+  // Sync disabled - local only
+  // if (row.notion_id) {
+  //   enqueueSyncEntry('project', row.client_id, 'update', ...);
+  // }
   
   console.log(`[DB] Updated project: "${updatedProject.title}" (id: ${projectId})`);
   
@@ -438,7 +425,7 @@ export function deleteLocalProject(projectId: string): boolean {
   
   const db = getDb();
   db.prepare(`DELETE FROM ${TABLE} WHERE client_id = ?`).run(row.client_id);
-  clearEntriesForEntity('project', row.client_id);
+  // clearEntriesForEntity('project', row.client_id); // Sync disabled
   
   console.log(`[DB] Deleted project: ${projectId}`);
   return true;

@@ -11,8 +11,8 @@ import { clearAllTimeLogs, countTimeLogs } from '../db/repositories/timeLogRepos
 import { clearAllWritingEntries, countWritingEntries } from '../db/repositories/writingRepository';
 import { clearAllChatSummaries, getChatSummaryCount } from '../db/repositories/chatSummaryRepository';
 import { clearAllLocalStatuses } from '../db/repositories/localStatusRepository';
-import { clearAllSyncQueue, countPendingEntries } from '../db/repositories/syncQueueRepository';
-import { clearAllSyncState } from '../db/repositories/syncStateRepository';
+
+// Sync queue/state removed - no longer needed
 
 export interface DataCounts {
   tasks: number;
@@ -54,7 +54,7 @@ export function getDataCounts(): DataCounts {
     timeLogs: countTimeLogs(),
     writingEntries: countWritingEntries(),
     chatSummaries: getChatSummaryCount(),
-    pendingSyncItems: countPendingEntries()
+    pendingSyncItems: 0  // Sync queue removed
   };
 }
 
@@ -91,9 +91,8 @@ export function performFullReset(): ResetResult {
     // Clear local statuses
     clearAllLocalStatuses();
     
-    // Clear sync queue and state
-    const syncQueueCleared = clearAllSyncQueue();
-    clearAllSyncState();
+    // Sync queue/state removed - no longer needed
+    const syncQueueCleared = 0;
     
     console.log('[DataManagement] FULL RESET complete:', {
       tasks: tasksCleared,
@@ -148,9 +147,9 @@ export function performSoftReset(): ResetResult {
     const timeLogsCleared = clearAllTimeLogs();
     const writingCleared = clearAllWritingEntries();
     const chatSummariesCleared = clearAllChatSummaries();
-    const syncQueueCleared = clearAllSyncQueue();
     
-    // Note: NOT clearing sync state, so import progress is preserved
+    // Sync queue removed - no longer needed
+    const syncQueueCleared = 0;
     
     console.log('[DataManagement] SOFT RESET complete');
     

@@ -6,10 +6,8 @@ import type {
   TimeLogUpdatePayload
 } from '@shared/types';
 import { getDb } from '../database';
-import {
-  clearEntriesForEntity,
-  enqueueSyncEntry
-} from './syncQueueRepository';
+
+// Sync queue removed - time logs stored locally only
 
 const TABLE = 'time_logs';
 
@@ -359,13 +357,8 @@ export function createLocalTimeLogEntry(payload: TimeLogEntryPayload) {
     fieldNotion: {}
   });
 
-  enqueueSyncEntry(
-    'timeLog',
-    clientId,
-    'create',
-    { payload, clientId },
-    extractChangedFields(payload)
-  );
+  // Sync disabled - local only
+  // enqueueSyncEntry('timeLog', clientId, 'create', { payload, clientId }, extractChangedFields(payload));
 
   return entry;
 }
@@ -411,28 +404,12 @@ export function updateLocalTimeLogEntry(
     fieldNotion: parseFieldMap(row.field_notion_ts)
   });
 
-  if (row.notion_id) {
-    enqueueSyncEntry(
-      'timeLog',
-      row.client_id,
-      'update',
-      { updates, clientId: row.client_id, notionId: row.notion_id },
-      changedFields,
-      row.notion_id
-    );
-  } else {
-    const mergedPayload = {
-      ...timeLogEntryToPayload(nextEntry),
-      ...updates
-    };
-    enqueueSyncEntry(
-      'timeLog',
-      row.client_id,
-      'create',
-      { payload: mergedPayload, clientId: row.client_id },
-      changedFields
-    );
-  }
+  // Sync disabled - local only
+  // if (row.notion_id) {
+  //   enqueueSyncEntry('timeLog', row.client_id, 'update', { updates, clientId: row.client_id, notionId: row.notion_id }, changedFields, row.notion_id);
+  // } else {
+  //   enqueueSyncEntry('timeLog', row.client_id, 'create', { payload: mergedPayload, clientId: row.client_id }, changedFields);
+  // }
 
   return nextEntry;
 }
@@ -442,18 +419,7 @@ export function deleteLocalTimeLogEntry(entryId: string) {
   if (!row) return;
   const db = getDb();
   db.prepare(`DELETE FROM ${TABLE} WHERE client_id = ?`).run(row.client_id);
-  if (!row.notion_id) {
-    clearEntriesForEntity('timeLog', row.client_id);
-    return;
-  }
-  enqueueSyncEntry(
-    'timeLog',
-    row.client_id,
-    'delete',
-    { notionId: row.notion_id },
-    ['delete'],
-    row.notion_id
-  );
+  // Sync disabled - just delete locally
 }
 
 export function upsertRemoteTimeLogEntry(
@@ -490,7 +456,7 @@ export function upsertRemoteTimeLogEntry(
     fieldLocal: parseFieldMap(row?.field_local_ts),
     fieldNotion: touchFields(parseFieldMap(row?.field_notion_ts), Object.keys(payload))
   });
-  clearEntriesForEntity('timeLog', clientId);
+  // clearEntriesForEntity('timeLog', clientId); // Sync disabled
   return payload;
 }
 

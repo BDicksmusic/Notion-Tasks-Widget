@@ -1,10 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { SyncStatus, WritingEntryPayload, MarkdownBlock } from '@shared/types';
 import { getDb } from '../database';
-import {
-  clearEntriesForEntity,
-  enqueueSyncEntry
-} from './syncQueueRepository';
+
+// Sync queue removed - writing entries stored locally only
 
 const TABLE = 'writing_entries';
 
@@ -286,13 +284,8 @@ export function createLocalWritingEntry(payload: WritingEntryPayload) {
     fieldLocal: touchFields({}, extractChangedFields(payload))
   });
 
-  enqueueSyncEntry(
-    'writing',
-    clientId,
-    'create',
-    { payload, clientId },
-    extractChangedFields(payload)
-  );
+  // Sync disabled - local only
+  // enqueueSyncEntry('writing', clientId, 'create', { payload, clientId }, extractChangedFields(payload));
 
   return {
     id: clientId,
@@ -338,17 +331,10 @@ export function updateLocalWritingEntry(
     fieldNotion: parseFieldMap(row.field_notion_ts)
   });
   
-  // Queue for sync if has a Notion ID
-  if (row.notion_id) {
-    enqueueSyncEntry(
-      'writing',
-      row.client_id,
-      'update',
-      { updates, clientId: row.client_id },
-      changedFields,
-      row.notion_id
-    );
-  }
+  // Sync disabled - local only
+  // if (row.notion_id) {
+  //   enqueueSyncEntry('writing', row.client_id, 'update', { updates, clientId: row.client_id }, changedFields, row.notion_id);
+  // }
   
   console.log(`[DB] Updated writing entry: "${updatedPayload.title}" (id: ${entryId})`);
   
@@ -392,7 +378,7 @@ export function markWritingEntrySynced(
     fieldLocal: parseFieldMap(row.field_local_ts),
     fieldNotion: parseFieldMap(row.field_notion_ts)
   });
-  clearEntriesForEntity('writing', clientId);
+  // clearEntriesForEntity('writing', clientId); // Sync disabled
 }
 
 /**
@@ -419,7 +405,7 @@ export function upsertRemoteWritingEntry(
     fieldNotion: touchFields(parseFieldMap(existingRow?.field_notion_ts), Object.keys(entry))
   });
   
-  clearEntriesForEntity('writing', clientId);
+  // clearEntriesForEntity('writing', clientId); // Sync disabled
   
   return {
     ...entry,
@@ -439,7 +425,7 @@ export function deleteWritingEntry(entryId: string): boolean {
   
   const db = getDb();
   db.prepare(`DELETE FROM ${TABLE} WHERE client_id = ?`).run(row.client_id);
-  clearEntriesForEntity('writing', row.client_id);
+  // clearEntriesForEntity('writing', row.client_id); // Sync disabled
   
   console.log(`[DB] Deleted writing entry: ${entryId}`);
   return true;

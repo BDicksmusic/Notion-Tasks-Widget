@@ -578,6 +578,12 @@ const widgetAPI: WidgetAPI = {
   async importContacts() {
     return { success: false, count: 0, error: 'Not implemented for mobile' };
   },
+  async importActiveTasksOnly() {
+    return { success: false, count: 0, error: 'Not implemented for mobile' };
+  },
+  async importActiveProjectsOnly() {
+    return { success: false, count: 0, error: 'Not implemented for mobile' };
+  },
   async testConnection() {
     // Mobile uses direct API calls, no separate connection test needed
     return { success: true, message: 'Mobile mode - direct API', latencyMs: 0 };

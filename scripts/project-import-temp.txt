@@ -1,0 +1,206 @@
+/**
+ * IMPORT ACTIVE PROJECTS ONLY - "Metadata Scan + Individual Retrieval" Pattern
+ * Same reliable approach as tasks - avoids 504s on wide databases
+ */
+export async function importActiveProjects(
+  completedStatuses: string[] = ['Done', 'Completed', '✅'],
+  onProgress?: (count: number, message: string) => void
+): Promise<Project[]> {
+  if (!projectsSettings?.databaseId) {
+    console.log('[Notion] Projects database not configured');
+    return [];
+  }
+  
+  const client = getProjectsClient();
+  const dbId = getProjectsDatabaseId();
+  const activeProjects: Project[] = [];
+  
+  console.log(`[Notion] IMPORT ACTIVE PROJECTS (Metadata Scan + Individual Retrieval)`);
+  console.log(`[Notion] Excluding statuses: ${completedStatuses.join(', ')}`);
+  onProgress?.(0, 'Phase 1: Scanning for project IDs...');
+  
+  // PHASE 1: METADATA SCAN - Get page IDs with minimal properties
+  const pageIds: string[] = [];
+  
+  try {
+    // Build filter: status NOT equal to any completed status
+    const statusProperty = projectsSettings.statusProperty;
+    let filter: any = undefined;
+    
+    if (statusProperty) {
+      const statusFilters = completedStatuses.map(status => ({
+        property: statusProperty,
+        status: { does_not_equal: status }
+      }));
+      filter = statusFilters.length > 1 
+        ? { and: statusFilters }
+        : statusFilters[0];
+    }
+    
+    // Minimal properties for scan
+    const minimalProperties = [
+      projectsSettings.titleProperty,
+      projectsSettings.statusProperty
+    ].filter(Boolean);
+    
+    let cursor: string | undefined = undefined;
+    let pageNum = 0;
+    const MAX_SCAN_PAGES = 20;
+    
+    console.log(`[Notion] Phase 1: Metadata scan (${minimalProperties.length} properties)`);
+    
+    do {
+      pageNum++;
+      console.log(`[Notion] Scanning page ${pageNum} for active project IDs...`);
+      onProgress?.(pageIds.length, `Scanning page ${pageNum}...`);
+      
+      const response = await withRetry(
+        client,
+        () =>
+          (client.databases as any).query({
+            database_id: dbId,
+            page_size: 50,
+            start_cursor: cursor,
+            filter
+          }),
+        'Metadata scan (projects)'
+      ) as { results: any[]; has_more: boolean; next_cursor: string | null };
+      
+      console.log(`[Notion] Scan page ${pageNum}: Found ${response.results.length} page IDs`);
+      
+      for (const result of response.results) {
+        if (result.object === 'page') {
+          pageIds.push(result.id);
+        }
+      }
+      
+      cursor = response.next_cursor ?? undefined;
+      
+      if (response.has_more && pageIds.length < 200) {
+        await new Promise(r => setTimeout(r, 350)); // Rate limit
+      } else {
+        break;
+      }
+      
+    } while (cursor && pageNum < MAX_SCAN_PAGES);
+    
+    console.log(`[Notion] Phase 1 complete: Found ${pageIds.length} active project page IDs`);
+    onProgress?.(0, `Phase 2: Retrieving ${pageIds.length} projects...`);
+    
+  } catch (scanError: any) {
+    console.error(`[Notion] Projects metadata scan failed: ${scanError.message}`);
+    throw new Error(`Database query failed: ${scanError.message}`);
+  }
+  
+  // PHASE 2: INDIVIDUAL PAGE RETRIEVAL
+  console.log(`[Notion] Phase 2: Retrieving ${pageIds.length} pages individually`);
+  
+  for (let i = 0; i < pageIds.length; i++) {
+    const pageId = pageIds[i];
+    
+    try {
+      const page = await withRetry(
+        client,
+        () => client.pages.retrieve({ page_id: pageId }),
+        `Retrieve project ${i + 1}/${pageIds.length}`
+      ) as PageObjectResponse;
+      
+      const props = page.properties ?? {};
+      
+      // Extract title
+      let titleProp = projectsSettings.titleProperty 
+        ? props[projectsSettings.titleProperty] 
+        : undefined;
+      if (!titleProp) {
+        for (const [_, value] of Object.entries(props)) {
+          if ((value as any)?.type === 'title') {
+            titleProp = value as any;
+            break;
+          }
+        }
+      }
+      
+      const title = (titleProp as any)?.type === 'title'
+        ? (titleProp as any).title.map((t: any) => t.plain_text).join('')
+        : null;
+      
+      // Extract status (handle both select and status types)
+      const statusProp = projectsSettings.statusProperty 
+        ? props[projectsSettings.statusProperty] 
+        : undefined;
+      let status: string | null = null;
+      if ((statusProp as any)?.type === 'select') {
+        status = (statusProp as any).select?.name ?? null;
+      } else if ((statusProp as any)?.type === 'status') {
+        status = (statusProp as any).status?.name ?? null;
+      }
+      
+      // Extract other properties
+      const descProp = projectsSettings.descriptionProperty 
+        ? props[projectsSettings.descriptionProperty] 
+        : undefined;
+      const description = (descProp as any)?.type === 'rich_text'
+        ? (descProp as any).rich_text.map((t: any) => t.plain_text).join('')
+        : null;
+      
+      const startDateProp = projectsSettings.startDateProperty 
+        ? props[projectsSettings.startDateProperty] 
+        : undefined;
+      const startDate = (startDateProp as any)?.type === 'date'
+        ? (startDateProp as any).date?.start ?? null
+        : null;
+      
+      const endDateProp = projectsSettings.endDateProperty 
+        ? props[projectsSettings.endDateProperty] 
+        : undefined;
+      const endDate = (endDateProp as any)?.type === 'date'
+        ? (endDateProp as any).date?.start ?? null
+        : null;
+      
+      const tagsProp = projectsSettings.tagsProperty 
+        ? props[projectsSettings.tagsProperty] 
+        : undefined;
+      const tags = (tagsProp as any)?.type === 'multi_select'
+        ? (tagsProp as any).multi_select.map((t: any) => t.name)
+        : null;
+      
+      activeProjects.push({
+        id: page.id,
+        title,
+        status,
+        description,
+        startDate,
+        endDate,
+        tags,
+        url: page.url ?? null,
+        lastEdited: (page as any).last_edited_time ?? new Date().toISOString()
+      });
+      
+      if ((i + 1) % 5 === 0) {
+        console.log(`[Notion] Phase 2: ${i + 1}/${pageIds.length} projects retrieved`);
+        onProgress?.(activeProjects.length, `${i + 1}/${pageIds.length} projects retrieved`);
+      }
+      
+      // Rate limiting
+      if (i < pageIds.length - 1) {
+        await new Promise(r => setTimeout(r, 350));
+      }
+      
+    } catch (pageError) {
+      console.warn(`[Notion] Failed to retrieve project ${pageId.substring(0, 8)}`);
+    }
+  }
+  
+  console.log(`[Notion] IMPORT ACTIVE PROJECTS COMPLETE: ${activeProjects.length} projects`);
+  
+  // Log status distribution
+  const statusCounts = new Map<string, number>();
+  for (const project of activeProjects) {
+    const status = project.status || '(none)';
+    statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+  }
+  console.log(`[Notion] Active project statuses: ${Array.from(statusCounts.entries()).map(([s, c]) => `${s}:${c}`).join(', ')}`);
+  
+  return activeProjects;
+}
+

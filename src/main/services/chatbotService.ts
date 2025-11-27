@@ -13,7 +13,7 @@ import type {
 import type { NotionCreatePayload } from '../../shared/types';
 import { listTasks as listStoredTasks } from '../db/repositories/taskRepository';
 import { listProjects as listCachedProjects } from '../db/repositories/projectRepository';
-import { getStatusOptions } from './notion';
+import { listLocalTaskStatuses } from '../db/repositories/localStatusRepository';
 
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-3-5-sonnet-20241022';
@@ -63,12 +63,8 @@ export async function generateChatbotResponse(
     Promise.resolve(listCachedProjects())
   ]);
 
-  let statuses: TaskStatusOption[] = [];
-  try {
-    statuses = await getStatusOptions();
-  } catch (error) {
-    console.warn('[Chatbot] Unable to fetch status options:', error);
-  }
+  // Use local statuses instead of fetching from Notion
+  const statuses: TaskStatusOption[] = listLocalTaskStatuses();
 
   const systemPrompt = buildSystemPrompt(tasks, projects, statuses);
   const userPrompt = buildUserPrompt(options.prompt, options.speechSummary);
