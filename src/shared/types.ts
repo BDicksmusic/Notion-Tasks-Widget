@@ -164,6 +164,11 @@ export interface AppPreferences {
   expandMode: 'hover' | 'button';
   autoCollapse: boolean;
   preventMinimalDuringSession?: boolean;
+  // Collapsible task columns - show on hover
+  collapseTimeColumn?: boolean;    // Column 3: Estimate time, Start session
+  collapseProjectColumn?: boolean; // Column 4: Add to project, Add subtasks
+  // UI interaction sounds
+  enableUISounds?: boolean;        // Enable click/hover/menu sounds
 }
 
 export interface WritingSettings {

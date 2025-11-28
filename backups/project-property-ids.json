@@ -1,0 +1,757 @@
+[
+  {
+    "name": "[--Buttons--]",
+    "id": "%7ClKy",
+    "type": "formula"
+  },
+  {
+    "name": "[--Change Recur--]",
+    "id": "%5DYwf",
+    "type": "formula"
+  },
+  {
+    "name": "[--Checkboxes--]",
+    "id": "cBzm",
+    "type": "formula"
+  },
+  {
+    "name": "[--Dates--] ",
+    "id": "OmUr",
+    "type": "formula"
+  },
+  {
+    "name": "[--Formulas--]",
+    "id": "%3ApTE",
+    "type": "formula"
+  },
+  {
+    "name": "[--Hidden--]",
+    "id": "rsfs",
+    "type": "formula"
+  },
+  {
+    "name": "[--Hidden--] ",
+    "id": "MlUb",
+    "type": "formula"
+  },
+  {
+    "name": "[--Hidden--]  ",
+    "id": "w_%60T",
+    "type": "formula"
+  },
+  {
+    "name": "[--Hidden--]   ",
+    "id": "%3A%5EbW",
+    "type": "formula"
+  },
+  {
+    "name": "[--Hidden--]    ",
+    "id": "%7Cco%60",
+    "type": "formula"
+  },
+  {
+    "name": "[--Hidden--]     ",
+    "id": "gupv",
+    "type": "formula"
+  },
+  {
+    "name": "[--Info--]",
+    "id": "Ofe%5C",
+    "type": "formula"
+  },
+  {
+    "name": "[--Recur Info--]",
+    "id": "%5BZmJ",
+    "type": "formula"
+  },
+  {
+    "name": "[--Relation--]",
+    "id": "DW%3FX",
+    "type": "formula"
+  },
+  {
+    "name": "[--Relation--] ",
+    "id": "YqPT",
+    "type": "formula"
+  },
+  {
+    "name": "[--Relation--]  ",
+    "id": "kj%3B%60",
+    "type": "formula"
+  },
+  {
+    "name": "[--Rollups--]",
+    "id": "%60%7D%40o",
+    "type": "formula"
+  },
+  {
+    "name": "[--Switches--]",
+    "id": "Yod%60",
+    "type": "formula"
+  },
+  {
+    "name": "[--Tracking Info--]",
+    "id": "%5EP_D",
+    "type": "formula"
+  },
+  {
+    "name": "[Current]",
+    "id": "oMM%3A",
+    "type": "formula"
+  },
+  {
+    "name": "[FIX] Last Action",
+    "id": "FoNR",
+    "type": "formula"
+  },
+  {
+    "name": "[Next Action Date Property]",
+    "id": "cfS%5E",
+    "type": "formula"
+  },
+  {
+    "name": "[Next Action Date]",
+    "id": "Y%3Fxp",
+    "type": "formula"
+  },
+  {
+    "name": "[Next Action]",
+    "id": "V%5EG%3C",
+    "type": "formula"
+  },
+  {
+    "name": "[Overview Info]",
+    "id": "%3AmmF",
+    "type": "formula"
+  },
+  {
+    "name": "[Related Pages]",
+    "id": "ujjd",
+    "type": "formula"
+  },
+  {
+    "name": "[X?] Action Status",
+    "id": "v%3FG%3F",
+    "type": "rollup"
+  },
+  {
+    "name": "[X?} Action Status (1)",
+    "id": "S%40Mh",
+    "type": "rollup"
+  },
+  {
+    "name": "➡️ to System",
+    "id": "Kz%3F%40",
+    "type": "button"
+  },
+  {
+    "name": "Action Data",
+    "id": "F%3FA_",
+    "type": "formula"
+  },
+  {
+    "name": "Action Progress",
+    "id": "%5Cmd%7D",
+    "type": "formula"
+  },
+  {
+    "name": "Action Stat (Form)",
+    "id": "MvHI",
+    "type": "formula"
+  },
+  {
+    "name": "Action Tracking",
+    "id": "X%3Acj",
+    "type": "formula"
+  },
+  {
+    "name": "Action Tracking (Short)",
+    "id": "m%3AQl",
+    "type": "formula"
+  },
+  {
+    "name": "Actions",
+    "id": "RIK%60",
+    "type": "relation"
+  },
+  {
+    "name": "Active",
+    "id": "TJD%60",
+    "type": "checkbox"
+  },
+  {
+    "name": "AI summary",
+    "id": "ec9b99dc-f83f-4ad6-9d3e-e3320a8a3996",
+    "type": "rich_text"
+  },
+  {
+    "name": "All Open Actions",
+    "id": "%3D%5ED%60",
+    "type": "formula"
+  },
+  {
+    "name": "Areas ",
+    "id": "YOLT",
+    "type": "relation"
+  },
+  {
+    "name": "Assignee",
+    "id": "k%7Ciy",
+    "type": "people"
+  },
+  {
+    "name": "Assignments for Class",
+    "id": "fh%7Bs",
+    "type": "relation"
+  },
+  {
+    "name": "Blocked by",
+    "id": "%7C%40Er",
+    "type": "relation"
+  },
+  {
+    "name": "Blocking",
+    "id": "cotS",
+    "type": "relation"
+  },
+  {
+    "name": "border",
+    "id": "gH%5BD",
+    "type": "formula"
+  },
+  {
+    "name": "Border",
+    "id": "%5BUM%40",
+    "type": "formula"
+  },
+  {
+    "name": "border (1)",
+    "id": "QzTa",
+    "type": "formula"
+  },
+  {
+    "name": "border (2)",
+    "id": "%3ANQX",
+    "type": "formula"
+  },
+  {
+    "name": "Button",
+    "id": "bIpJ",
+    "type": "button"
+  },
+  {
+    "name": "Class-Students",
+    "id": "qR%3Ae",
+    "type": "relation"
+  },
+  {
+    "name": "Classes",
+    "id": "qERu",
+    "type": "relation"
+  },
+  {
+    "name": "Click to Complete",
+    "id": "Ihbx",
+    "type": "button"
+  },
+  {
+    "name": "Click to Complete [Lg]",
+    "id": "fTYk",
+    "type": "button"
+  },
+  {
+    "name": "Compiled Lists Wiki",
+    "id": "%40d%3F%3F",
+    "type": "relation"
+  },
+  {
+    "name": "Completed Time",
+    "id": "%3C%3F%5DA",
+    "type": "date"
+  },
+  {
+    "name": "contacts",
+    "id": "WeVU",
+    "type": "relation"
+  },
+  {
+    "name": "Created time",
+    "id": "_AmW",
+    "type": "created_time"
+  },
+  {
+    "name": "Current",
+    "id": "ETl%5E",
+    "type": "checkbox"
+  },
+  {
+    "name": "Day Order",
+    "id": "oG%5DC",
+    "type": "select"
+  },
+  {
+    "name": "Deadline",
+    "id": "A%5CF~",
+    "type": "date"
+  },
+  {
+    "name": "Do Date",
+    "id": "WGJ%3C",
+    "type": "date"
+  },
+  {
+    "name": "docs",
+    "id": "HEkT",
+    "type": "relation"
+  },
+  {
+    "name": "Edit Update",
+    "id": "IDS_",
+    "type": "button"
+  },
+  {
+    "name": "Edit!",
+    "id": "YpEl",
+    "type": "checkbox"
+  },
+  {
+    "name": "First Active Date",
+    "id": "b%40yi",
+    "type": "date"
+  },
+  {
+    "name": "folders",
+    "id": "YVja",
+    "type": "relation"
+  },
+  {
+    "name": "Formula",
+    "id": "%3EiKN",
+    "type": "formula"
+  },
+  {
+    "name": "Full Info",
+    "id": "S~%5CM",
+    "type": "formula"
+  },
+  {
+    "name": "Goal",
+    "id": "EKhQ",
+    "type": "number"
+  },
+  {
+    "name": "Habit Task",
+    "id": "%5EO%7Cg",
+    "type": "checkbox"
+  },
+  {
+    "name": "Hide/Show  Info",
+    "id": "msWc",
+    "type": "button"
+  },
+  {
+    "name": "Hide/Show Gallery Props",
+    "id": "Ocm%3F",
+    "type": "status"
+  },
+  {
+    "name": "highlights",
+    "id": "q~yG",
+    "type": "relation"
+  },
+  {
+    "name": "ID",
+    "id": "MDrL",
+    "type": "unique_id"
+  },
+  {
+    "name": "ideas",
+    "id": "wVS%40",
+    "type": "relation"
+  },
+  {
+    "name": "Important",
+    "id": "Z_Ue",
+    "type": "checkbox"
+  },
+  {
+    "name": "Inbox Notif",
+    "id": "sBsQ",
+    "type": "relation"
+  },
+  {
+    "name": "Jobs",
+    "id": "tcNy",
+    "type": "relation"
+  },
+  {
+    "name": "Last Action Date",
+    "id": "LF%60o",
+    "type": "formula"
+  },
+  {
+    "name": "Last edited time",
+    "id": "wbKQ",
+    "type": "last_edited_time"
+  },
+  {
+    "name": "Leader",
+    "id": "c50d7f7b-3436-4c3c-936f-b1e9a5563753",
+    "type": "people"
+  },
+  {
+    "name": "links",
+    "id": "G%60%5B%3E",
+    "type": "relation"
+  },
+  {
+    "name": "Localization Key",
+    "id": "Eo%7Cw",
+    "type": "formula"
+  },
+  {
+    "name": "Log Entry",
+    "id": "QlP%7B",
+    "type": "button"
+  },
+  {
+    "name": "Main Entry",
+    "id": "v%3Fq%3D",
+    "type": "rich_text"
+  },
+  {
+    "name": "main_Tag_Roll",
+    "id": "hx%3AW",
+    "type": "rollup"
+  },
+  {
+    "name": "music",
+    "id": "%3D%5B%3Al",
+    "type": "relation"
+  },
+  {
+    "name": "Name",
+    "id": "title",
+    "type": "title"
+  },
+  {
+    "name": "Name [Copy]",
+    "id": "AA_%3E",
+    "type": "formula"
+  },
+  {
+    "name": "Name Nub",
+    "id": "TBF%40",
+    "type": "formula"
+  },
+  {
+    "name": "Next Due",
+    "id": "ZWJ%3F",
+    "type": "formula"
+  },
+  {
+    "name": "Next Project? ◻️",
+    "id": "wVRe",
+    "type": "formula"
+  },
+  {
+    "name": "Next Timeline",
+    "id": "~wEX",
+    "type": "formula"
+  },
+  {
+    "name": "organizations",
+    "id": "%3BGG%3A",
+    "type": "relation"
+  },
+  {
+    "name": "Parent-Project",
+    "id": "~cJI",
+    "type": "relation"
+  },
+  {
+    "name": "Pin",
+    "id": "Zc%3EH",
+    "type": "status"
+  },
+  {
+    "name": "Priority",
+    "id": "%5Chbo",
+    "type": "select"
+  },
+  {
+    "name": "Project Deadline [Schedule]",
+    "id": "yjmB",
+    "type": "relation"
+  },
+  {
+    "name": "Project Progress",
+    "id": "IyCH",
+    "type": "formula"
+  },
+  {
+    "name": "Project Tags",
+    "id": "rnj%7C",
+    "type": "relation"
+  },
+  {
+    "name": "questions",
+    "id": "T%3CdW",
+    "type": "relation"
+  },
+  {
+    "name": "Quick Inbox",
+    "id": "CgA%3A",
+    "type": "checkbox"
+  },
+  {
+    "name": "quotes",
+    "id": "MPAx",
+    "type": "relation"
+  },
+  {
+    "name": "Re-Occuring Tracker",
+    "id": "nVVE",
+    "type": "relation"
+  },
+  {
+    "name": "Recent Logs",
+    "id": "%3Dp%60_",
+    "type": "formula"
+  },
+  {
+    "name": "recommends",
+    "id": "Sdh~",
+    "type": "relation"
+  },
+  {
+    "name": "Record Old Project, Add New",
+    "id": "%3DGz%7D",
+    "type": "button"
+  },
+  {
+    "name": "Recur Interval",
+    "id": "HOg%5E",
+    "type": "number"
+  },
+  {
+    "name": "Recur Unit",
+    "id": "%60e%3F%3F",
+    "type": "select"
+  },
+  {
+    "name": "Related Meeting Sch.",
+    "id": "%3FEiM",
+    "type": "relation"
+  },
+  {
+    "name": "related performance Sch.",
+    "id": "BQQe",
+    "type": "relation"
+  },
+  {
+    "name": "Related Projects",
+    "id": "Bjd%40",
+    "type": "relation"
+  },
+  {
+    "name": "related Teaching Sch.",
+    "id": "nSN%3E",
+    "type": "relation"
+  },
+  {
+    "name": "Relation List (Gall)",
+    "id": "mrfJ",
+    "type": "formula"
+  },
+  {
+    "name": "Remove",
+    "id": "c%5CV%3B",
+    "type": "status"
+  },
+  {
+    "name": "Remove -",
+    "id": "%40%5DzD",
+    "type": "formula"
+  },
+  {
+    "name": "Roll-Act,Pro",
+    "id": "qzL%3A",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-Act,Sub",
+    "id": "jz%3DY",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-Act.Ar",
+    "id": "mCsE",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-ar,ar",
+    "id": "Jrvp",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-Area,Tags",
+    "id": "%3BwZ%3B",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-log,pro",
+    "id": "%60Qur",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-music,pro",
+    "id": "se%3Ed",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-Pro,Act",
+    "id": "%5Bv%3F%3E",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-Pro,Ar",
+    "id": "zlYz",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-pro,track(pro)",
+    "id": "GPKt",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll-quest,pro",
+    "id": "%3E%3Fhk",
+    "type": "rollup"
+  },
+  {
+    "name": "Roll,Track.Pro",
+    "id": "ZvQD",
+    "type": "rollup"
+  },
+  {
+    "name": "RollSch,Log",
+    "id": "rEu%5E",
+    "type": "rollup"
+  },
+  {
+    "name": "Rollup",
+    "id": "bFlZ",
+    "type": "rollup"
+  },
+  {
+    "name": "School Institution",
+    "id": "%7BStZ",
+    "type": "relation"
+  },
+  {
+    "name": "Search Words",
+    "id": "odAY",
+    "type": "rich_text"
+  },
+  {
+    "name": "Self-Relate",
+    "id": "ZCBx",
+    "type": "relation"
+  },
+  {
+    "name": "Set to Active",
+    "id": "%5BxLj",
+    "type": "checkbox"
+  },
+  {
+    "name": "Show/Hide Entry",
+    "id": "Ri%7B%7C",
+    "type": "button"
+  },
+  {
+    "name": "Sprints",
+    "id": "%3Fy%7Bu",
+    "type": "relation"
+  },
+  {
+    "name": "Start Date",
+    "id": "DQol",
+    "type": "date"
+  },
+  {
+    "name": "Start Date,Deadline [Form]",
+    "id": "Y%3EwO",
+    "type": "formula"
+  },
+  {
+    "name": "Status",
+    "id": "n%5CVv",
+    "type": "status"
+  },
+  {
+    "name": "Stored Main Entry",
+    "id": "uX%3Fb",
+    "type": "rich_text"
+  },
+  {
+    "name": "Sub-Pro_Log_Roll",
+    "id": "Mbln",
+    "type": "rollup"
+  },
+  {
+    "name": "Sub-Projects",
+    "id": "%3D%5CDz",
+    "type": "relation"
+  },
+  {
+    "name": "Switch",
+    "id": "I_p%40",
+    "type": "formula"
+  },
+  {
+    "name": "Sync ID",
+    "id": "Lz_N",
+    "type": "rich_text"
+  },
+  {
+    "name": "System",
+    "id": "%3CN%7Cl",
+    "type": "button"
+  },
+  {
+    "name": "Tag_Level_Roll",
+    "id": "Q%5Dad",
+    "type": "rollup"
+  },
+  {
+    "name": "Timeline",
+    "id": "dePk",
+    "type": "date"
+  },
+  {
+    "name": "to inbox",
+    "id": "%5CFqp",
+    "type": "button"
+  },
+  {
+    "name": "Tracking Data",
+    "id": "u%7BKC",
+    "type": "formula"
+  },
+  {
+    "name": "Urgent",
+    "id": "SY%40K",
+    "type": "checkbox"
+  },
+  {
+    "name": "Weekdays",
+    "id": "%3CMru",
+    "type": "multi_select"
+  },
+  {
+    "name": "writing logs",
+    "id": "CXL%60",
+    "type": "relation"
+  }
+]

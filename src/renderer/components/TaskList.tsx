@@ -94,6 +94,9 @@ interface Props {
   onTaskDragEnd?: () => void;
   projects?: Project[];
   onAddSubtask?: (parentTaskId: string, title: string) => Promise<Task | void>;
+  // Collapsible columns settings
+  collapseTimeColumn?: boolean;    // Column 3: Estimate time, Start session
+  collapseProjectColumn?: boolean; // Column 4: Add to project, Add subtasks
 }
 
 const NOTION_COLOR_MAP: Record<
@@ -190,7 +193,9 @@ const TaskList = ({
   onTaskDragStart,
   onTaskDragEnd,
   projects = [],
-  onAddSubtask
+  onAddSubtask,
+  collapseTimeColumn = false,
+  collapseProjectColumn = false
 }: Props) => {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [customStatusDrafts, setCustomStatusDrafts] = useState<
@@ -1770,7 +1775,8 @@ const TaskList = ({
                 </div>
               </div>
             </div>
-            <div className="task-secondary-row">
+            {/* Time Column (Column 3): Estimate time, Start session - collapsible on hover */}
+            <div className={`task-secondary-row ${collapseTimeColumn ? 'collapsible-column' : ''}`}>
               <div className="task-secondary-left">
                 <button
                   type="button"
@@ -1858,7 +1864,7 @@ const TaskList = ({
                 )}
               </div>
             </div>
-            {/* Project & Tags row - subtle footer */}
+            {/* Project & Tags row (Column 4): Add to project, Add subtasks - collapsible on hover */}
             {(() => {
               const taskProjects = getTaskProjects(task);
               const hasProjects = taskProjects.length > 0;
@@ -1867,7 +1873,7 @@ const TaskList = ({
               const taskTags: string[] = [];
               
               return (
-                <div className="task-project-row">
+                <div className={`task-project-row ${collapseProjectColumn ? 'collapsible-column' : ''}`}>
                   <div className="task-project-row-left">
                     {hasProjects ? (
                       <button

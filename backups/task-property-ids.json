@@ -1,0 +1,702 @@
+[
+  {
+    "name": "Auto-End? API",
+    "id": "%3AGx%5C"
+  },
+  {
+    "name": "Action Info (Always)",
+    "id": "%3AIjs"
+  },
+  {
+    "name": "Roll-Pro,Pro",
+    "id": "%3B%3AB%3F"
+  },
+  {
+    "name": "FIND MAIN RECUR TASKS",
+    "id": "%3B%3CxI"
+  },
+  {
+    "name": "Quick Inbox [X]",
+    "id": "%3BI_L"
+  },
+  {
+    "name": "Last edited by",
+    "id": "%3BNwJ"
+  },
+  {
+    "name": "Recur Action?",
+    "id": "%3Cd_F"
+  },
+  {
+    "name": "Current Session",
+    "id": "%3Cfj%3C"
+  },
+  {
+    "name": "Pin [A]",
+    "id": "%3CiKS"
+  },
+  {
+    "name": "Sub Date",
+    "id": "%3CmxI"
+  },
+  {
+    "name": "Proj_Area_Roll",
+    "id": "%3D%3AiB"
+  },
+  {
+    "name": "Action Info (Switch)",
+    "id": "%3D%3E%60%3A"
+  },
+  {
+    "name": "Jobs",
+    "id": "%3DT%5CJ"
+  },
+  {
+    "name": "ideas",
+    "id": "%3Deuz"
+  },
+  {
+    "name": "Main Entry",
+    "id": "%3E%3BR%60"
+  },
+  {
+    "name": "questions",
+    "id": "%3ECZU"
+  },
+  {
+    "name": "captures",
+    "id": "%3E%60sF"
+  },
+  {
+    "name": "Sess. (min or hrs?)",
+    "id": "%3FGNP"
+  },
+  {
+    "name": "First Due Date",
+    "id": "%3FpLf"
+  },
+  {
+    "name": "View Entry/Related",
+    "id": "%3FxMY"
+  },
+  {
+    "name": "Move on [X]",
+    "id": "%40D%5BV"
+  },
+  {
+    "name": "Action Tags",
+    "id": "%40LfJ"
+  },
+  {
+    "name": "writing logs",
+    "id": "%40Zha"
+  },
+  {
+    "name": "Tracking to Name?",
+    "id": "%40%60nu"
+  },
+  {
+    "name": "To-Do [S]",
+    "id": "A%3ArL"
+  },
+  {
+    "name": "Tracking (Short)",
+    "id": "A%5CpM"
+  },
+  {
+    "name": "End [S]",
+    "id": "AlLs"
+  },
+  {
+    "name": "Date",
+    "id": "AnNd"
+  },
+  {
+    "name": "private students",
+    "id": "B%7BAO"
+  },
+  {
+    "name": "Assignee",
+    "id": "CEVv"
+  },
+  {
+    "name": "All Est. Data",
+    "id": "CYpZ"
+  },
+  {
+    "name": "docs",
+    "id": "CkaM"
+  },
+  {
+    "name": "View/Hide Info [L]",
+    "id": "DLMM"
+  },
+  {
+    "name": "organizations",
+    "id": "DZUw"
+  },
+  {
+    "name": "Task Type",
+    "id": "D%7BKX"
+  },
+  {
+    "name": "Log Entry [L]",
+    "id": "E%3AU%5E"
+  },
+  {
+    "name": "MainAction-TimeLog_Roll",
+    "id": "El%40h"
+  },
+  {
+    "name": "Sub-Action?",
+    "id": "Eo_%5D"
+  },
+  {
+    "name": "Habits Task",
+    "id": "FIAZ"
+  },
+  {
+    "name": "Blocking",
+    "id": "F%7CqI"
+  },
+  {
+    "name": "folders",
+    "id": "I%3FNe"
+  },
+  {
+    "name": "Working Times",
+    "id": "I%40pC"
+  },
+  {
+    "name": "Current Time",
+    "id": "JJlA"
+  },
+  {
+    "name": "TimeLog_Sub_Roll",
+    "id": "Jy%5Bx"
+  },
+  {
+    "name": "Completion Time",
+    "id": "Jy%5Dj"
+  },
+  {
+    "name": "Left in Sess.",
+    "id": "J%7BJN"
+  },
+  {
+    "name": "[--Checkboxes--] ",
+    "id": "KQQK"
+  },
+  {
+    "name": "Daily Priority Tracking",
+    "id": "L%3EKM"
+  },
+  {
+    "name": "Main Actions",
+    "id": "LBKn"
+  },
+  {
+    "name": "Project_Class_Roll",
+    "id": "LZgI"
+  },
+  {
+    "name": "Set to Active [A]",
+    "id": "Lh%60%7B"
+  },
+  {
+    "name": "Important",
+    "id": "Lmpr"
+  },
+  {
+    "name": "[--Buttons--]",
+    "id": "MJJP"
+  },
+  {
+    "name": "Date (without time)",
+    "id": "MliT"
+  },
+  {
+    "name": "Next Due API",
+    "id": "Mopf"
+  },
+  {
+    "name": "Active [X]",
+    "id": "MsjH"
+  },
+  {
+    "name": "Start [S]",
+    "id": "Mtzu"
+  },
+  {
+    "name": "Set End Time",
+    "id": "NObg"
+  },
+  {
+    "name": "Total Time (min) [Recur] (1)",
+    "id": "Nga%5B"
+  },
+  {
+    "name": "Completion Stats",
+    "id": "OOg%3C"
+  },
+  {
+    "name": "Created time",
+    "id": "OmRZ"
+  },
+  {
+    "name": "Project_Status_Roll",
+    "id": "O%7B%7Dx"
+  },
+  {
+    "name": "AUTO ENTRY [X]",
+    "id": "P%3DUj"
+  },
+  {
+    "name": "Roll-Pro,Track",
+    "id": "PoXx"
+  },
+  {
+    "name": "ID",
+    "id": "QJ~P"
+  },
+  {
+    "name": "Tracking Short Pref",
+    "id": "REm%7B"
+  },
+  {
+    "name": "Goal Number",
+    "id": "R%5CIt"
+  },
+  {
+    "name": "RecurTrack_Main_Roll",
+    "id": "SI%3Bw"
+  },
+  {
+    "name": "Hard Deadline!",
+    "id": "ST%3C%3A"
+  },
+  {
+    "name": "Finance Month",
+    "id": "SWqA"
+  },
+  {
+    "name": "Hide/View Log [L]",
+    "id": "TF%3D%40"
+  },
+  {
+    "name": "Classes",
+    "id": "TzJx"
+  },
+  {
+    "name": "Localization Key",
+    "id": "UZER"
+  },
+  {
+    "name": "Recur.Subact",
+    "id": "U%5E%7CK"
+  },
+  {
+    "name": "Move on Time",
+    "id": "UiZA"
+  },
+  {
+    "name": "All Est. Data ",
+    "id": "V%3A%3Cf"
+  },
+  {
+    "name": "Log_Pro_Roll",
+    "id": "V%5DYy"
+  },
+  {
+    "name": "[--Formulas--]",
+    "id": "V_Q%7D"
+  },
+  {
+    "name": "RecurTrack_TimeLog_Roll",
+    "id": "WHa%40"
+  },
+  {
+    "name": "Recur Unit",
+    "id": "WIp%7B"
+  },
+  {
+    "name": "[Next Due (Date)]",
+    "id": "Wq%5Dy"
+  },
+  {
+    "name": "Search Words",
+    "id": "Wtn%3F"
+  },
+  {
+    "name": "Total Time Switch (min) [Recur] (1)",
+    "id": "W~_M"
+  },
+  {
+    "name": "Tracking Goal/Est. Progress",
+    "id": "XQcX"
+  },
+  {
+    "name": "Time Log",
+    "id": "YAJJ"
+  },
+  {
+    "name": "Created by",
+    "id": "YPL%3F"
+  },
+  {
+    "name": "MainAction_Status_Roll",
+    "id": "YX%3E~"
+  },
+  {
+    "name": "End [L]",
+    "id": "YyS%60"
+  },
+  {
+    "name": "Task Done! [X]",
+    "id": "ZGU%7B"
+  },
+  {
+    "name": "Sub-Actions",
+    "id": "ZHip"
+  },
+  {
+    "name": "Blocked by",
+    "id": "Zrv~"
+  },
+  {
+    "name": "SubAction_Recur_Roll",
+    "id": "%5BHja"
+  },
+  {
+    "name": "recommends",
+    "id": "%5B%5Ds%5D"
+  },
+  {
+    "name": "Next Project Action?",
+    "id": "%5CubJ"
+  },
+  {
+    "name": "music",
+    "id": "%5DD%5BL"
+  },
+  {
+    "name": "roll-sub.Act,Pro",
+    "id": "%5DLCO"
+  },
+  {
+    "name": "highlights",
+    "id": "%5DZqS"
+  },
+  {
+    "name": "Stored Main Entry",
+    "id": "%5DaXQ"
+  },
+  {
+    "name": "Sub-Recur (Status)",
+    "id": "%5DdQE"
+  },
+  {
+    "name": "contacts",
+    "id": "%5DhQj"
+  },
+  {
+    "name": "[Next Due (String)]",
+    "id": "%5E%40d%3B"
+  },
+  {
+    "name": "Status",
+    "id": "%5EM%3DT"
+  },
+  {
+    "name": "Urgent",
+    "id": "%5EOqG"
+  },
+  {
+    "name": "Name Nub",
+    "id": "%5ElZh"
+  },
+  {
+    "name": "SubAction_Status_Roll",
+    "id": "_n%5EU"
+  },
+  {
+    "name": "Areas",
+    "id": "%60R%7CW"
+  },
+  {
+    "name": "Pin Filter for Sub-Tasks",
+    "id": "%60%7Bda"
+  },
+  {
+    "name": "TimeLog_Parent_Roll",
+    "id": "a%40Zr"
+  },
+  {
+    "name": "roll-M.Act,Date",
+    "id": "asng"
+  },
+  {
+    "name": "Log Info",
+    "id": "b%5BiE"
+  },
+  {
+    "name": "Recur Time Logs",
+    "id": "bgR~"
+  },
+  {
+    "name": "Hard Deadline?",
+    "id": "bhAT"
+  },
+  {
+    "name": "API Request",
+    "id": "cOW%3B"
+  },
+  {
+    "name": "Border (Switch)",
+    "id": "cPMn"
+  },
+  {
+    "name": "Sess. Length",
+    "id": "eB%3Bk"
+  },
+  {
+    "name": "MainActions_Area_Roll",
+    "id": "eXIn"
+  },
+  {
+    "name": "RecurTrack_Sub_Roll",
+    "id": "fGm%3C"
+  },
+  {
+    "name": "Border",
+    "id": "fsUi"
+  },
+  {
+    "name": "Log List",
+    "id": "fu%60b"
+  },
+  {
+    "name": "(Switch) Left in Est.",
+    "id": "fwdt"
+  },
+  {
+    "name": "recur-log? [X]",
+    "id": "gDRG"
+  },
+  {
+    "name": "Next Sub Action",
+    "id": "gMwk"
+  },
+  {
+    "name": "Auto Est.? [A]",
+    "id": "g_lC"
+  },
+  {
+    "name": "Click to Complete [S]",
+    "id": "gbUn"
+  },
+  {
+    "name": "Start [L]",
+    "id": "h%3Cra"
+  },
+  {
+    "name": "Action Info (Always) ",
+    "id": "hwT%5B"
+  },
+  {
+    "name": "quotes",
+    "id": "iVpP"
+  },
+  {
+    "name": " Move On [Form]",
+    "id": "ie~%3C"
+  },
+  {
+    "name": "Tracking Switch",
+    "id": "inI%5D"
+  },
+  {
+    "name": "Estimation Info (Switch)",
+    "id": "j%5D%40H"
+  },
+  {
+    "name": "Order",
+    "id": "j_KY"
+  },
+  {
+    "name": "Est. (min or hrs?)",
+    "id": "jasK"
+  },
+  {
+    "name": "Click to Complete [L]",
+    "id": "lWVq"
+  },
+  {
+    "name": "Last edited time",
+    "id": "luJz"
+  },
+  {
+    "name": "Tracking to Project?",
+    "id": "nWY%5B"
+  },
+  {
+    "name": "Session End Time",
+    "id": "nZvk"
+  },
+  {
+    "name": "Main Above Sub?",
+    "id": "nt%5CK"
+  },
+  {
+    "name": "Weekdays",
+    "id": "o%60%7BT"
+  },
+  {
+    "name": "SubAction_TimeLog_Roll",
+    "id": "p_S%60"
+  },
+  {
+    "name": "Recur Sub-Items",
+    "id": "p~xt"
+  },
+  {
+    "name": "Self-Relate",
+    "id": "qT%5E%3B"
+  },
+  {
+    "name": "Remove [A]",
+    "id": "rMR%7B"
+  },
+  {
+    "name": "Pin Filter for Sub Tasks",
+    "id": "r%60gd"
+  },
+  {
+    "name": "Projects",
+    "id": "sPAx"
+  },
+  {
+    "name": "FIND MAIN RECUR TASKS (1)",
+    "id": "sUbm"
+  },
+  {
+    "name": "Goal (min or hrs?)",
+    "id": "slII"
+  },
+  {
+    "name": "roll-sub.Act,M.Act",
+    "id": "tA_Z"
+  },
+  {
+    "name": "Log Entry [S]",
+    "id": "tDqP"
+  },
+  {
+    "name": "Edit! [B]",
+    "id": "tJx%7D"
+  },
+  {
+    "name": "Quick Important Info",
+    "id": "tRPX"
+  },
+  {
+    "name": "Compiled Lists Wiki",
+    "id": "tSW%5B"
+  },
+  {
+    "name": "Est. Length",
+    "id": "uQgZ"
+  },
+  {
+    "name": "Recur Interval",
+    "id": "uyPK"
+  },
+  {
+    "name": "Move On [L]",
+    "id": "w%3BuZ"
+  },
+  {
+    "name": "Next Action (Sub) ?",
+    "id": "wRpI"
+  },
+  {
+    "name": "Sync ID",
+    "id": "wmuM"
+  },
+  {
+    "name": "Total Time",
+    "id": "xOFg"
+  },
+  {
+    "name": "# Entries?",
+    "id": "xP_%40"
+  },
+  {
+    "name": "End Sub Task [A]",
+    "id": "xn%5C%40"
+  },
+  {
+    "name": "Widget Link",
+    "id": "y%5Bo%60"
+  },
+  {
+    "name": "Recur Full Type",
+    "id": "z%3B%5Cx"
+  },
+  {
+    "name": "Sub-Task Prog",
+    "id": "%7BNgL"
+  },
+  {
+    "name": "Last Date (Sub)",
+    "id": "%7B%5BEr"
+  },
+  {
+    "name": "Add to Session",
+    "id": "%7Bil%3B"
+  },
+  {
+    "name": "UTC Offset",
+    "id": "%7BkDh"
+  },
+  {
+    "name": "All Logs",
+    "id": "%7CCbe"
+  },
+  {
+    "name": "Border ",
+    "id": "%7Cnoi"
+  },
+  {
+    "name": "to inbox [S]",
+    "id": "%7Djv%3A"
+  },
+  {
+    "name": "Recur Tracking",
+    "id": "%7DsgB"
+  },
+  {
+    "name": "MainAction_Pro_Roll",
+    "id": "~CzR"
+  },
+  {
+    "name": "Rec-Sub? [X]",
+    "id": "~w%40n"
+  },
+  {
+    "name": "Name",
+    "id": "title"
+  },
+  {
+    "name": "Priority ",
+    "id": "notion%3A%2F%2Ftasks%2Fpriority_property"
+  },
+  {
+    "name": "Checked [X]",
+    "id": "3b7149f9-3a54-49c2-80b3-17ba612c9697"
+  },
+  {
+    "name": "Edited Check [X]",
+    "id": "b368b11a-a8f0-4a7f-84ba-06662b4ef1cc"
+  }
+]

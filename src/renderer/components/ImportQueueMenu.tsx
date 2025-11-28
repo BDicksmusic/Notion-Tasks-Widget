@@ -7,26 +7,22 @@ interface ImportOption {
   type: ImportType;
   label: string;
   icon: string;
-  description: string;
+}
+
+interface SyncLogEntry {
+  id: number;
+  timestamp: Date;
+  type: ImportType;
+  message: string;
+  level: 'info' | 'success' | 'error' | 'progress';
 }
 
 const IMPORT_OPTIONS: ImportOption[] = [
-  { type: 'tasks', label: 'Tasks', icon: '☰', description: 'Import tasks from Notion' },
-  { type: 'projects', label: 'Projects', icon: '📁', description: 'Import projects from Notion' },
-  { type: 'contacts', label: 'Contacts', icon: '👤', description: 'Import contacts from Notion' },
-  { type: 'timeLogs', label: 'Time Logs', icon: '⏱', description: 'Import time log entries' },
+  { type: 'tasks', label: 'Tasks', icon: '☰' },
+  { type: 'projects', label: 'Projects', icon: '📁' },
+  { type: 'contacts', label: 'Contacts', icon: '👤' },
+  { type: 'timeLogs', label: 'Time Logs', icon: '⏱' },
 ];
-
-// Helper to get human-readable database names
-function getDatabaseSettingsHint(type: ImportType): string {
-  switch (type) {
-    case 'tasks': return 'Tasks Database';
-    case 'projects': return 'Projects Settings';
-    case 'contacts': return 'Contacts Settings';
-    case 'timeLogs': return 'Time Log Settings';
-    default: return 'Settings';
-  }
-}
 
 function getStatusIcon(status: ImportJobStatus['status']): string {
   switch (status) {
@@ -51,9 +47,7 @@ function getStatusColor(status: ImportJobStatus['status']): string {
 }
 
 interface ImportQueueMenuProps {
-  /** Optional callback when an import is triggered */
   onImportStarted?: (type: ImportType) => void;
-  /** Optional custom className */
   className?: string;
 }
 
@@ -65,10 +59,29 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
   const [statuses, setStatuses] = useState<ImportJobStatus[]>([]);
   const [currentImport, setCurrentImport] = useState<ImportType | null>(null);
   const [dropdownPosition, setDropdownPosition] = useState<{ top: number; right: number } | null>(null);
+  const [syncLog, setSyncLog] = useState<SyncLogEntry[]>([]);
+  const [syncProgress, setSyncProgress] = useState<Record<ImportType, { count: number; status: string }>>({
+    tasks: { count: 0, status: 'Ready to sync' },
+    projects: { count: 0, status: 'Ready to sync' },
+    contacts: { count: 0, status: 'Ready to sync' },
+    timeLogs: { count: 0, status: 'Ready to sync' },
+  });
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+  const logIdRef = useRef(0);
 
-  // Load initial status
+  const addLogEntry = useCallback((type: ImportType, message: string, level: SyncLogEntry['level'] = 'info') => {
+    const entry: SyncLogEntry = {
+      id: ++logIdRef.current,
+      timestamp: new Date(),
+      type,
+      message,
+      level
+    };
+    setSyncLog(prev => [...prev.slice(-50), entry]); // Keep last 50 entries
+  }, []);
+
   const loadStatus = useCallback(async () => {
     try {
       const widgetAPI = getWidgetAPI();
@@ -80,7 +93,6 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
     }
   }, []);
 
-  // Subscribe to status updates
   useEffect(() => {
     loadStatus();
     
@@ -96,7 +108,13 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
     };
   }, [loadStatus]);
 
-  // Close menu when clicking outside
+  // Auto-scroll log to bottom
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [syncLog]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -115,31 +133,81 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
     }
   }, [isOpen]);
 
-  const handleImport = async (type: ImportType) => {
+  const handleSync = async (type: ImportType) => {
     const widgetAPI = getWidgetAPI();
+    
+    setSyncProgress(prev => ({
+      ...prev,
+      [type]: { count: 0, status: 'Starting sync...' }
+    }));
+    setCurrentImport(type);
+    addLogEntry(type, `Starting ${type} sync...`, 'info');
     
     try {
       onImportStarted?.(type);
       
+      let result: any;
+      
       switch (type) {
         case 'tasks':
-          await widgetAPI.performInitialImport();
+          setSyncProgress(prev => ({ ...prev, tasks: { count: 0, status: 'Fetching from Notion...' } }));
+          addLogEntry(type, 'Connecting to Notion API...', 'info');
+          result = await widgetAPI.syncActiveTasksOnly();
           break;
         case 'projects':
-          await widgetAPI.importProjects();
+          setSyncProgress(prev => ({ ...prev, projects: { count: 0, status: 'Fetching from Notion...' } }));
+          addLogEntry(type, 'Connecting to Notion API...', 'info');
+          result = await widgetAPI.syncActiveProjectsOnly();
           break;
         case 'contacts':
-          await widgetAPI.importContacts();
+          setSyncProgress(prev => ({ ...prev, contacts: { count: 0, status: 'Fetching from Notion...' } }));
+          addLogEntry(type, 'Connecting to Notion API...', 'info');
+          result = await widgetAPI.importContacts();
           break;
         case 'timeLogs':
-          await widgetAPI.importTimeLogs();
+          setSyncProgress(prev => ({ ...prev, timeLogs: { count: 0, status: 'Fetching from Notion...' } }));
+          addLogEntry(type, 'Connecting to Notion API...', 'info');
+          result = await widgetAPI.importTimeLogs();
           break;
       }
       
-      // Refresh status after import completes
+      const count = result?.count || result?.inserted || result?.updated || 0;
+      const links = result?.links || 0;
+      
+      setSyncProgress(prev => ({
+        ...prev,
+        [type]: { count, status: `✓ ${count} synced` }
+      }));
+      
+      addLogEntry(type, `Synced ${count} ${type}${links > 0 ? ` (${links} links)` : ''}`, 'success');
+      
+      // Reset status after 3 seconds
+      setTimeout(() => {
+        setSyncProgress(prev => ({
+          ...prev,
+          [type]: { count, status: 'Ready to sync' }
+        }));
+      }, 3000);
+      
       await loadStatus();
     } catch (error) {
-      console.error(`Failed to import ${type}:`, error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      setSyncProgress(prev => ({
+        ...prev,
+        [type]: { count: 0, status: `✕ Error` }
+      }));
+      addLogEntry(type, `Error: ${errorMsg}`, 'error');
+      console.error(`Failed to sync ${type}:`, error);
+      
+      // Reset status after 5 seconds
+      setTimeout(() => {
+        setSyncProgress(prev => ({
+          ...prev,
+          [type]: { count: 0, status: 'Ready to sync' }
+        }));
+      }, 5000);
+    } finally {
+      setCurrentImport(null);
     }
   };
 
@@ -147,9 +215,14 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
     const widgetAPI = getWidgetAPI();
     try {
       await widgetAPI.cancelImport(type);
+      addLogEntry(type, 'Sync cancelled', 'info');
+      setSyncProgress(prev => ({
+        ...prev,
+        [type]: { count: 0, status: 'Cancelled' }
+      }));
       await loadStatus();
     } catch (error) {
-      console.error(`Failed to cancel ${type} import:`, error);
+      console.error(`Failed to cancel ${type} sync:`, error);
     }
   };
 
@@ -170,6 +243,14 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
     setIsOpen(!isOpen);
   };
 
+  const clearLog = () => {
+    setSyncLog([]);
+  };
+
+  const formatTime = (date: Date) => {
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
   return (
     <div className={`import-queue-menu-container ${className}`} style={{ position: 'relative' }}>
       <button
@@ -177,8 +258,8 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
         type="button"
         className={`icon-button import-queue-button ${isAnyRunning ? 'importing' : ''}`}
         onClick={handleToggle}
-        title={isAnyRunning ? `Importing ${currentImport}...` : 'Import from Notion'}
-        aria-label="Import menu"
+        title={isAnyRunning ? `Syncing ${currentImport}...` : 'Sync from Notion'}
+        aria-label="Sync menu"
         aria-expanded={isOpen}
       >
         <span className={`import-icon ${isAnyRunning ? 'spinning' : ''}`}>⟳</span>
@@ -193,10 +274,10 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           style={{ top: dropdownPosition.top, right: dropdownPosition.right }}
         >
           <div className="import-queue-header">
-            <span className="import-queue-title">Import from Notion</span>
+            <span className="import-queue-title">Sync from Notion</span>
             {isAnyRunning && (
               <span className="import-queue-status running">
-                Importing {currentImport}...
+                Syncing {currentImport}...
               </span>
             )}
           </div>
@@ -204,8 +285,9 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           <div className="import-queue-items">
             {IMPORT_OPTIONS.map((option) => {
               const jobStatus = getJobStatus(option.type);
-              const isRunning = jobStatus?.status === 'running';
+              const isRunning = currentImport === option.type;
               const hasError = jobStatus?.status === 'error';
+              const progress = syncProgress[option.type];
               
               return (
                 <div 
@@ -217,39 +299,21 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
                     <span className="import-item-icon">{option.icon}</span>
                     <div className="import-item-info">
                       <span className="import-item-label">{option.label}</span>
-                      {jobStatus?.message && (
-                        <span className="import-item-message" title={jobStatus.message}>
-                          {jobStatus.message.length > 40 
-                            ? jobStatus.message.substring(0, 40) + '...' 
-                            : jobStatus.message}
-                        </span>
-                      )}
-                      {jobStatus?.error && (
-                        <span className="import-item-error" title={jobStatus.error}>
-                          {jobStatus.error.length > 40 
-                            ? jobStatus.error.substring(0, 40) + '...' 
-                            : jobStatus.error}
-                        </span>
-                      )}
-                      {jobStatus?.message?.includes('No ') && jobStatus?.message?.includes('found') && (
-                        <span className="import-item-hint">
-                          Check {getDatabaseSettingsHint(option.type)} in Control Center
-                        </span>
-                      )}
+                      <span className={`import-item-status ${isRunning ? 'syncing' : progress.status.startsWith('✓') ? 'success' : progress.status.startsWith('✕') ? 'error' : ''}`}>
+                        {progress.status}
+                      </span>
                     </div>
                   </div>
                   
                   <div className="import-item-actions">
                     {isRunning ? (
                       <>
-                        {jobStatus?.progress !== undefined && (
-                          <span className="import-progress">{jobStatus.progress}%</span>
-                        )}
+                        <span className="sync-spinner">⟳</span>
                         <button
                           type="button"
                           className="import-action-btn cancel"
                           onClick={() => handleCancel(option.type)}
-                          title="Cancel import"
+                          title="Cancel sync"
                         >
                           ⏹
                         </button>
@@ -258,8 +322,8 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
                       <button
                         type="button"
                         className="import-action-btn start"
-                        onClick={() => handleImport(option.type)}
-                        title={`Import ${option.label}`}
+                        onClick={() => handleSync(option.type)}
+                        title={`Sync ${option.label}`}
                         disabled={isAnyRunning}
                       >
                         <span 
@@ -268,7 +332,7 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
                         >
                           {getStatusIcon(jobStatus?.status ?? 'completed')}
                         </span>
-                        Import
+                        Sync
                       </button>
                     )}
                   </div>
@@ -277,29 +341,80 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
             })}
           </div>
           
+          {/* Sync Log Section */}
+          <div className="sync-log-section">
+            <div className="sync-log-header">
+              <span className="sync-log-title">Sync Log</span>
+              {syncLog.length > 0 && (
+                <button className="clear-log-btn" onClick={clearLog} title="Clear log">
+                  Clear
+                </button>
+              )}
+            </div>
+            <div className="sync-log" ref={logRef}>
+              {syncLog.length === 0 ? (
+                <div className="sync-log-empty">No sync activity yet. Click Sync to start.</div>
+              ) : (
+                syncLog.map(entry => (
+                  <div key={entry.id} className={`sync-log-entry ${entry.level}`}>
+                    <span className="log-time">{formatTime(entry.timestamp)}</span>
+                    <span className="log-type">[{entry.type}]</span>
+                    <span className="log-message">{entry.message}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          
           <div className="import-queue-footer">
             <div className="import-queue-footer-actions">
               <button
                 type="button"
                 className="quick-sync-btn"
                 onClick={async () => {
+                  addLogEntry('tasks', 'Running quick sync (all active)...', 'info');
                   const widgetAPI = getWidgetAPI();
                   try {
-                    await widgetAPI.forceSync();
-                    const tasks = await widgetAPI.getTasks();
+                    // Sync tasks first
+                    setCurrentImport('tasks');
+                    setSyncProgress(prev => ({ ...prev, tasks: { count: 0, status: 'Syncing...' } }));
+                    const taskResult = await widgetAPI.syncActiveTasksOnly();
+                    addLogEntry('tasks', `Synced ${taskResult?.count || 0} tasks`, 'success');
+                    setSyncProgress(prev => ({ ...prev, tasks: { count: taskResult?.count || 0, status: `✓ ${taskResult?.count || 0} synced` } }));
+                    
+                    // Then projects
+                    setCurrentImport('projects');
+                    setSyncProgress(prev => ({ ...prev, projects: { count: 0, status: 'Syncing...' } }));
+                    const projResult = await widgetAPI.syncActiveProjectsOnly();
+                    addLogEntry('projects', `Synced ${projResult?.count || 0} projects`, 'success');
+                    setSyncProgress(prev => ({ ...prev, projects: { count: projResult?.count || 0, status: `✓ ${projResult?.count || 0} synced` } }));
+                    
+                    addLogEntry('tasks', 'Quick sync complete!', 'success');
                     onImportStarted?.('tasks');
                   } catch (error) {
+                    addLogEntry('tasks', `Quick sync failed: ${error}`, 'error');
                     console.error('Quick sync failed:', error);
+                  } finally {
+                    setCurrentImport(null);
+                    // Reset statuses after delay
+                    setTimeout(() => {
+                      setSyncProgress({
+                        tasks: { count: 0, status: 'Ready to sync' },
+                        projects: { count: 0, status: 'Ready to sync' },
+                        contacts: { count: 0, status: 'Ready to sync' },
+                        timeLogs: { count: 0, status: 'Ready to sync' },
+                      });
+                    }, 3000);
                   }
                 }}
                 disabled={isAnyRunning}
-                title="Quick sync - refreshes local data from cache"
+                title="Sync all active tasks and projects"
               >
-                ↻ Quick Sync
+                ↻ Quick Sync All
               </button>
             </div>
             <span className="import-queue-hint">
-              Only one import runs at a time. Starting a new import will cancel the current one.
+              Syncs active items from Notion to local database
             </span>
           </div>
         </div>
@@ -321,6 +436,13 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
 
         .import-queue-button .import-icon.spinning {
           animation: spin 1s linear infinite;
+        }
+
+        .sync-spinner {
+          display: inline-block;
+          animation: spin 1s linear infinite;
+          color: var(--notion-blue);
+          font-size: 14px;
         }
 
         @keyframes spin {
@@ -346,8 +468,8 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
 
         .import-queue-dropdown {
           position: fixed;
-          min-width: 320px;
-          max-width: 400px;
+          min-width: 360px;
+          max-width: 420px;
           background: var(--notion-bg-secondary);
           border: 1px solid var(--notion-border);
           border-radius: var(--radius-lg, 12px);
@@ -394,8 +516,6 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
 
         .import-queue-items {
           padding: 8px 0;
-          max-height: 320px;
-          overflow-y: auto;
         }
 
         .import-queue-item {
@@ -453,26 +573,21 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           color: var(--notion-text);
         }
 
-        .import-item-message {
+        .import-item-status {
           font-size: 11px;
           color: var(--notion-text-secondary);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
 
-        .import-item-error {
-          font-size: 11px;
+        .import-item-status.syncing {
+          color: var(--notion-blue);
+        }
+
+        .import-item-status.success {
+          color: var(--notion-green, #2ecc71);
+        }
+
+        .import-item-status.error {
           color: var(--notion-red, #e74c3c);
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
-        .import-item-hint {
-          font-size: 10px;
-          color: var(--notion-orange, #f39c12);
-          font-style: italic;
         }
 
         .import-item-actions {
@@ -480,14 +595,6 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           align-items: center;
           gap: 8px;
           flex-shrink: 0;
-        }
-
-        .import-progress {
-          font-size: 12px;
-          font-weight: 600;
-          color: var(--notion-blue);
-          min-width: 36px;
-          text-align: right;
         }
 
         .import-action-btn {
@@ -534,10 +641,102 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           font-size: 12px;
         }
 
+        /* Sync Log Section */
+        .sync-log-section {
+          border-top: 1px solid var(--notion-border);
+          background: var(--notion-bg);
+        }
+
+        .sync-log-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 16px;
+          border-bottom: 1px solid var(--notion-border);
+        }
+
+        .sync-log-title {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--notion-text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .clear-log-btn {
+          font-size: 11px;
+          color: var(--notion-text-secondary);
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 2px 6px;
+          border-radius: 4px;
+        }
+
+        .clear-log-btn:hover {
+          background: var(--notion-bg-hover);
+          color: var(--notion-text);
+        }
+
+        .sync-log {
+          max-height: 120px;
+          overflow-y: auto;
+          padding: 8px 12px;
+          font-family: 'SF Mono', 'Consolas', monospace;
+          font-size: 11px;
+        }
+
+        .sync-log-empty {
+          color: var(--notion-text-secondary);
+          font-style: italic;
+          text-align: center;
+          padding: 12px;
+        }
+
+        .sync-log-entry {
+          display: flex;
+          gap: 8px;
+          padding: 3px 0;
+          line-height: 1.4;
+        }
+
+        .sync-log-entry.info {
+          color: var(--notion-text-secondary);
+        }
+
+        .sync-log-entry.success {
+          color: var(--notion-green, #2ecc71);
+        }
+
+        .sync-log-entry.error {
+          color: var(--notion-red, #e74c3c);
+        }
+
+        .sync-log-entry.progress {
+          color: var(--notion-blue);
+        }
+
+        .log-time {
+          color: var(--notion-text-secondary);
+          opacity: 0.7;
+          flex-shrink: 0;
+        }
+
+        .log-type {
+          color: var(--notion-blue);
+          flex-shrink: 0;
+          min-width: 70px;
+        }
+
+        .log-message {
+          flex: 1;
+          word-break: break-word;
+        }
+
         .import-queue-footer {
           padding: 10px 16px;
           border-top: 1px solid var(--notion-border);
-          background: var(--notion-bg);
+          background: var(--notion-bg-secondary);
         }
 
         .import-queue-footer-actions {
@@ -554,7 +753,7 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
           padding: 8px 16px;
           border: 1px solid var(--notion-border);
           border-radius: 6px;
-          background: var(--notion-bg-secondary);
+          background: var(--notion-bg);
           color: var(--notion-text);
           font-size: 12px;
           font-weight: 500;
@@ -564,9 +763,9 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
         }
 
         .quick-sync-btn:hover:not(:disabled) {
-          background: var(--notion-bg-hover);
+          background: var(--notion-blue);
           border-color: var(--notion-blue);
-          color: var(--notion-blue);
+          color: white;
         }
 
         .quick-sync-btn:disabled {
@@ -587,4 +786,3 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
 };
 
 export default ImportQueueMenu;
-

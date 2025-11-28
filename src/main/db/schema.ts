@@ -335,6 +335,14 @@ const migrations: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_schema_local ON notion_database_schema(local_column) WHERE local_column IS NOT NULL;`,
       `CREATE INDEX IF NOT EXISTS idx_schema_property_id ON notion_database_schema(property_id) WHERE property_id IS NOT NULL;`
     ]
+  },
+  {
+    id: '010_unique_notion_id',
+    statements: [
+      // This migration is handled by migrateEnforceUniqueNotionId() function
+      // because it requires custom logic to clean up duplicates first
+      `-- Placeholder for unique notion_id enforcement (handled in code)`
+    ]
   }
 ];
 
@@ -367,6 +375,11 @@ export function runMigrations(db: Database) {
   // Run data migration for dedicated columns if migration 008 was just applied
   if (!applied.has('008_dedicated_columns')) {
     migratePayloadToColumns(db);
+  }
+
+  // Run unique notion_id enforcement if migration 010 was just applied
+  if (!applied.has('010_unique_notion_id')) {
+    migrateEnforceUniqueNotionId(db);
   }
 }
 
@@ -562,5 +575,57 @@ function migratePayloadToColumns(db: Database) {
   console.log(`[Migration] Migrated ${writingUpdated} writing entries to dedicated columns`);
 
   console.log('[Migration] Payload to columns migration complete!');
+}
+
+// ============================================================================
+// MIGRATION: Enforce unique notion_id and clean up duplicates
+// ============================================================================
+
+function migrateEnforceUniqueNotionId(db: Database): void {
+  console.log('[Migration] Enforcing unique notion_id across tables...');
+  
+  const tables = ['tasks', 'projects', 'time_logs', 'writing_entries'];
+  
+  for (const table of tables) {
+    // First, find and remove duplicates (keep the most recently modified)
+    const duplicates = db.prepare(`
+      SELECT notion_id, COUNT(*) as cnt 
+      FROM ${table} 
+      WHERE notion_id IS NOT NULL 
+      GROUP BY notion_id 
+      HAVING cnt > 1
+    `).all() as { notion_id: string; cnt: number }[];
+    
+    if (duplicates.length > 0) {
+      console.log(`[Migration] Found ${duplicates.length} duplicate notion_ids in ${table}`);
+      
+      for (const dup of duplicates) {
+        // Keep the row with highest last_modified_local, delete others
+        const rows = db.prepare(`
+          SELECT client_id, last_modified_local 
+          FROM ${table} 
+          WHERE notion_id = ? 
+          ORDER BY last_modified_local DESC
+        `).all(dup.notion_id) as { client_id: string; last_modified_local: number }[];
+        
+        // Delete all but the first (most recent)
+        for (let i = 1; i < rows.length; i++) {
+          db.prepare(`DELETE FROM ${table} WHERE client_id = ?`).run(rows[i].client_id);
+          console.log(`[Migration] Removed duplicate ${table} entry: ${rows[i].client_id}`);
+        }
+      }
+    }
+    
+    // Now create unique index on notion_id (if it doesn't exist)
+    try {
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_notion_unique ON ${table}(notion_id) WHERE notion_id IS NOT NULL`);
+      console.log(`[Migration] Created unique index on ${table}.notion_id`);
+    } catch (e) {
+      // Index might already exist or there might still be duplicates
+      console.warn(`[Migration] Could not create unique index on ${table}.notion_id:`, e);
+    }
+  }
+  
+  console.log('[Migration] Unique notion_id enforcement complete!');
 }
 

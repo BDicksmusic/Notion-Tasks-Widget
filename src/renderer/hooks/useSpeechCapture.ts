@@ -110,20 +110,23 @@ export function useSpeechCapture(): UseSpeechCaptureResult {
       let errorMessage = 'Speech recognition error';
       switch (event.error) {
         case 'no-speech':
-          errorMessage = 'No speech detected. Please try again.';
+          errorMessage = 'No speech detected. Try speaking louder or closer to the mic.';
           break;
         case 'audio-capture':
           errorMessage = 'No microphone found. Please check your audio settings.';
           break;
         case 'not-allowed':
-          errorMessage = 'Microphone access denied. Please allow microphone access.';
+          errorMessage = 'Microphone access denied. Please allow microphone access in your browser/system settings.';
           break;
         case 'network':
-          errorMessage = 'Network error occurred. Please check your connection.';
+          errorMessage = 'Speech recognition requires internet. The browser sends audio to Google for processing. Please check your connection.';
           break;
         case 'aborted':
           // User or system aborted - not really an error
           errorMessage = '';
+          break;
+        case 'service-not-allowed':
+          errorMessage = 'Speech recognition service not available. Try restarting the app.';
           break;
         default:
           errorMessage = `Speech recognition error: ${event.error}`;

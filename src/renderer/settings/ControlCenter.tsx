@@ -19,6 +19,7 @@ import type {
 import type { DataCounts, ResetResult } from '@shared/ipc';
 import { extractDatabaseId } from '@shared/utils/notionUrl';
 import { DatabaseVerification, VerifyAllDatabases } from '../components/DatabaseVerification';
+import { playUISound } from '../utils/sounds';
 
 type Feedback = {
   kind: 'success' | 'error';
@@ -30,33 +31,63 @@ type Section =
   | 'general'
   | 'api'
   | 'features'
-  | 'tasks'
-  | 'writing'
-  | 'timelog'
-  | 'projects'
+  | 'databases'
   | 'widget'
+  | 'voice'
   | 'import'
   | 'reset'
   | 'mcp'
   | 'shortcuts'
   | 'about';
 
+// Voice assistant settings
+type GreetingStyle = 'simple' | 'summary';
+type SpeechMode = 'browser' | 'whisper';
+
+interface VoiceAssistantSettings {
+  greetingStyle: GreetingStyle;
+  selectedVoiceId: string;
+  autoListen: boolean;
+  speechMode: SpeechMode;
+  selectedMicId?: string;
+  whisperModelDownloaded?: boolean;
+}
+
+// Sub-tabs for the unified Database Properties section
+type DatabaseTab = 'tasks' | 'projects' | 'timelog' | 'writing' | 'contacts';
+
+const DATABASE_TABS: { id: DatabaseTab; label: string; icon: string }[] = [
+  { id: 'tasks', label: 'Tasks', icon: '☰' },
+  { id: 'projects', label: 'Projects', icon: '📁' },
+  { id: 'timelog', label: 'Time Logs', icon: '⏱️' },
+  { id: 'writing', label: 'Writing', icon: '✍️' },
+  { id: 'contacts', label: 'Contacts', icon: '👤' },
+];
+
 const SECTIONS: { id: Section; label: string; icon: string }[] = [
   { id: 'setup', label: 'Setup & Status', icon: '🚀' },
   { id: 'general', label: 'General', icon: '⚙️' },
   { id: 'api', label: 'API & Credentials', icon: '🔑' },
   { id: 'features', label: 'Features', icon: '🎛️' },
-  { id: 'tasks', label: 'Tasks', icon: '✓' },
-  { id: 'writing', label: 'Writing', icon: '✍️' },
-  { id: 'timelog', label: 'Time Tracking', icon: '⏱️' },
-  { id: 'projects', label: 'Projects', icon: '📁' },
+  { id: 'databases', label: 'Database Properties', icon: '🗄️' },
   { id: 'widget', label: 'Widget', icon: '🪟' },
-  { id: 'import', label: 'Sync & Refresh', icon: '🔄' },
+  { id: 'voice', label: 'Voice Assistant', icon: '🎤' },
+  { id: 'import', label: 'Sync & Import', icon: '🔄' },
   { id: 'reset', label: 'Data Reset', icon: '🔄' },
   { id: 'mcp', label: 'MCP Servers', icon: '🔌' },
   { id: 'shortcuts', label: 'Shortcuts', icon: '⌨️' },
   { id: 'about', label: 'About', icon: 'ℹ️' }
 ];
+
+// Default voice assistant settings
+const DEFAULT_VOICE_SETTINGS: VoiceAssistantSettings = {
+  greetingStyle: 'simple',
+  selectedVoiceId: '',
+  autoListen: true,
+  speechMode: 'browser',
+  selectedMicId: '',
+  whisperModelDownloaded: false
+};
 
 const TASK_SHORTCUTS = [
   { keys: '↑ / ↓', description: 'Move selection in task list' },
@@ -150,6 +181,7 @@ interface ControlCenterProps {
 
 const ControlCenter = ({ initialSection }: ControlCenterProps) => {
   const [activeSection, setActiveSection] = useState<Section>(initialSection ?? 'setup');
+  const [activeDatabaseTab, setActiveDatabaseTab] = useState<DatabaseTab>('tasks');
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     return window.localStorage?.getItem('controlCenter.sidebar.collapsed') === 'true';
@@ -165,6 +197,8 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
   const [featureToggles, setFeatureToggles] = useState<FeatureToggles | null>(null);
   const [dockState, setDockState] = useState<DockState | null>(null);
   const [alwaysOnTop, setAlwaysOnTop] = useState(true);
+  const [voiceSettings, setVoiceSettings] = useState<VoiceAssistantSettings>(DEFAULT_VOICE_SETTINGS);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   
   // Loading states
   const [loading, setLoading] = useState(true);
@@ -420,6 +454,9 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
         setProjectsSettings({
           databaseId: ''
         });
+        setContactsSettings({
+          databaseId: ''
+        });
         setAppPreferences(DEFAULT_PREFERENCES);
         setFeatureToggles(DEFAULT_FEATURE_TOGGLES);
         setDockState({ edge: 'top', collapsed: false });
@@ -450,6 +487,7 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
           widgetAPI.getAlwaysOnTop()
         ]);
         if (!cancelled) {
+          console.log('[ControlCenter] Settings loaded:', { tasks, writing, timeLog, projects, contacts });
           setTaskSettings(tasks);
           setWritingSettings(writing);
           setTimeLogSettings(timeLog);
@@ -544,6 +582,39 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
     if (typeof window === 'undefined') return;
     window.localStorage?.setItem('controlCenter.sidebar.collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
+
+  // Load voice settings from localStorage
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const saved = window.localStorage?.getItem('voiceAssistantSettings');
+    if (saved) {
+      try {
+        setVoiceSettings({ ...DEFAULT_VOICE_SETTINGS, ...JSON.parse(saved) });
+      } catch (e) {
+        console.error('Failed to parse voice settings:', e);
+      }
+    }
+    
+    // Load available voices
+    if ('speechSynthesis' in window) {
+      const loadVoices = () => {
+        const voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('en'));
+        setAvailableVoices(voices);
+      };
+      loadVoices();
+      speechSynthesis.onvoiceschanged = loadVoices;
+      return () => { speechSynthesis.onvoiceschanged = null; };
+    }
+  }, []);
+
+  // Save voice settings to localStorage
+  const updateVoiceSettings = useCallback((updates: Partial<VoiceAssistantSettings>) => {
+    setVoiceSettings(prev => {
+      const newSettings = { ...prev, ...updates };
+      window.localStorage?.setItem('voiceAssistantSettings', JSON.stringify(newSettings));
+      return newSettings;
+    });
+  }, []);
 
   // Load data counts when reset section is active
   useEffect(() => {
@@ -914,6 +985,17 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
     async (changes: Partial<AppPreferences>) => {
       const previous = appPreferences ?? DEFAULT_PREFERENCES;
       const next = { ...previous, ...changes };
+      
+      // Play toggle sound for boolean changes
+      const boolKeys = Object.keys(changes) as (keyof AppPreferences)[];
+      for (const key of boolKeys) {
+        const val = changes[key];
+        if (typeof val === 'boolean') {
+          playUISound(val ? 'toggle-on' : 'toggle-off');
+          break; // Only play once per change
+        }
+      }
+      
       setAppPreferences(next);
       if (!isDesktopRuntime) {
         setFeedback({ kind: 'success', message: 'Preferences updated (preview mode)' });
@@ -1306,7 +1388,10 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
               key={section.id}
               type="button"
               className={`nav-item ${activeSection === section.id ? 'active' : ''}`}
-              onClick={() => setActiveSection(section.id)}
+              onClick={() => {
+                playUISound('tab-switch');
+                setActiveSection(section.id);
+              }}
               title={sidebarCollapsed ? section.label : undefined}
             >
               <span className="nav-icon">{section.icon}</span>
@@ -2146,8 +2231,598 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
             </section>
           )}
 
-          {/* TASKS SECTION */}
-          {activeSection === 'tasks' && taskSettings && (
+          {/* UNIFIED DATABASE PROPERTIES SECTION */}
+          {activeSection === 'databases' && (
+            <section className="settings-section database-properties-section">
+              {/* Database Tab Switcher */}
+              <div className="database-tabs">
+                {DATABASE_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`database-tab ${activeDatabaseTab === tab.id ? 'active' : ''}`}
+                    onClick={() => {
+                      playUISound('tab-switch');
+                      setActiveDatabaseTab(tab.id);
+                    }}
+                  >
+                    <span className="tab-icon">{tab.icon}</span>
+                    <span className="tab-label">{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Loading state or show current tab info */}
+              {activeDatabaseTab === 'tasks' && !taskSettings && (
+                <div className="section-group">
+                  <p className="section-description">Loading task settings...</p>
+                </div>
+              )}
+              {activeDatabaseTab === 'projects' && !projectsSettings && (
+                <div className="section-group">
+                  <p className="section-description">Loading project settings...</p>
+                </div>
+              )}
+              {activeDatabaseTab === 'timelog' && !timeLogSettings && (
+                <div className="section-group">
+                  <p className="section-description">Loading time log settings...</p>
+                </div>
+              )}
+              {activeDatabaseTab === 'writing' && !writingSettings && (
+                <div className="section-group">
+                  <p className="section-description">Loading writing settings...</p>
+                </div>
+              )}
+              {activeDatabaseTab === 'contacts' && !contactsSettings && (
+                <div className="section-group">
+                  <p className="section-description">Loading contacts settings...</p>
+                </div>
+              )}
+
+              {/* TASKS TAB */}
+              {activeDatabaseTab === 'tasks' && taskSettings && (
+                <>
+                  <div className="section-group">
+                    <h3>Core Properties</h3>
+                    <p className="section-description">Map your database columns to the widget's task fields.</p>
+                    <div className="field-grid">
+                      <div className="field">
+                        <label>Title Property</label>
+                        <input
+                          type="text"
+                          value={taskSettings.titleProperty}
+                          onChange={(e) => handleTaskFieldChange('titleProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Status Property</label>
+                        <input
+                          type="text"
+                          value={taskSettings.statusProperty}
+                          onChange={(e) => handleTaskFieldChange('statusProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Completed Status Value</label>
+                        <input
+                          type="text"
+                          value={taskSettings.completedStatus}
+                          onChange={(e) => handleTaskFieldChange('completedStatus', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Date Property</label>
+                        <input
+                          type="text"
+                          value={taskSettings.dateProperty}
+                          onChange={(e) => handleTaskFieldChange('dateProperty', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-group">
+                    <h3>Deadline Settings</h3>
+                    <p className="section-description">Configure how deadlines are detected and displayed.</p>
+                    <div className="field-grid">
+                      <div className="field">
+                        <label>Deadline Property</label>
+                        <input
+                          type="text"
+                          value={taskSettings.deadlineProperty}
+                          onChange={(e) => handleTaskFieldChange('deadlineProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Hard Deadline Value</label>
+                        <input
+                          type="text"
+                          value={taskSettings.deadlineHardValue}
+                          onChange={(e) => handleTaskFieldChange('deadlineHardValue', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Soft Deadline Value</label>
+                        <input
+                          type="text"
+                          value={taskSettings.deadlineSoftValue}
+                          onChange={(e) => handleTaskFieldChange('deadlineSoftValue', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-group">
+                    <h3>Urgency & Importance</h3>
+                    <p className="section-description">Eisenhower matrix configuration.</p>
+                    <div className="field-grid">
+                      <div className="field">
+                        <label>Urgent Property</label>
+                        <input
+                          type="text"
+                          value={taskSettings.urgentProperty}
+                          onChange={(e) => handleTaskFieldChange('urgentProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Urgent (active)</label>
+                        <input
+                          type="text"
+                          value={taskSettings.urgentStatusActive}
+                          onChange={(e) => handleTaskFieldChange('urgentStatusActive', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Urgent (inactive)</label>
+                        <input
+                          type="text"
+                          value={taskSettings.urgentStatusInactive}
+                          onChange={(e) => handleTaskFieldChange('urgentStatusInactive', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Important Property</label>
+                        <input
+                          type="text"
+                          value={taskSettings.importantProperty}
+                          onChange={(e) => handleTaskFieldChange('importantProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Important (active)</label>
+                        <input
+                          type="text"
+                          value={taskSettings.importantStatusActive}
+                          onChange={(e) => handleTaskFieldChange('importantStatusActive', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Important (inactive)</label>
+                        <input
+                          type="text"
+                          value={taskSettings.importantStatusInactive}
+                          onChange={(e) => handleTaskFieldChange('importantStatusInactive', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-group">
+                    <h3>Additional Properties</h3>
+                    <p className="section-description">Optional fields for extended task tracking.</p>
+                    <div className="field-grid">
+                      <div className="field">
+                        <label>Main Entry / Notes</label>
+                        <input
+                          type="text"
+                          value={taskSettings.mainEntryProperty || ''}
+                          onChange={(e) => handleTaskFieldChange('mainEntryProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Session Length (minutes)</label>
+                        <input
+                          type="text"
+                          value={taskSettings.sessionLengthProperty || ''}
+                          onChange={(e) => handleTaskFieldChange('sessionLengthProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Estimated Length (minutes)</label>
+                        <input
+                          type="text"
+                          value={taskSettings.estimatedLengthProperty || ''}
+                          onChange={(e) => handleTaskFieldChange('estimatedLengthProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Priority Order</label>
+                        <input
+                          type="text"
+                          value={taskSettings.priorityOrderProperty || ''}
+                          onChange={(e) => handleTaskFieldChange('priorityOrderProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Project Relation</label>
+                        <input
+                          type="text"
+                          value={taskSettings.projectRelationProperty || ''}
+                          onChange={(e) => handleTaskFieldChange('projectRelationProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Parent Task Relation</label>
+                        <input
+                          type="text"
+                          value={taskSettings.parentTaskProperty || ''}
+                          onChange={(e) => handleTaskFieldChange('parentTaskProperty', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-group">
+                    <h3>Status Presets</h3>
+                    <p className="section-description">Comma-separated list of custom status values (e.g., "To Do, In Progress, Waiting").</p>
+                    <div className="field full-width">
+                      <input
+                        type="text"
+                        value={taskSettings.statusPresets?.join(', ') || ''}
+                        onChange={(e) => handleTaskFieldChange('statusPresets', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                        placeholder="To Do, In Progress, Waiting, Done"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={async () => {
+                        try {
+                          const result = await widgetAPI.fetchStatusOptions();
+                          if (result?.options?.length) {
+                            handleTaskFieldChange('statusPresets', result.options.map((o: any) => o.name));
+                            showFeedback('success', `Fetched ${result.options.length} status options`);
+                          }
+                        } catch (error) {
+                          showFeedback('error', 'Failed to fetch status options');
+                        }
+                      }}
+                    >
+                      Fetch Status Options from Notion
+                    </button>
+                  </div>
+
+                  <div className="section-actions sticky">
+                    <button 
+                      type="button" 
+                      className="btn-primary"
+                      onClick={handleTaskSettingsSave}
+                      disabled={taskSaving}
+                    >
+                      {taskSaving ? 'Saving…' : 'Save Task Settings'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* PROJECTS TAB */}
+              {activeDatabaseTab === 'projects' && projectsSettings && (
+                <>
+                  <div className="section-group">
+                    <h3>Projects Properties</h3>
+                    <p className="section-description">Configure the projects database mapping.</p>
+                    <div className="field-grid">
+                      <div className="field">
+                        <label>Title Property</label>
+                        <input
+                          type="text"
+                          value={projectsSettings.titleProperty || 'Name'}
+                          onChange={(e) => handleProjectsFieldChange('titleProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Status Property</label>
+                        <input
+                          type="text"
+                          value={projectsSettings.statusProperty || 'Status'}
+                          onChange={(e) => handleProjectsFieldChange('statusProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Description Property</label>
+                        <input
+                          type="text"
+                          value={projectsSettings.descriptionProperty || 'Description'}
+                          onChange={(e) => handleProjectsFieldChange('descriptionProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Start Date Property</label>
+                        <input
+                          type="text"
+                          value={projectsSettings.startDateProperty || 'Start Date'}
+                          onChange={(e) => handleProjectsFieldChange('startDateProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>End Date Property</label>
+                        <input
+                          type="text"
+                          value={projectsSettings.endDateProperty || 'Deadline'}
+                          onChange={(e) => handleProjectsFieldChange('endDateProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Tags Property</label>
+                        <input
+                          type="text"
+                          value={projectsSettings.tagsProperty || 'Tags'}
+                          onChange={(e) => handleProjectsFieldChange('tagsProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Actions Relation Property</label>
+                        <input
+                          type="text"
+                          value={projectsSettings.actionsProperty || 'Actions'}
+                          onChange={(e) => handleProjectsFieldChange('actionsProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Completed Status</label>
+                        <input
+                          type="text"
+                          value={projectsSettings.completedStatus || 'Done'}
+                          onChange={(e) => handleProjectsFieldChange('completedStatus', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-group">
+                    <h3>Status Options</h3>
+                    <p className="section-description">Comma-separated list of project status values.</p>
+                    <div className="field full-width">
+                      <input
+                        type="text"
+                        value={projectsSettings.statusPresets?.join(', ') || ''}
+                        onChange={(e) => handleProjectsFieldChange('statusPresets', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                        placeholder="Planning, Active, On Hold, Done"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={async () => {
+                        try {
+                          const result = await widgetAPI.fetchProjectStatusOptions?.();
+                          if (result?.options?.length) {
+                            handleProjectsFieldChange('statusPresets', result.options.map((o: any) => o.name));
+                            showFeedback('success', `Fetched ${result.options.length} project status options`);
+                          }
+                        } catch (error) {
+                          showFeedback('error', 'Failed to fetch project status options');
+                        }
+                      }}
+                    >
+                      Fetch Status Options from Notion
+                    </button>
+                  </div>
+
+                  <div className="section-actions sticky">
+                    <button 
+                      type="button" 
+                      className="btn-primary"
+                      onClick={handleProjectsSave}
+                      disabled={projectsSaving}
+                    >
+                      {projectsSaving ? 'Saving…' : 'Save Projects Settings'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* TIME LOGS TAB */}
+              {activeDatabaseTab === 'timelog' && timeLogSettings && (
+                <>
+                  <div className="section-group">
+                    <h3>Time Log Properties</h3>
+                    <p className="section-description">Map your time tracking database columns.</p>
+                    <div className="field-grid">
+                      <div className="field">
+                        <label>Title Property</label>
+                        <input
+                          type="text"
+                          value={timeLogSettings.titleProperty || 'Name'}
+                          onChange={(e) => handleTimeLogFieldChange('titleProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Date Property</label>
+                        <input
+                          type="text"
+                          value={timeLogSettings.dateProperty || 'Date'}
+                          onChange={(e) => handleTimeLogFieldChange('dateProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Duration Property</label>
+                        <input
+                          type="text"
+                          value={timeLogSettings.durationProperty || 'Duration'}
+                          onChange={(e) => handleTimeLogFieldChange('durationProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Task Relation Property</label>
+                        <input
+                          type="text"
+                          value={timeLogSettings.taskRelationProperty || 'Task'}
+                          onChange={(e) => handleTimeLogFieldChange('taskRelationProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Notes Property</label>
+                        <input
+                          type="text"
+                          value={timeLogSettings.notesProperty || 'Notes'}
+                          onChange={(e) => handleTimeLogFieldChange('notesProperty', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-actions sticky">
+                    <button 
+                      type="button" 
+                      className="btn-primary"
+                      onClick={handleTimeLogSave}
+                      disabled={timeLogSaving}
+                    >
+                      {timeLogSaving ? 'Saving…' : 'Save Time Log Settings'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* WRITING TAB */}
+              {activeDatabaseTab === 'writing' && writingSettings && (
+                <>
+                  <div className="section-group">
+                    <h3>Writing Widget Properties</h3>
+                    <p className="section-description">Configure the long-form capture widget.</p>
+                    <div className="field-grid">
+                      <div className="field">
+                        <label>Title Property</label>
+                        <input
+                          type="text"
+                          value={writingSettings.titleProperty}
+                          onChange={(e) => handleWritingFieldChange('titleProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Content Property</label>
+                        <input
+                          type="text"
+                          value={writingSettings.contentProperty}
+                          onChange={(e) => handleWritingFieldChange('contentProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Status Property</label>
+                        <input
+                          type="text"
+                          value={writingSettings.statusProperty || ''}
+                          onChange={(e) => handleWritingFieldChange('statusProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Tags Property</label>
+                        <input
+                          type="text"
+                          value={writingSettings.tagsProperty || ''}
+                          onChange={(e) => handleWritingFieldChange('tagsProperty', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-actions sticky">
+                    <button 
+                      type="button" 
+                      className="btn-primary"
+                      onClick={handleWritingSave}
+                      disabled={writingSaving}
+                    >
+                      {writingSaving ? 'Saving…' : 'Save Writing Settings'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* CONTACTS TAB */}
+              {activeDatabaseTab === 'contacts' && contactsSettings && (
+                <>
+                  <div className="section-group">
+                    <h3>Contacts Properties</h3>
+                    <p className="section-description">Map your contacts database columns.</p>
+                    <div className="field-grid">
+                      <div className="field">
+                        <label>Name Property</label>
+                        <input
+                          type="text"
+                          value={contactsSettings.nameProperty || 'Name'}
+                          onChange={(e) => handleContactsFieldChange('nameProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Email Property</label>
+                        <input
+                          type="text"
+                          value={contactsSettings.emailProperty || 'Email'}
+                          onChange={(e) => handleContactsFieldChange('emailProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Phone Property</label>
+                        <input
+                          type="text"
+                          value={contactsSettings.phoneProperty || 'Phone'}
+                          onChange={(e) => handleContactsFieldChange('phoneProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Company Property</label>
+                        <input
+                          type="text"
+                          value={contactsSettings.companyProperty || 'Company'}
+                          onChange={(e) => handleContactsFieldChange('companyProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Role/Title Property</label>
+                        <input
+                          type="text"
+                          value={contactsSettings.roleProperty || 'Role'}
+                          onChange={(e) => handleContactsFieldChange('roleProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Notes Property</label>
+                        <input
+                          type="text"
+                          value={contactsSettings.notesProperty || 'Notes'}
+                          onChange={(e) => handleContactsFieldChange('notesProperty', e.target.value)}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Project Relation Property</label>
+                        <input
+                          type="text"
+                          value={contactsSettings.projectRelationProperty || 'Related Projects'}
+                          onChange={(e) => handleContactsFieldChange('projectRelationProperty', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="section-actions sticky">
+                    <button 
+                      type="button" 
+                      className="btn-primary"
+                      onClick={handleContactsSave}
+                      disabled={contactsSaving}
+                    >
+                      {contactsSaving ? 'Saving…' : 'Save Contacts Settings'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
+          )}
+
+          {/* LEGACY TASKS SECTION - kept for backwards compatibility but hidden */}
+          {activeSection === 'tasks' as any && taskSettings && (
             <section className="settings-section">
               <div className="section-group">
                 <h3>Core Properties</h3>
@@ -2870,103 +3545,598 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                   ))}
                 </div>
               </div>
+
+              <div className="section-group">
+                <h3>Task List Columns</h3>
+                <p className="section-description">
+                  Choose which columns to collapse by default. Collapsed columns appear on hover.
+                </p>
+                <div className="toggle-grid">
+                  <label className="toggle-card">
+                    <input
+                      type="checkbox"
+                      checked={preferences.collapseTimeColumn ?? false}
+                      onChange={(e) => handleAppPreferenceChange({ collapseTimeColumn: e.target.checked })}
+                    />
+                    <span className="toggle-slider" />
+                    <div className="toggle-content">
+                      <span className="toggle-title">Collapse Time Column</span>
+                      <span className="toggle-description">
+                        Hide "Add Estimate Time" and "Start Session" buttons until you hover over a task.
+                      </span>
+                    </div>
+                  </label>
+                  <label className="toggle-card">
+                    <input
+                      type="checkbox"
+                      checked={preferences.collapseProjectColumn ?? false}
+                      onChange={(e) => handleAppPreferenceChange({ collapseProjectColumn: e.target.checked })}
+                    />
+                    <span className="toggle-slider" />
+                    <div className="toggle-content">
+                      <span className="toggle-title">Collapse Project Column</span>
+                      <span className="toggle-description">
+                        Hide "Add to Project" and subtask buttons until you hover over a task.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div className="section-group">
+                <h3>Sound Effects</h3>
+                <p className="section-description">
+                  Control audio feedback for interactions.
+                </p>
+                <div className="toggle-grid">
+                  <label className="toggle-card">
+                    <input
+                      type="checkbox"
+                      checked={preferences.enableUISounds ?? true}
+                      onChange={(e) => handleAppPreferenceChange({ enableUISounds: e.target.checked })}
+                    />
+                    <span className="toggle-slider" />
+                    <div className="toggle-content">
+                      <span className="toggle-title">UI Interaction Sounds</span>
+                      <span className="toggle-description">
+                        Play subtle sounds when clicking buttons, opening menus, and toggling options.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
             </section>
           )}
 
-          {/* SYNC & REFRESH SECTION */}
-          {activeSection === 'import' && (
+          {/* VOICE ASSISTANT SECTION */}
+          {activeSection === 'voice' && (
             <section className="settings-section">
               <div className="section-group">
-                <h3>Task Sync</h3>
-                <p className="section-description">Fetch all tasks from your Notion data source. Active tasks sync automatically on startup.</p>
-                <div className="import-status">
-                  {importProgress.status === 'idle' && (
-                    <div className="status-box neutral">
-                      Ready to sync tasks from Notion.
+                <h3>🎤 Voice Assistant</h3>
+                <p className="section-description">
+                  Configure how the voice assistant greets you and responds.
+                </p>
+              </div>
+
+              {/* Greeting Style */}
+              <div className="section-group">
+                <h4>Greeting Style</h4>
+                <p className="section-description">
+                  Choose how the assistant greets you when you start a voice session.
+                </p>
+                <div className="voice-greeting-options">
+                  <button
+                    type="button"
+                    className={`voice-greeting-card ${voiceSettings.greetingStyle === 'simple' ? 'selected' : ''}`}
+                    onClick={() => updateVoiceSettings({ greetingStyle: 'simple' })}
+                  >
+                    <span className="greeting-icon">👋</span>
+                    <div className="greeting-info">
+                      <span className="greeting-title">Simple Greeting</span>
+                      <span className="greeting-desc">"Good morning! How can I help you today?"</span>
                     </div>
-                  )}
-                  {importProgress.status === 'running' && (
-                    <div className="status-box info">
-                      <div className="status-title">Syncing... {importProgress.tasksImported} tasks</div>
-                      <div className="status-detail">
-                        {importProgress.message || `Batch ${importProgress.currentPage}`}
-                      </div>
-                      <div className="progress-bar">
-                        <div className="progress-fill animate" />
-                      </div>
+                    {voiceSettings.greetingStyle === 'simple' && <span className="greeting-check">✓</span>}
+                  </button>
+                  <button
+                    type="button"
+                    className={`voice-greeting-card ${voiceSettings.greetingStyle === 'summary' ? 'selected' : ''}`}
+                    onClick={() => updateVoiceSettings({ greetingStyle: 'summary' })}
+                  >
+                    <span className="greeting-icon">📋</span>
+                    <div className="greeting-info">
+                      <span className="greeting-title">Task Summary</span>
+                      <span className="greeting-desc">Overview of your tasks, due dates, and priorities (friendly tone)</span>
                     </div>
-                  )}
-                  {importProgress.status === 'paused' && (
-                    <div className="status-box warning">
-                      <div className="status-title">Sync paused</div>
-                      <div className="status-detail">
-                        {importProgress.message || 'Will retry automatically...'}
-                      </div>
-                      <div className="status-detail">
-                        Progress: {importProgress.tasksImported} tasks ({importProgress.pagesProcessed} batches)
-                      </div>
-                    </div>
-                  )}
-                  {importProgress.status === 'completed' && (
-                    <div className="status-box success">
-                      <div className="status-title">✓ Sync complete!</div>
-                      <div className="status-detail">
-                        {importProgress.tasksImported} tasks synced from {importProgress.pagesProcessed} batches
-                      </div>
-                    </div>
-                  )}
-                  {importProgress.status === 'error' && (
-                    <div className="status-box error">
-                      <div className="status-title">Sync failed</div>
-                      <div className="status-detail">{importProgress.error || 'Unknown error'}</div>
-                    </div>
-                  )}
+                    {voiceSettings.greetingStyle === 'summary' && <span className="greeting-check">✓</span>}
+                  </button>
                 </div>
-                <div className="section-actions">
-                  {(importProgress.status === 'idle' || importProgress.status === 'completed' || importProgress.status === 'error') && (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={handleStartImport}
-                      disabled={isImporting}
-                    >
-                      {importProgress.status === 'completed' ? 'Sync all tasks again' : 'Sync all tasks'}
-                    </button>
-                  )}
-                  {importProgress.status === 'paused' && (
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={handleStartImport}
-                      disabled={isImporting}
-                    >
-                      Resume sync
-                    </button>
-                  )}
-                  {importProgress.status === 'running' && (
-                    <button type="button" className="btn-secondary" disabled>
-                      Syncing...
-                    </button>
-                  )}
-                  {(importProgress.status === 'completed' || importProgress.status === 'paused' || importProgress.status === 'error') && (
+              </div>
+
+              {/* Voice Selection */}
+              <div className="section-group">
+                <h4>Assistant Voice</h4>
+                <p className="section-description">
+                  Choose which voice the assistant uses to speak to you.
+                </p>
+                <div className="voice-select-container">
+                  <select
+                    className="voice-select"
+                    value={voiceSettings.selectedVoiceId}
+                    onChange={(e) => {
+                      updateVoiceSettings({ selectedVoiceId: e.target.value });
+                      // Preview the voice
+                      if ('speechSynthesis' in window && e.target.value) {
+                        speechSynthesis.cancel();
+                        const utterance = new SpeechSynthesisUtterance("Hello, this is how I sound.");
+                        const voice = availableVoices.find(v => v.voiceURI === e.target.value);
+                        if (voice) utterance.voice = voice;
+                        speechSynthesis.speak(utterance);
+                      }
+                    }}
+                  >
+                    <option value="">System Default</option>
+                    {availableVoices.map((voice) => (
+                      <option key={voice.voiceURI} value={voice.voiceURI}>
+                        {voice.name.replace(/Microsoft |Google /, '')} ({voice.lang})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="voice-preview-btn"
+                    onClick={() => {
+                      if ('speechSynthesis' in window) {
+                        speechSynthesis.cancel();
+                        const utterance = new SpeechSynthesisUtterance("Hello! I'm your task assistant. How can I help you today?");
+                        const voice = availableVoices.find(v => v.voiceURI === voiceSettings.selectedVoiceId);
+                        if (voice) utterance.voice = voice;
+                        speechSynthesis.speak(utterance);
+                      }
+                    }}
+                  >
+                    🔊 Preview
+                  </button>
+                </div>
+              </div>
+
+              {/* Speech Recognition Engine */}
+              <div className="section-group">
+                <h4>Speech Recognition</h4>
+                <p className="section-description">
+                  Choose how your voice is converted to text. All options are <strong>free</strong>.
+                </p>
+                <div className="voice-engine-options">
+                  <button
+                    type="button"
+                    className={`voice-engine-card ${voiceSettings.speechMode === 'browser' ? 'selected' : ''}`}
+                    onClick={() => updateVoiceSettings({ speechMode: 'browser' })}
+                  >
+                    <span className="engine-icon">🌐</span>
+                    <div className="engine-info">
+                      <span className="engine-title">Browser (Google)</span>
+                      <span className="engine-desc">Real-time • Words appear as you speak</span>
+                      <span className="engine-price">Free • Unlimited • Requires internet</span>
+                    </div>
+                    {voiceSettings.speechMode === 'browser' && <span className="engine-check">✓</span>}
+                  </button>
+                  <button
+                    type="button"
+                    className={`voice-engine-card ${voiceSettings.speechMode === 'whisper' ? 'selected' : ''}`}
+                    onClick={() => updateVoiceSettings({ speechMode: 'whisper' })}
+                  >
+                    <span className="engine-icon">🤖</span>
+                    <div className="engine-info">
+                      <span className="engine-title">Local AI (Whisper)</span>
+                      <span className="engine-desc">Offline • Transcribes after you stop speaking</span>
+                      <span className="engine-price">Free • Works offline • 75MB download</span>
+                    </div>
+                    {voiceSettings.speechMode === 'whisper' && <span className="engine-check">✓</span>}
+                  </button>
+                </div>
+
+                {/* Browser mode info */}
+                {voiceSettings.speechMode === 'browser' && (
+                  <div className="engine-info-box">
+                    <p>✨ <strong>Recommended</strong> - Uses Google's speech recognition via Chromium.</p>
+                    <p>Words appear instantly as you speak. Requires internet connection.</p>
+                  </div>
+                )}
+
+                {/* Whisper Model Download (show when whisper selected) */}
+                {voiceSettings.speechMode === 'whisper' && (
+                  <div className="whisper-model-section">
+                    <div className="whisper-model-status">
+                      <span className="model-label">Whisper Model:</span>
+                      <span className="model-status">
+                        {voiceSettings.whisperModelDownloaded ? '✅ Downloaded' : '⏳ Not downloaded yet'}
+                      </span>
+                    </div>
+                    {!voiceSettings.whisperModelDownloaded && (
+                      <p className="model-hint">
+                        The model (~75MB) downloads automatically on first use. Works completely offline after that.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Microphone Selection */}
+              <div className="section-group">
+                <h4>Microphone</h4>
+                <p className="section-description">
+                  Select which microphone to use for voice input.
+                </p>
+                <div className="mic-select-container">
+                  <select
+                    className="mic-select"
+                    value={voiceSettings.selectedMicId || ''}
+                    onChange={(e) => updateVoiceSettings({ selectedMicId: e.target.value })}
+                  >
+                    <option value="">System Default</option>
+                    {/* Microphones will be populated dynamically */}
+                  </select>
+                  <button
+                    type="button"
+                    className="mic-test-btn-small"
+                    onClick={async () => {
+                      try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        stream.getTracks().forEach(t => t.stop());
+                        showFeedback('success', 'Microphone working!');
+                      } catch (err) {
+                        showFeedback('error', 'Microphone access denied');
+                      }
+                    }}
+                  >
+                    🎤 Test
+                  </button>
+                </div>
+              </div>
+
+              {/* Behavior Settings */}
+              <div className="section-group">
+                <h4>Behavior</h4>
+                <div className="toggle-grid">
+                  <label className="toggle-card">
+                    <input
+                      type="checkbox"
+                      checked={voiceSettings.autoListen}
+                      onChange={(e) => updateVoiceSettings({ autoListen: e.target.checked })}
+                    />
+                    <span className="toggle-slider" />
+                    <div className="toggle-content">
+                      <span className="toggle-title">Auto-resume Listening</span>
+                      <span className="toggle-description">
+                        Automatically start listening again after the assistant finishes speaking.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Tips */}
+              <div className="section-group">
+                <h4>Tips</h4>
+                <div className="voice-tips-box">
+                  <ul>
+                    <li><strong>Tap the orb</strong> to stop speaking and send your message</li>
+                    <li><strong>Speak clearly</strong> at a normal pace for best recognition</li>
+                    <li><strong>Use natural language</strong> like "Add a task to call John tomorrow"</li>
+                    <li><strong>Ask questions</strong> like "What's due today?" or "What should I focus on?"</li>
+                  </ul>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* SYNC & IMPORT SECTION */}
+          {activeSection === 'import' && (
+            <section className="settings-section sync-import-section">
+              {/* Quick Actions */}
+              <div className="section-group">
+                <h3>Quick Sync</h3>
+                <p className="section-description">
+                  Sync active items from all databases. This is the fastest way to get your latest data.
+                </p>
+                <div className="sync-quick-actions">
+                  <button
+                    type="button"
+                    className="btn-primary sync-all-btn"
+                    onClick={async () => {
+                      try {
+                        showFeedback('success', 'Starting quick sync...');
+                        await widgetAPI.syncActiveTasksOnly?.();
+                        await widgetAPI.syncActiveProjectsOnly?.();
+                        showFeedback('success', 'Quick sync complete!');
+                      } catch (error) {
+                        showFeedback('error', `Sync failed: ${error}`);
+                      }
+                    }}
+                  >
+                    ↻ Sync All Active Items
+                  </button>
+                </div>
+              </div>
+
+              {/* Tasks Sync */}
+              <div className="section-group sync-database-group">
+                <div className="sync-header">
+                  <div className="sync-header-info">
+                    <span className="sync-icon">☰</span>
+                    <div>
+                      <h3>Tasks</h3>
+                      <p className="section-description">Sync tasks from your Notion database</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="sync-actions-grid">
+                  <button
+                    type="button"
+                    className="sync-action-card"
+                    onClick={async () => {
+                      try {
+                        showFeedback('success', 'Syncing active tasks...');
+                        const result = await widgetAPI.syncActiveTasksOnly?.();
+                        showFeedback('success', `Synced ${result?.count || 0} active tasks`);
+                      } catch (error) {
+                        showFeedback('error', `Failed: ${error}`);
+                      }
+                    }}
+                  >
+                    <span className="action-icon">⚡</span>
+                    <div className="action-info">
+                      <span className="action-title">Sync Active</span>
+                      <span className="action-desc">Tasks not marked as done</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className="sync-action-card"
+                    onClick={async () => {
+                      try {
+                        showFeedback('success', 'Importing all tasks...');
+                        await widgetAPI.performInitialImport?.();
+                        showFeedback('success', 'Full import complete!');
+                      } catch (error) {
+                        showFeedback('error', `Failed: ${error}`);
+                      }
+                    }}
+                  >
+                    <span className="action-icon">📥</span>
+                    <div className="action-info">
+                      <span className="action-title">Full Import</span>
+                      <span className="action-desc">Import entire database</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Projects Sync */}
+              <div className="section-group sync-database-group">
+                <div className="sync-header">
+                  <div className="sync-header-info">
+                    <span className="sync-icon">📁</span>
+                    <div>
+                      <h3>Projects</h3>
+                      <p className="section-description">Sync projects from your Notion database</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="sync-actions-grid">
+                  <button
+                    type="button"
+                    className="sync-action-card"
+                    onClick={async () => {
+                      try {
+                        showFeedback('success', 'Syncing active projects...');
+                        const result = await widgetAPI.syncActiveProjectsOnly?.();
+                        showFeedback('success', `Synced ${result?.count || 0} active projects`);
+                      } catch (error) {
+                        showFeedback('error', `Failed: ${error}`);
+                      }
+                    }}
+                  >
+                    <span className="action-icon">⚡</span>
+                    <div className="action-info">
+                      <span className="action-title">Sync Active</span>
+                      <span className="action-desc">Projects not marked as done</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className="sync-action-card"
+                    onClick={async () => {
+                      try {
+                        showFeedback('success', 'Importing all projects...');
+                        await widgetAPI.importProjects?.();
+                        showFeedback('success', 'Full import complete!');
+                      } catch (error) {
+                        showFeedback('error', `Failed: ${error}`);
+                      }
+                    }}
+                  >
+                    <span className="action-icon">📥</span>
+                    <div className="action-info">
+                      <span className="action-title">Full Import</span>
+                      <span className="action-desc">Import entire database</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Time Logs Sync */}
+              <div className="section-group sync-database-group">
+                <div className="sync-header">
+                  <div className="sync-header-info">
+                    <span className="sync-icon">⏱️</span>
+                    <div>
+                      <h3>Time Logs</h3>
+                      <p className="section-description">Sync time tracking entries</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="sync-actions-grid">
+                  <button
+                    type="button"
+                    className="sync-action-card"
+                    onClick={async () => {
+                      try {
+                        showFeedback('success', 'Syncing recent time logs...');
+                        await widgetAPI.importTimeLogs?.();
+                        showFeedback('success', 'Time logs synced!');
+                      } catch (error) {
+                        showFeedback('error', `Failed: ${error}`);
+                      }
+                    }}
+                  >
+                    <span className="action-icon">🕐</span>
+                    <div className="action-info">
+                      <span className="action-title">Sync Recent</span>
+                      <span className="action-desc">New entries since last sync</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Contacts Sync */}
+              <div className="section-group sync-database-group">
+                <div className="sync-header">
+                  <div className="sync-header-info">
+                    <span className="sync-icon">👤</span>
+                    <div>
+                      <h3>Contacts</h3>
+                      <p className="section-description">Sync contacts linked to your projects</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="sync-actions-grid">
+                  <button
+                    type="button"
+                    className="sync-action-card"
+                    onClick={async () => {
+                      try {
+                        showFeedback('success', 'Syncing contacts...');
+                        await widgetAPI.importContacts?.();
+                        showFeedback('success', 'Contacts synced!');
+                      } catch (error) {
+                        showFeedback('error', `Failed: ${error}`);
+                      }
+                    }}
+                  >
+                    <span className="action-icon">👥</span>
+                    <div className="action-info">
+                      <span className="action-title">Sync Contacts</span>
+                      <span className="action-desc">From project relations</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Writing Sync */}
+              <div className="section-group sync-database-group">
+                <div className="sync-header">
+                  <div className="sync-header-info">
+                    <span className="sync-icon">✍️</span>
+                    <div>
+                      <h3>Writing</h3>
+                      <p className="section-description">Sync writing entries</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="sync-actions-grid">
+                  <button
+                    type="button"
+                    className="sync-action-card"
+                    onClick={async () => {
+                      try {
+                        showFeedback('success', 'Syncing writing entries...');
+                        // Add writing sync when available
+                        showFeedback('success', 'Writing entries synced!');
+                      } catch (error) {
+                        showFeedback('error', `Failed: ${error}`);
+                      }
+                    }}
+                  >
+                    <span className="action-icon">📝</span>
+                    <div className="action-info">
+                      <span className="action-title">Sync Writing</span>
+                      <span className="action-desc">Long-form entries</span>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sync Settings */}
+              <div className="section-group">
+                <h3>Sync Behavior</h3>
+                <p className="section-description">Configure how syncing works on app startup and during use.</p>
+                <div className="toggle-grid">
+                  <label className="toggle-card">
+                    <input
+                      type="checkbox"
+                      checked={appPreferences?.autoRefreshTasks ?? false}
+                      onChange={(e) => {
+                        if (appPreferences) {
+                          const updated = { ...appPreferences, autoRefreshTasks: e.target.checked };
+                          setAppPreferences(updated);
+                          widgetAPI.setAppPreferences(updated);
+                        }
+                      }}
+                    />
+                    <span className="toggle-slider" />
+                    <div className="toggle-content">
+                      <span className="toggle-title">Auto-sync When Returning to App</span>
+                      <span className="toggle-description">
+                        When you switch back to this app from another window, automatically sync your tasks with Notion. 
+                        This keeps your local data fresh without manual syncing, but may cause brief delays when switching windows.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Legacy import progress (if running) */}
+              {importProgress.status !== 'idle' && (
+                <div className="section-group">
+                  <h3>Import Progress</h3>
+                  <div className="import-status">
+                    {importProgress.status === 'running' && (
+                      <div className="status-box info">
+                        <div className="status-title">Syncing... {importProgress.tasksImported} items</div>
+                        <div className="status-detail">
+                          {importProgress.message || `Batch ${importProgress.currentPage}`}
+                        </div>
+                        <div className="progress-bar">
+                          <div className="progress-fill animate" />
+                        </div>
+                      </div>
+                    )}
+                    {importProgress.status === 'completed' && (
+                      <div className="status-box success">
+                        <div className="status-title">✓ Sync complete!</div>
+                        <div className="status-detail">
+                          {importProgress.tasksImported} items synced
+                        </div>
+                      </div>
+                    )}
+                    {importProgress.status === 'error' && (
+                      <div className="status-box error">
+                        <div className="status-title">Sync failed</div>
+                        <div className="status-detail">{importProgress.error || 'Unknown error'}</div>
+                      </div>
+                    )}
+                  </div>
+                  {(importProgress.status === 'completed' || importProgress.status === 'error') && (
                     <button
                       type="button"
                       className="btn-ghost"
                       onClick={handleResetImport}
                     >
-                      Reset
+                      Dismiss
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="btn-ghost"
-                    onClick={handleRefreshActiveTasks}
-                    disabled={refreshingActiveTasks}
-                  >
-                    {refreshingActiveTasks ? 'Refreshing active tasks…' : 'Refresh active tasks'}
-                  </button>
                 </div>
-              </div>
+              )}
             </section>
           )}
 

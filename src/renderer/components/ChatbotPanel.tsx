@@ -11,6 +11,7 @@ import type {
 import { platformBridge } from '@shared/platform';
 import { useSpeechCapture } from '../hooks/useSpeechCapture';
 import { useLocalWhisper } from '../hooks/useLocalWhisper';
+import VoiceChatOverlay from './VoiceChatOverlay';
 
 const widgetAPI = platformBridge.widgetAPI;
 
@@ -37,6 +38,7 @@ export default function ChatbotPanel({
   const [executionResults, setExecutionResults] = useState<TaskActionResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [voiceChatOpen, setVoiceChatOpen] = useState(false);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -325,6 +327,45 @@ export default function ChatbotPanel({
     }
   }, [settings]);
 
+  // Handle voice chat send - processes message and returns response text
+  const handleVoiceChatSend = useCallback(async (text: string): Promise<string> => {
+    if (!settings?.openaiApiKey && !settings?.anthropicApiKey) {
+      throw new Error('Please configure an API key first');
+    }
+
+    addMessage('user', text);
+
+    try {
+      const response = await widgetAPI.sendChatbotMessage({
+        message: text,
+        tasks,
+        projects
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to process message');
+      }
+
+      addMessage('assistant', response.message);
+
+      // If there are actions, auto-execute them in voice mode
+      if (response.actions && response.actions.length > 0) {
+        const results = await widgetAPI.executeChatbotActions({
+          actions: response.actions
+        });
+        onTasksUpdated?.();
+        
+        const successCount = results.results.filter(r => r.success).length;
+        return `${response.message}. Done! Completed ${successCount} action${successCount !== 1 ? 's' : ''}.`;
+      }
+
+      return response.message;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to process';
+      throw new Error(errorMessage);
+    }
+  }, [settings, tasks, projects, addMessage, onTasksUpdated]);
+
   const renderActionPreview = (response: ChatbotResponse) => {
     if (!response.actions || response.actions.length === 0) return null;
 
@@ -460,6 +501,14 @@ export default function ChatbotPanel({
         <div className="chatbot-header-actions">
           <button
             type="button"
+            className="voice-chat-btn"
+            onClick={() => setVoiceChatOpen(true)}
+            title="Voice Chat Mode"
+          >
+            🎙️
+          </button>
+          <button
+            type="button"
             className="settings-btn"
             onClick={() => setSettingsOpen(true)}
             title="Settings"
@@ -482,14 +531,51 @@ export default function ChatbotPanel({
       <div className="chatbot-messages">
         {messages.length === 0 && (
           <div className="chatbot-welcome">
-            <p>👋 Hi! I can help you manage your tasks.</p>
-            <p className="hint">Try saying things like:</p>
-            <ul>
-              <li>"I finished the report today"</li>
-              <li>"Add a task to call John tomorrow"</li>
-              <li>"Mark the design review as complete"</li>
-              <li>"Log 2 hours on the website project"</li>
-            </ul>
+            {(() => {
+              const today = new Date().toISOString().split('T')[0];
+              const activeTasks = tasks.filter(t => 
+                t.status?.toLowerCase() !== 'done' && 
+                t.status?.toLowerCase() !== 'completed'
+              );
+              const overdueTasks = activeTasks.filter(t => t.dueDate && t.dueDate < today);
+              const todayTasks = activeTasks.filter(t => t.dueDate === today);
+              const urgentTasks = activeTasks.filter(t => t.urgent);
+
+              if (activeTasks.length === 0) {
+                return (
+                  <>
+                    <p>👋 Hi! You're all caught up - no active tasks!</p>
+                    <p className="hint">Would you like to:</p>
+                    <ul>
+                      <li>"Add a task for tomorrow"</li>
+                      <li>"What did I complete this week?"</li>
+                    </ul>
+                  </>
+                );
+              }
+
+              return (
+                <>
+                  <p>👋 Hi! You have <strong>{activeTasks.length}</strong> active task{activeTasks.length !== 1 ? 's' : ''}.</p>
+                  {overdueTasks.length > 0 && (
+                    <p className="alert">⚠️ <strong>{overdueTasks.length}</strong> overdue: "{overdueTasks[0].title}"</p>
+                  )}
+                  {todayTasks.length > 0 && (
+                    <p className="today">📅 Due today: "{todayTasks[0].title}"{todayTasks.length > 1 ? ` +${todayTasks.length - 1} more` : ''}</p>
+                  )}
+                  {urgentTasks.length > 0 && !overdueTasks.length && !todayTasks.length && (
+                    <p className="urgent">🔥 Urgent: "{urgentTasks[0].title}"</p>
+                  )}
+                  <p className="hint">Try saying:</p>
+                  <ul>
+                    {overdueTasks.length > 0 && <li>"I finished {overdueTasks[0].title}"</li>}
+                    {todayTasks.length > 0 && <li>"Start working on {todayTasks[0].title}"</li>}
+                    <li>"What's my most important task?"</li>
+                    <li>"Add a task for tomorrow"</li>
+                  </ul>
+                </>
+              );
+            })()}
           </div>
         )}
         
@@ -591,6 +677,16 @@ export default function ChatbotPanel({
       </div>
 
       {renderSettings()}
+
+      {/* Voice Chat Overlay */}
+      <VoiceChatOverlay
+        isOpen={voiceChatOpen}
+        onClose={() => setVoiceChatOpen(false)}
+        onTranscript={(text) => setInputText(text)}
+        onSend={handleVoiceChatSend}
+        tasks={tasks}
+        projects={projects}
+      />
     </div>
   );
 }

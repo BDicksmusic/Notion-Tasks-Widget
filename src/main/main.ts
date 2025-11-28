@@ -108,6 +108,19 @@ import {
   isConfigured as isWritingConfigured
 } from './services/notionWriting';
 import {
+  importActiveTasks,
+  importActiveProjects,
+  importActive,
+  importSinceClose,
+  importAll,
+  markAppClose,
+  isFirstTimeSetup,
+  markSetupComplete,
+  getSetupMode,
+  getDatabaseCounts,
+  isDatabaseEmpty
+} from './services/importService';
+import {
   updateTaskSettings as setNotionSettings,
   updateProjectsSettings as setProjectsSettings,
   updateContactsSettings as setContactsSettings,
@@ -1657,23 +1670,25 @@ ipcMain.handle('sync:importContacts', async () => {
 });
 
 ipcMain.handle('sync:importActiveTasksOnly', async () => {
-  console.log('[IPC] sync:importActiveTasksOnly - Refreshing active tasks');
-  const tasks = await fetchActiveTasks();
-  // Save to SQLite (local is primary, Notion is backup)
-  for (const task of tasks) {
-    upsertRemoteTask(task, task.id, task.lastEdited || new Date().toISOString());
+  console.log('[IPC] sync:importActiveTasksOnly - Using new import service');
+  try {
+    const result = await importActiveTasks();
+    return { success: true, count: result.inserted + result.updated, inserted: result.inserted, updated: result.updated };
+  } catch (error) {
+    console.error('[IPC] sync:importActiveTasksOnly failed:', error);
+    return { success: false, error: String(error) };
   }
-  return { success: true, count: tasks.length };
 });
 
 ipcMain.handle('sync:importActiveProjectsOnly', async () => {
-  console.log('[IPC] sync:importActiveProjectsOnly - Refreshing active projects');
-  const projects = await fetchActiveProjects();
-  // Save to SQLite (local is primary, Notion is backup)
-  for (const project of projects) {
-    upsertProject(project, project.lastEdited || new Date().toISOString());
+  console.log('[IPC] sync:importActiveProjectsOnly - Using new import service');
+  try {
+    const result = await importActiveProjects();
+    return { success: true, count: result.inserted + result.updated, inserted: result.inserted, updated: result.updated };
+  } catch (error) {
+    console.error('[IPC] sync:importActiveProjectsOnly failed:', error);
+    return { success: false, error: String(error) };
   }
-  return { success: true, count: projects.length };
 });
 
 ipcMain.handle('sync:testConnection', async () => {
@@ -2067,7 +2082,7 @@ ipcMain.handle('dock:forceCollapse', () => {
   // Force collapse regardless of pin state - used by the Collapse Widget button
   if (!docking) {
     console.warn('Docking controller not available');
-    return { edge: 'right', collapsed: true };
+    return { edge: 'top', collapsed: true };
   }
   console.log('Force collapsing widget (bypassing pin check)');
   const currentState = docking.getState();

@@ -78,3 +78,4 @@ public class QuickCaptureWidgetProvider extends AppWidgetProvider {
 }
 
 
+

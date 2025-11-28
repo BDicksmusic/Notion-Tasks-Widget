@@ -644,3 +644,4 @@ CurrentTimeLog.concat(SubItemTimeLog).concat(RecurTrackingAll).concat(SubRecurTr
 - All 30 open tasks visible
 - Computed values updated in real-time via SQLite triggers
 
+

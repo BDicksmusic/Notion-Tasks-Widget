@@ -225,3 +225,4 @@ export const SwipeableTaskRow: React.FC<Props> = ({
 export default SwipeableTaskRow;
 
 
+

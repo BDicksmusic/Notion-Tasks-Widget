@@ -145,53 +145,36 @@ export interface WidgetAPI {
   }>;
   
   // Database Verification API
-  /** Verify Tasks database configuration - checks if properties exist */
   verifyTasksDatabase(): Promise<DatabaseVerificationResult>;
-  /** Verify Projects database configuration */
   verifyProjectsDatabase(): Promise<DatabaseVerificationResult>;
-  /** Verify Contacts database configuration */
   verifyContactsDatabase(): Promise<DatabaseVerificationResult>;
-  /** Verify Time Logs database configuration */
   verifyTimeLogsDatabase(): Promise<DatabaseVerificationResult>;
-  /** Verify Writing database configuration */
   verifyWritingDatabase(): Promise<DatabaseVerificationResult>;
-  /** Verify all databases at once */
   verifyAllDatabases(): Promise<FullVerificationResult>;
   
-  // ============================================================================
-  // LOCAL STATUS MANAGEMENT (LOCAL-FIRST)
-  // These allow managing statuses independently of Notion
-  // ============================================================================
-  /** Get locally-defined task statuses */
+  // Local Status Management
   getLocalTaskStatuses(): Promise<TaskStatusOption[]>;
-  /** Get locally-defined project statuses */
   getLocalProjectStatuses(): Promise<TaskStatusOption[]>;
-  /** Create a new local task status */
   createLocalTaskStatus(options: { 
     name: string; 
     color?: string; 
     sortOrder?: number; 
     isCompleted?: boolean 
   }): Promise<TaskStatusOption>;
-  /** Create a new local project status */
   createLocalProjectStatus(options: { 
     name: string; 
     color?: string; 
     sortOrder?: number; 
     isCompleted?: boolean 
   }): Promise<TaskStatusOption>;
-  /** Update a local task status */
   updateLocalTaskStatus(id: string, updates: { 
     name?: string; 
     color?: string | null; 
     sortOrder?: number; 
     isCompleted?: boolean 
   }): Promise<void>;
-  /** Delete a local task status */
   deleteLocalTaskStatus(id: string): Promise<void>;
-  /** Get combined statuses (local + Notion merged) */
   getCombinedStatuses(): Promise<TaskStatusOption[]>;
-  /** Merge Notion statuses into local statuses */
   mergeNotionStatuses(): Promise<{ 
     success: boolean; 
     taskStatuses?: TaskStatusOption[];
@@ -199,11 +182,7 @@ export interface WidgetAPI {
     error?: string;
   }>;
   
-  // ============================================================================
-  // LOCAL PROJECT MANAGEMENT (LOCAL-FIRST)
-  // Create and manage projects locally, sync to Notion later
-  // ============================================================================
-  /** Create a new local project */
+  // Local Project Management
   createLocalProject(payload: { 
     title: string; 
     status?: string | null; 
@@ -212,7 +191,6 @@ export interface WidgetAPI {
     endDate?: string | null; 
     tags?: string[] | null 
   }): Promise<Project & { syncStatus?: string; localOnly?: boolean }>;
-  /** Update a local project */
   updateLocalProject(projectId: string, updates: Partial<{ 
     title: string; 
     status?: string | null; 
@@ -221,9 +199,7 @@ export interface WidgetAPI {
     endDate?: string | null; 
     tags?: string[] | null 
   }>): Promise<(Project & { syncStatus?: string; localOnly?: boolean }) | null>;
-  /** Delete a local project */
   deleteLocalProject(projectId: string): Promise<boolean>;
-  /** Get a single local project by ID */
   getLocalProject(projectId: string): Promise<(Project & { syncStatus?: string; localOnly?: boolean }) | null>;
   
   onUpdateStatusChange(
@@ -239,19 +215,41 @@ export interface WidgetAPI {
   importContacts(): Promise<{ success: boolean; count: number; error?: string }>;
   importActiveTasksOnly(): Promise<{ success: boolean; count: number; error?: string }>;
   importActiveProjectsOnly(): Promise<{ success: boolean; count: number; error?: string }>;
+  syncActiveTasksOnly(): Promise<{ success: boolean; count: number; links?: number; error?: string }>;
+  syncActiveProjectsOnly(): Promise<{ success: boolean; count: number; links?: number; error?: string }>;
   testConnection(): Promise<{ success: boolean; message: string; latencyMs?: number }>;
   isInitialImportDone(): Promise<boolean>;
   
-  // Import Queue Management - ensures only one import runs at a time
-  /** Get the current status of all import types */
+  // Fast Import API
+  importAll(): Promise<{ 
+    success: boolean; 
+    projects?: number; 
+    tasks?: number; 
+    links?: number; 
+    timeMs?: number;
+    error?: string;
+  }>;
+  importSinceClose(): Promise<{ 
+    success: boolean; 
+    projects?: number; 
+    tasks?: number; 
+    links?: number; 
+    timeMs?: number;
+    error?: string;
+  }>;
+  
+  // Setup API
+  isFirstTimeSetup(): Promise<boolean>;
+  markSetupComplete(mode: 'notion' | 'local'): Promise<{ success: boolean }>;
+  getSetupMode(): Promise<'notion' | 'local' | null>;
+  getDatabaseCounts(): Promise<{ projects: number; tasks: number; links: number }>;
+  isDatabaseEmpty(): Promise<boolean>;
+  
+  // Import Queue Management
   getImportQueueStatus(): Promise<ImportQueueStatus>;
-  /** Cancel a specific import type (if running) */
   cancelImport(type: ImportType): Promise<boolean>;
-  /** Cancel all running imports */
   cancelAllImports(): Promise<void>;
-  /** Get which import type is currently running (if any) */
   getCurrentImport(): Promise<ImportType | null>;
-  /** Listen for import queue status changes */
   onImportQueueStatusChange(callback: (statuses: ImportJobStatus[]) => void): () => void;
   
   // Notion connection status
@@ -269,102 +267,53 @@ export interface WidgetAPI {
   onImportProgress(callback: (progress: ImportProgress) => void): () => void;
   
   // Cross-window drag-and-drop APIs
-  /** Start a cross-window drag operation with the given task */
   startCrossWindowDrag(task: Task, sourceWindow: 'widget' | 'fullscreen'): Promise<void>;
-  /** End the current cross-window drag operation */
   endCrossWindowDrag(): Promise<void>;
-  /** Get the current cross-window drag state */
   getCrossWindowDragState(): Promise<CrossWindowDragState>;
-  /** Handle a drop on a target zone */
   handleCrossWindowDrop(payload: CrossWindowDropPayload): Promise<Task | null>;
-  /** Listen for cross-window drag state changes */
   onCrossWindowDragChange(callback: (state: CrossWindowDragState) => void): () => void;
   
-  // Focus stack APIs (allows multiple tasks in focus mode)
-  /** Get the current focus stack task IDs */
+  // Focus stack APIs
   getFocusStack(): Promise<string[]>;
-  /** Add a task to the focus stack */
   addToFocusStack(taskId: string): Promise<string[]>;
-  /** Remove a task from the focus stack */
   removeFromFocusStack(taskId: string): Promise<string[]>;
-  /** Clear the entire focus stack */
   clearFocusStack(): Promise<void>;
-  /** Listen for focus stack changes */
   onFocusStackChange(callback: (taskIds: string[]) => void): () => void;
   
   // Saved views APIs
-  /** Get all saved views */
   getSavedViews(): Promise<SavedView[]>;
-  /** Save a new view or update existing */
   saveView(view: Omit<SavedView, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<SavedView>;
-  /** Delete a saved view */
   deleteView(viewId: string): Promise<void>;
-  /** Open a new widget window with a specific view */
   openViewWindow(view: SavedView): Promise<void>;
   
   // Calendar widget APIs
-  /** Open the calendar widget window */
   openCalendarWindow(): Promise<void>;
-  /** Close the calendar widget window */
   closeCalendarWindow(): Promise<void>;
-  /** Expand the calendar widget from collapsed state */
   calendarExpand(): Promise<DockState | undefined>;
-  /** Collapse the calendar widget */
   calendarCollapse(): Promise<DockState | undefined>;
-  /** Set the calendar widget dock edge */
   calendarSetEdge(edge: DockEdge): Promise<DockState | undefined>;
-  /** Get the calendar widget dock state */
   getCalendarDockState(): Promise<DockState | undefined>;
   
-  // ============================================================================
-  // CHATBOT AI ASSISTANT APIs
-  // Voice/text based task management assistant
-  // ============================================================================
-  /** Get chatbot settings */
-  getChatbotSettings(): Promise<ChatbotSettings>;
-  /** Update chatbot settings */
-  updateChatbotSettings(settings: ChatbotSettings): Promise<ChatbotSettings>;
-  /** Send a message to the chatbot and get task actions */
+  // Chatbot AI Assistant APIs
   sendChatbotMessage(payload: {
     message: string;
     tasks: Task[];
     projects: Project[];
   }): Promise<ChatbotResponse>;
-  /** Execute the proposed task actions */
   executeChatbotActions(payload: {
     actions: TaskAction[];
   }): Promise<ChatbotExecutionResult>;
-  /** Get chat summary history */
   getChatSummaries(limit?: number, offset?: number): Promise<ChatSummary[]>;
-  /** Get a specific chat summary */
   getChatSummary(summaryId: string): Promise<ChatSummary | null>;
-  /** Delete a chat summary */
   deleteChatSummary(summaryId: string): Promise<boolean>;
   
-  // ============================================================================
-  // DATA MANAGEMENT APIs
-  // Reset and cleanup operations for local data
-  // ============================================================================
-  
-  /** Data counts for display purposes */
+  // Data Management APIs
   getDataCounts(): Promise<DataCounts>;
-  
-  /** Full reset - wipes ALL local data and sync state */
   performFullReset(): Promise<ResetResult>;
-  
-  /** Soft reset - wipes data but preserves sync state */
   performSoftReset(): Promise<ResetResult>;
-  
-  /** Reset only tasks */
   resetTasksOnly(): Promise<{ success: boolean; cleared: number; error?: string }>;
-  
-  /** Reset only projects */
   resetProjectsOnly(): Promise<{ success: boolean; cleared: number; error?: string }>;
-  
-  /** Reset only time logs */
   resetTimeLogsOnly(): Promise<{ success: boolean; cleared: number; error?: string }>;
-  
-  /** Full reset followed by fresh import from Notion */
   performFullResetAndImport(): Promise<{
     resetSuccess: boolean;
     importSuccess: boolean;
@@ -372,8 +321,6 @@ export interface WidgetAPI {
     syncStatus?: SyncStateSummary;
     error?: string;
   }>;
-  
-  /** Listen for reset completion events */
   onDataResetComplete(callback: (result: ResetResult) => void): () => void;
 }
 
@@ -416,6 +363,3 @@ export interface SettingsAPI {
   getFeatureToggles(): Promise<FeatureToggles>;
   updateFeatureToggles(toggles: FeatureToggles): Promise<FeatureToggles>;
 }
-
-
-

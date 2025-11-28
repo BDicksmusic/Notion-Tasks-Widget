@@ -1810,6 +1810,43 @@ html:has(.fullscreen-app) {
   margin-top: 6px;
 }
 
+/* Collapsible columns - hidden by default, shown on hover */
+.task-secondary-row.collapsible-column,
+.task-project-row.collapsible-column {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin-top: 0;
+  transition: max-height 0.2s ease, opacity 0.15s ease, margin-top 0.2s ease;
+}
+
+/* Show collapsible columns on task row hover */
+.task-row:hover .task-secondary-row.collapsible-column,
+.task-row:hover .task-project-row.collapsible-column,
+.task-row.is-selected .task-secondary-row.collapsible-column,
+.task-row.is-selected .task-project-row.collapsible-column,
+.task-row.is-focused-task .task-secondary-row.collapsible-column,
+.task-row.is-focused-task .task-project-row.collapsible-column,
+.task-row.is-keyboard-focused .task-secondary-row.collapsible-column,
+.task-row.is-keyboard-focused .task-project-row.collapsible-column {
+  max-height: 100px;
+  opacity: 1;
+  margin-top: 6px;
+}
+
+/* Keep expanded when any inner element is expanded (notes, editors, etc.) */
+.task-row:has(.task-notes-expanded) .task-secondary-row.collapsible-column,
+.task-row:has(.task-notes-expanded) .task-project-row.collapsible-column,
+.task-row:has(.estimate-editor-expanded) .task-secondary-row.collapsible-column,
+.task-row:has(.session-timer-expanded) .task-secondary-row.collapsible-column,
+.task-row:has(.tracking-data-expanded) .task-secondary-row.collapsible-column,
+.task-row:has(.task-project-picker) .task-project-row.collapsible-column,
+.task-row:has(.add-subtask-container) .task-project-row.collapsible-column {
+  max-height: 100px;
+  opacity: 1;
+  margin-top: 6px;
+}
+
 .task-secondary-left {
   display: flex;
   gap: 8px;
@@ -13271,6 +13308,37 @@ select option {
     font-size: 16px;
 }
 
+/* Fullscreen Chatbot Overlay */
+.fullscreen-chatbot-overlay {
+    position: fixed;
+    top: 60px;
+    right: 16px;
+    width: 420px;
+    max-height: calc(100vh - 80px);
+    z-index: 150;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    animation: chatbotSlideIn 200ms ease-out;
+}
+
+.fullscreen-chatbot-overlay .chatbot-panel {
+    height: 100%;
+    max-height: calc(100vh - 80px);
+    border-radius: 12px;
+}
+
+@keyframes chatbotSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
 /* Slide-in Notes Panel from Right */
 .notes-slide-panel {
     position: fixed;
@@ -23856,4 +23924,351 @@ select option {
   color: var(--notion-text-muted);
   margin-top: 4px;
   line-height: 1.4;
+}
+
+/* ========================================
+   First-Time Setup Modal
+   ======================================== */
+
+.setup-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(8px);
+  animation: fadeIn 300ms ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.setup-modal {
+  width: 420px;
+  max-width: 90vw;
+  background: linear-gradient(145deg, #1e1e1e 0%, #161616 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  animation: modalSlideUp 300ms ease-out;
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.setup-modal-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.setup-modal-header h1 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--notion-text);
+  margin: 0 0 8px 0;
+  letter-spacing: -0.02em;
+}
+
+.setup-modal-header p {
+  font-size: 14px;
+  color: var(--notion-text-muted);
+  margin: 0;
+}
+
+.setup-modal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  text-align: left;
+  width: 100%;
+}
+
+.setup-option:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.setup-option:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.setup-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-option-notion:hover:not(:disabled) {
+  border-color: rgba(35, 131, 226, 0.4);
+  background: rgba(35, 131, 226, 0.08);
+}
+
+.setup-option-local:hover:not(:disabled) {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.setup-option-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  color: var(--notion-text-muted);
+  flex-shrink: 0;
+}
+
+.setup-option-notion .setup-option-icon {
+  color: var(--notion-blue);
+  background: rgba(35, 131, 226, 0.1);
+}
+
+.setup-option-local .setup-option-icon {
+  color: var(--matrix-green);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.setup-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setup-option-text strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--notion-text);
+}
+
+.setup-option-text span {
+  font-size: 13px;
+  color: var(--notion-text-muted);
+}
+
+.setup-importing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 12px;
+  background: rgba(35, 131, 226, 0.1);
+  border-radius: 8px;
+  color: var(--notion-blue);
+  font-size: 13px;
+}
+
+.setup-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(35, 131, 226, 0.2);
+  border-top-color: var(--notion-blue);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+/* ========================================
+   First-Time Setup Modal
+   ======================================== */
+
+.setup-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(8px);
+  animation: fadeIn 300ms ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.setup-modal {
+  width: 420px;
+  max-width: 90vw;
+  background: linear-gradient(145deg, #1e1e1e 0%, #161616 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 
+    0 24px 80px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  animation: modalSlideUp 300ms ease-out;
+}
+
+@keyframes modalSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.setup-modal-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+.setup-modal-header h1 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--notion-text);
+  margin: 0 0 8px 0;
+  letter-spacing: -0.02em;
+}
+
+.setup-modal-header p {
+  font-size: 14px;
+  color: var(--notion-text-muted);
+  margin: 0;
+}
+
+.setup-modal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-option {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 150ms ease;
+  text-align: left;
+  width: 100%;
+}
+
+.setup-option:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
+}
+
+.setup-option:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.setup-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setup-option-notion:hover:not(:disabled) {
+  border-color: rgba(35, 131, 226, 0.4);
+  background: rgba(35, 131, 226, 0.08);
+}
+
+.setup-option-local:hover:not(:disabled) {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.setup-option-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  color: var(--notion-text-muted);
+  flex-shrink: 0;
+}
+
+.setup-option-notion .setup-option-icon {
+  color: var(--notion-blue);
+  background: rgba(35, 131, 226, 0.1);
+}
+
+.setup-option-local .setup-option-icon {
+  color: var(--matrix-green);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.setup-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setup-option-text strong {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--notion-text);
+}
+
+.setup-option-text span {
+  font-size: 13px;
+  color: var(--notion-text-muted);
+}
+
+.setup-importing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 12px;
+  background: rgba(35, 131, 226, 0.1);
+  border-radius: 8px;
+  color: var(--notion-blue);
+  font-size: 13px;
+}
+
+.setup-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(35, 131, 226, 0.2);
+  border-top-color: var(--notion-blue);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }

@@ -38,7 +38,7 @@ import SearchInput from './components/SearchInput';
 import ViewSelector from './components/ViewSelector';
 import ChatbotPanel from './components/ChatbotPanel';
 import ImportQueueMenu from './components/ImportQueueMenu';
-import { playWidgetSound } from './utils/sounds';
+import { playWidgetSound, playUISound } from './utils/sounds';
 import {
   FilterIcon,
   GroupButton,
@@ -2892,6 +2892,8 @@ const App = () => {
                       );
                     }
                   }}
+                  collapseTimeColumn={appPreferences?.collapseTimeColumn}
+                  collapseProjectColumn={appPreferences?.collapseProjectColumn}
                 />
               )}
               {/* Task Queue Panel - shows when there are queued tasks */}

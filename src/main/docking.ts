@@ -16,7 +16,7 @@ interface Bounds {
 }
 
 export class DockingController {
-  private state: DockState = { edge: 'right', collapsed: true };
+  private state: DockState = { edge: 'top', collapsed: true };
   private expandedBounds: Bounds;
   private isAdjusting = false;
   private isThin = false;
@@ -263,6 +263,7 @@ export class DockingController {
     this.expandedBounds = { ...this.expandedBounds, ...partial };
   }
 }
+
 
 
 

@@ -343,6 +343,13 @@ const widgetAPI: WidgetAPI = {
   importActiveProjectsOnly() {
     return ipcRenderer.invoke('sync:importActiveProjectsOnly');
   },
+  // Sync aliases (same as import but clearer naming for UI)
+  syncActiveTasksOnly() {
+    return ipcRenderer.invoke('sync:importActiveTasksOnly');
+  },
+  syncActiveProjectsOnly() {
+    return ipcRenderer.invoke('sync:importActiveProjectsOnly');
+  },
   testConnection() {
     return ipcRenderer.invoke('sync:testConnection');
   },
@@ -372,6 +379,29 @@ const widgetAPI: WidgetAPI = {
   },
   isInitialImportDone() {
     return ipcRenderer.invoke('sync:isInitialImportDone');
+  },
+  
+  // New fast import methods
+  importAll() {
+    return ipcRenderer.invoke('sync:importAll');
+  },
+  importSinceClose() {
+    return ipcRenderer.invoke('sync:importSinceClose');
+  },
+  isFirstTimeSetup() {
+    return ipcRenderer.invoke('setup:isFirstTime');
+  },
+  markSetupComplete(mode: 'notion' | 'local') {
+    return ipcRenderer.invoke('setup:markComplete', mode);
+  },
+  getSetupMode() {
+    return ipcRenderer.invoke('setup:getMode');
+  },
+  getDatabaseCounts() {
+    return ipcRenderer.invoke('setup:getDatabaseCounts');
+  },
+  isDatabaseEmpty() {
+    return ipcRenderer.invoke('setup:isDatabaseEmpty');
   },
   
   // Notion connection status
@@ -609,4 +639,3 @@ const settingsAPI: SettingsAPI = {
 
 contextBridge.exposeInMainWorld('widgetAPI', widgetAPI);
 contextBridge.exposeInMainWorld('settingsAPI', settingsAPI);
-

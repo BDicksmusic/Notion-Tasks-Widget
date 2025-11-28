@@ -30,6 +30,7 @@ import QuickAdd from '../components/QuickAdd';
 import WritingWidget from '../components/WritingWidget';
 import SearchInput from '../components/SearchInput';
 import ImportQueueMenu from '../components/ImportQueueMenu';
+import ChatbotPanel from '../components/ChatbotPanel';
 import EisenhowerMatrix from './views/EisenhowerMatrix';
 import KanbanBoard from './views/KanbanBoard';
 import TaskTimeLogView from './views/TaskTimeLogView';
@@ -401,6 +402,7 @@ const FullScreenApp = () => {
   const [workspaceQuickAddCollapsed, setWorkspaceQuickAddCollapsed] =
     useState(false);
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
+  const [chatbotOpen, setChatbotOpen] = useState(false);
   const [workspaceNotesCollapsed, setWorkspaceNotesCollapsed] = useState(true);
   const [workspaceLinksCollapsed, setWorkspaceLinksCollapsed] = useState(true);
   const [workspaceShowCompleted, setWorkspaceShowCompleted] = useState(false);
@@ -3100,6 +3102,8 @@ const FullScreenApp = () => {
                 onTaskDragStart={taskDragEnabled ? handleExternalTaskDragStart : undefined}
                 onTaskDragEnd={taskDragEnabled ? handleExternalTaskDragEnd : undefined}
                 projects={projects}
+                collapseTimeColumn={appPreferences?.collapseTimeColumn}
+                collapseProjectColumn={appPreferences?.collapseProjectColumn}
               />
             </div>
           </div>
@@ -3302,6 +3306,8 @@ const FullScreenApp = () => {
                   taskDragEnabled ? handleExternalTaskDragEnd : undefined
                 }
                 projects={projects}
+                collapseTimeColumn={appPreferences?.collapseTimeColumn}
+                collapseProjectColumn={appPreferences?.collapseProjectColumn}
               />
             </div>
           </section>
@@ -4396,6 +4402,8 @@ const FullScreenApp = () => {
                 taskDragEnabled ? handleExternalTaskDragEnd : undefined
               }
               projects={projects}
+              collapseTimeColumn={appPreferences?.collapseTimeColumn}
+              collapseProjectColumn={appPreferences?.collapseProjectColumn}
             />
           )}
         </div>
@@ -4911,6 +4919,8 @@ const FullScreenApp = () => {
                   scrollContainerRef={taskListScrollRef}
                   onScrollToCenter={scrollToCenterTaskElement}
                   projects={projects}
+                  collapseTimeColumn={appPreferences?.collapseTimeColumn}
+                  collapseProjectColumn={appPreferences?.collapseProjectColumn}
                 />
               </div>
             </section>
@@ -4995,6 +5005,16 @@ const FullScreenApp = () => {
             
             <button
               type="button"
+              className={`capture-note-toggle ${chatbotOpen ? 'is-active' : ''}`}
+              onClick={() => setChatbotOpen(!chatbotOpen)}
+              title="AI Chat Assistant"
+            >
+              <span className="capture-note-icon">🤖</span>
+              <span className="capture-note-label">{chatbotOpen ? 'Close AI' : 'AI Chat'}</span>
+            </button>
+            
+            <button
+              type="button"
               className={`capture-note-toggle ${notesPanelOpen ? 'is-active' : ''}`}
               onClick={() => setNotesPanelOpen(!notesPanelOpen)}
             >
@@ -5002,6 +5022,18 @@ const FullScreenApp = () => {
               <span className="capture-note-label">{notesPanelOpen ? 'Close Notes' : 'Capture Note'}</span>
             </button>
           </div>
+          
+          {/* AI Chat Panel */}
+          {chatbotOpen && (
+            <div className="fullscreen-chatbot-overlay">
+              <ChatbotPanel
+                tasks={tasks}
+                projects={projects}
+                onTasksUpdated={() => void fetchTasks()}
+                onClose={() => setChatbotOpen(false)}
+              />
+            </div>
+          )}
           
           {/* Slide-in Notes Panel */}
           <aside className={`notes-slide-panel ${notesPanelOpen ? 'is-open' : ''}`}>
@@ -6379,6 +6411,16 @@ const FullScreenApp = () => {
                 
                 <button
                   type="button"
+                  className={`capture-note-toggle ${chatbotOpen ? 'is-active' : ''}`}
+                  onClick={() => setChatbotOpen(!chatbotOpen)}
+                  title="AI Chat Assistant"
+                >
+                  <span className="capture-note-icon">🤖</span>
+                  <span className="capture-note-label">{chatbotOpen ? 'Close AI' : 'AI Chat'}</span>
+                </button>
+                
+                <button
+                  type="button"
                   className={`capture-note-toggle ${notesPanelOpen ? 'is-active' : ''}`}
                   onClick={() => setNotesPanelOpen(!notesPanelOpen)}
                 >
@@ -6387,6 +6429,18 @@ const FullScreenApp = () => {
                 </button>
               </div>
             </div>
+            
+            {/* AI Chat Panel for Projects View */}
+            {chatbotOpen && (
+              <div className="fullscreen-chatbot-overlay">
+                <ChatbotPanel
+                  tasks={tasks}
+                  projects={projects}
+                  onTasksUpdated={() => void fetchTasks()}
+                  onClose={() => setChatbotOpen(false)}
+                />
+              </div>
+            )}
             
             {/* Slide-in Notes Panel from Right */}
             <aside className={`notes-slide-panel ${notesPanelOpen ? 'is-open' : ''}`}>
