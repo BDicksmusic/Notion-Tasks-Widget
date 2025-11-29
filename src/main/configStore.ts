@@ -403,6 +403,10 @@ function normalizeTaskSettings(next: NotionSettings): NotionSettings {
       normalized.projectRelationProperty.trim();
   }
 
+  if (normalized.subActionsProperty) {
+    normalized.subActionsProperty = normalized.subActionsProperty.trim();
+  }
+
   if (!normalized.sessionLengthProperty) {
     normalized.sessionLengthProperty = 'Sess. Length';
   }
@@ -474,7 +478,17 @@ function normalizeAppPreferences(next: AppPreferences): AppPreferences {
     autoRefreshTasks: Boolean(next.autoRefreshTasks),
     expandMode: next.expandMode === 'button' ? 'button' : 'hover',
     autoCollapse: next.autoCollapse === undefined ? true : Boolean(next.autoCollapse),
-    preventMinimalDuringSession: next.preventMinimalDuringSession === undefined ? true : Boolean(next.preventMinimalDuringSession)
+    preventMinimalDuringSession: next.preventMinimalDuringSession === undefined ? true : Boolean(next.preventMinimalDuringSession),
+    // Webhook/Real-time sync properties
+    webhookEnabled: Boolean(next.webhookEnabled),
+    webhookUserId: next.webhookUserId,
+    webhookUrl: next.webhookUrl,
+    // UI Sound preferences
+    enableUISounds: next.enableUISounds === undefined ? true : Boolean(next.enableUISounds),
+    // Column collapse preferences
+    collapseTimeColumn: Boolean(next.collapseTimeColumn),
+    collapseProjectColumn: Boolean(next.collapseProjectColumn),
+    autoExpandProjectRow: Boolean(next.autoExpandProjectRow),
   };
 }
 
@@ -530,6 +544,12 @@ function loadTaskDefaults(): NotionSettings {
       'NOTION_TASK_PROJECT_RELATION_PROP',
       ''
     ).trim(),
+    // Parent Task relation for subtasks (points from subtask to parent)
+    parentTaskProperty: envDefault('NOTION_TASK_PARENT_PROP', 'Main Actions').trim() || undefined,
+    // Sub-Actions relation - links parent task to its subtasks
+    subActionsProperty: envDefault('NOTION_TASK_SUBACTIONS_PROP', 'Sub-Actions').trim() || undefined,
+    // Recurrence property for recurring tasks
+    recurrenceProperty: envDefault('NOTION_TASK_RECURRENCE_PROP', '').trim() || undefined,
     // Widget Link - Date property updated on every sync to track linked tasks
     widgetLinkProperty: envDefault('NOTION_TASK_WIDGET_LINK_PROP', 'Widget Link').trim() || undefined,
     // Unique ID property for deduplication (e.g., "ID" with prefix "ACTION")

@@ -12,6 +12,7 @@ import { platformBridge } from '@shared/platform';
 import { useSpeechCapture } from '../hooks/useSpeechCapture';
 import { useLocalWhisper } from '../hooks/useLocalWhisper';
 import VoiceChatOverlay from './VoiceChatOverlay';
+import { playUISound } from '../utils/sounds';
 
 const widgetAPI = platformBridge.widgetAPI;
 
@@ -20,6 +21,8 @@ interface ChatbotPanelProps {
   projects: Project[];
   onTasksUpdated?: () => void;
   onClose?: () => void;
+  isExpanded?: boolean;
+  onToggleExpand?: () => void;
 }
 
 type PanelState = 'idle' | 'listening' | 'processing' | 'confirming' | 'executing';
@@ -28,7 +31,9 @@ export default function ChatbotPanel({
   tasks,
   projects,
   onTasksUpdated,
-  onClose
+  onClose,
+  isExpanded = false,
+  onToggleExpand
 }: ChatbotPanelProps) {
   const [panelState, setPanelState] = useState<PanelState>('idle');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -48,6 +53,7 @@ export default function ChatbotPanel({
     isListening: browserIsListening,
     isSupported: browserSpeechSupported,
     transcript: browserTranscript,
+    interimTranscript: browserInterimTranscript,
     startListening: browserStartListening,
     stopListening: browserStopListening,
     resetTranscript: browserResetTranscript
@@ -72,6 +78,7 @@ export default function ChatbotPanel({
   const isListening = speechMode === 'transformers' ? localWhisperRecording : browserIsListening;
   const isTranscribing = speechMode === 'transformers' ? localWhisperTranscribing : false;
   const transcript = speechMode === 'transformers' ? localWhisperTranscript : browserTranscript;
+  const interimTranscript = speechMode === 'browser' ? browserInterimTranscript : '';
 
   // Load settings on mount
   useEffect(() => {
@@ -464,27 +471,82 @@ export default function ChatbotPanel({
               value={settings?.speechInputMode || 'browser'}
               onChange={(e) => handleSettingsSave({ speechInputMode: e.target.value as SpeechInputMode })}
             >
-              <option value="transformers">🔒 Local Whisper (Offline, Free, Private)</option>
-              <option value="browser">🌐 Browser Speech (Free, Requires Internet)</option>
-              <option value="whisper">☁️ OpenAI Whisper (Paid, Most Accurate)</option>
+              <option value="browser">🌐 Browser Speech (Free) - Real-time words</option>
+              <option value="transformers">🔒 Local Whisper (Free) - Offline after download</option>
+              <option value="whisper">☁️ OpenAI Whisper (Paid) - Most accurate</option>
             </select>
-            <p className="settings-hint">
-              {settings?.speechInputMode === 'transformers' && 
-                'Runs Whisper AI locally. First use downloads ~75MB model.'}
-              {settings?.speechInputMode === 'browser' && 
-                'Uses browser built-in speech recognition. Works in Chrome.'}
-              {settings?.speechInputMode === 'whisper' && 
-                'Uses OpenAI API for transcription. Requires API key.'}
-              {!settings?.speechInputMode && 
-                'Local Whisper recommended for privacy and offline use.'}
-            </p>
+            <div className="settings-hint-box">
+              {settings?.speechInputMode === 'transformers' && (
+                <>
+                  <p className="settings-hint">
+                    🔒 <strong>Private & Offline</strong> - Runs AI locally on your device.
+                  </p>
+                  <p className="settings-hint settings-hint-detail">
+                    • First use downloads ~75MB model (requires internet once)
+                    <br />• After download, works completely offline
+                    <br />• Audio never leaves your device
+                    <br />• Transcribes after you stop speaking
+                  </p>
+                  {localWhisperLoading && (
+                    <div className="model-download-status">
+                      📥 Downloading model... {localWhisperProgress}%
+                      <div className="model-progress-bar">
+                        <div 
+                          className="model-progress-fill" 
+                          style={{ width: `${localWhisperProgress}%` }} 
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              {settings?.speechInputMode === 'browser' && (
+                <>
+                  <p className="settings-hint">
+                    🌐 <strong>Real-time transcription</strong> - Words appear as you speak.
+                  </p>
+                  <p className="settings-hint settings-hint-detail">
+                    • Requires internet connection (uses Google's servers)
+                    <br />• Works in Chrome, Edge, and Safari
+                    <br />• Free with no usage limits
+                    <br />• Audio is processed by Google
+                  </p>
+                </>
+              )}
+              {settings?.speechInputMode === 'whisper' && (
+                <>
+                  <p className="settings-hint">
+                    ☁️ <strong>Highest accuracy</strong> - OpenAI's Whisper API.
+                  </p>
+                  <p className="settings-hint settings-hint-detail">
+                    • Requires OpenAI API key
+                    <br />• Pay-per-use ($0.006/minute)
+                    <br />• Best accuracy for complex speech
+                    <br />• Transcribes after you stop speaking
+                  </p>
+                  {!settings?.openaiApiKey && (
+                    <p className="settings-hint settings-hint-warning">
+                      ⚠️ Add your OpenAI API key above to use this mode.
+                    </p>
+                  )}
+                </>
+              )}
+              {!settings?.speechInputMode && (
+                <p className="settings-hint">
+                  Choose how you want speech-to-text to work. Browser Speech is recommended for real-time feedback.
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="settings-actions">
             <button
               type="button"
               className="btn-primary"
-              onClick={() => setSettingsOpen(false)}
+              onClick={() => {
+                playUISound('menu-close');
+                setSettingsOpen(false);
+              }}
             >
               Done
             </button>
@@ -495,14 +557,17 @@ export default function ChatbotPanel({
   };
 
   return (
-    <div className="chatbot-panel">
+    <div className={`chatbot-panel ${isExpanded ? 'is-expanded' : ''}`}>
       <div className="chatbot-header">
         <h3>🤖 Task Assistant</h3>
         <div className="chatbot-header-actions">
           <button
             type="button"
             className="voice-chat-btn"
-            onClick={() => setVoiceChatOpen(true)}
+            onClick={() => {
+              playUISound('panel-open');
+              setVoiceChatOpen(true);
+            }}
             title="Voice Chat Mode"
           >
             🎙️
@@ -510,16 +575,35 @@ export default function ChatbotPanel({
           <button
             type="button"
             className="settings-btn"
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => {
+              playUISound('menu-open');
+              setSettingsOpen(true);
+            }}
             title="Settings"
           >
             ⚙️
           </button>
+          {onToggleExpand && (
+            <button
+              type="button"
+              className="expand-btn"
+              onClick={() => {
+                playUISound('click');
+                onToggleExpand();
+              }}
+              title={isExpanded ? 'Collapse to sidebar' : 'Expand to full panel'}
+            >
+              {isExpanded ? '⊟' : '⊞'}
+            </button>
+          )}
           {onClose && (
             <button
               type="button"
               className="close-btn"
-              onClick={onClose}
+              onClick={() => {
+                playUISound('panel-close');
+                onClose();
+              }}
               title="Close"
             >
               ✕
@@ -638,17 +722,23 @@ export default function ChatbotPanel({
         <div className="input-wrapper">
           <textarea
             ref={inputRef}
-            value={isListening ? transcript : inputText}
+            value={isListening ? (transcript + interimTranscript) : inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={
               isTranscribing ? 'Transcribing...' :
-              isListening ? 'Listening... (click mic to stop)' : 
+              isListening ? 'Listening... speak now' : 
               'Type or speak your message...'
             }
             disabled={panelState === 'processing' || panelState === 'executing' || isTranscribing}
             rows={1}
           />
+          {isListening && interimTranscript && (
+            <div className="interim-indicator">
+              <span className="interim-dot"></span>
+              <span className="interim-label">Live</span>
+            </div>
+          )}
           <div className="input-actions">
             <button
               type="button"

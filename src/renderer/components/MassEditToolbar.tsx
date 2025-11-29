@@ -27,7 +27,7 @@ const MassEditToolbar: FC<MassEditToolbarProps> = ({
   const [showPriorityPicker, setShowPriorityPicker] = useState(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdowns when clicking outside
+  // Close dropdowns when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (toolbarRef.current && !toolbarRef.current.contains(event.target as Node)) {
@@ -36,10 +36,22 @@ const MassEditToolbar: FC<MassEditToolbarProps> = ({
         setShowPriorityPicker(false);
       }
     };
+    
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && (showDatePicker || showStatusPicker || showPriorityPicker)) {
+        setShowDatePicker(false);
+        setShowStatusPicker(false);
+        setShowPriorityPicker(false);
+      }
+    };
 
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showDatePicker, showStatusPicker, showPriorityPicker]);
 
   const handleUpdate = useCallback(async (updates: TaskUpdatePayload) => {
     setIsUpdating(true);

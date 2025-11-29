@@ -397,22 +397,71 @@ function updatesToCreatePayload(
  */
 export function listTasks(limit = 2000, includeTrash = false) {
   const db = getDb();
-  // Use column-based query for better performance
-  const query = includeTrash
-    ? `SELECT * FROM ${TABLE} ORDER BY last_modified_local DESC LIMIT ?`
-    : `SELECT * FROM ${TABLE} WHERE sync_status != 'trashed' ORDER BY last_modified_local DESC LIMIT ?`;
-  const rows = db.prepare(query).all(limit) as TaskRow[];
-  const tasks = rows.map(mapRowToTask);
+  
+  // Check if task_project_links table exists for JOIN
+  const linksTableExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='task_project_links'"
+  ).get();
+  
+  let rows: TaskRowWithLinks[];
+  
+  if (linksTableExists) {
+    // Single JOIN query - most efficient way to get tasks with their project links
+    const query = includeTrash
+      ? `SELECT t.*, GROUP_CONCAT(l.project_id) as linked_project_ids
+         FROM ${TABLE} t
+         LEFT JOIN task_project_links l ON t.notion_id = l.task_id
+         GROUP BY t.client_id
+         ORDER BY t.last_modified_local DESC
+         LIMIT ?`
+      : `SELECT t.*, GROUP_CONCAT(l.project_id) as linked_project_ids
+         FROM ${TABLE} t
+         LEFT JOIN task_project_links l ON t.notion_id = l.task_id
+         WHERE t.sync_status != 'trashed'
+         GROUP BY t.client_id
+         ORDER BY t.last_modified_local DESC
+         LIMIT ?`;
+    rows = db.prepare(query).all(limit) as TaskRowWithLinks[];
+  } else {
+    // Fallback if links table doesn't exist yet
+    const query = includeTrash
+      ? `SELECT *, NULL as linked_project_ids FROM ${TABLE} ORDER BY last_modified_local DESC LIMIT ?`
+      : `SELECT *, NULL as linked_project_ids FROM ${TABLE} WHERE sync_status != 'trashed' ORDER BY last_modified_local DESC LIMIT ?`;
+    rows = db.prepare(query).all(limit) as TaskRowWithLinks[];
+  }
+  
+  const tasks = rows.map(mapRowToTaskWithLinks);
   
   const withStatus = tasks.filter(t => t.status).length;
-  console.log(`[DB] listTasks: ${tasks.length} tasks (limit: ${limit}), ${withStatus} have status`);
+  const withProjects = tasks.filter(t => t.projectIds && t.projectIds.length > 0).length;
+  console.log(`[DB] listTasks: ${tasks.length} tasks (limit: ${limit}), ${withStatus} have status, ${withProjects} have projects`);
   
   // Sample first few
   tasks.slice(0, 3).forEach((t, i) => {
-    console.log(`[DB] Task ${i + 1}: "${t.title}" → status="${t.status}"`);
+    console.log(`[DB] Task ${i + 1}: "${t.title}" → status="${t.status}", projects=${t.projectIds?.length || 0}`);
   });
   
   return tasks;
+}
+
+// Extended row type that includes the JOIN result
+interface TaskRowWithLinks extends TaskRow {
+  linked_project_ids: string | null; // GROUP_CONCAT result: "id1,id2,id3" or null
+}
+
+/**
+ * Map a database row (with JOIN) to a Task object.
+ * Parses the linked_project_ids from GROUP_CONCAT.
+ */
+function mapRowToTaskWithLinks(row: TaskRowWithLinks): Task {
+  const task = mapRowToTask(row);
+  
+  // Parse project IDs from JOIN result (overrides any from project_ids column)
+  if (row.linked_project_ids) {
+    task.projectIds = row.linked_project_ids.split(',').filter(Boolean);
+  }
+  
+  return task;
 }
 
 /**
@@ -490,8 +539,28 @@ export function getOldestSyncTimestamp(): string | null {
 }
 
 export function getTask(taskId: string) {
-  const row = readRowById(taskId);
-  return row ? mapRowToTask(row) : null;
+  const db = getDb();
+  
+  // Check if task_project_links table exists
+  const linksTableExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='task_project_links'"
+  ).get();
+  
+  if (linksTableExists) {
+    // Single query with JOIN
+    const row = db.prepare(`
+      SELECT t.*, GROUP_CONCAT(l.project_id) as linked_project_ids
+      FROM ${TABLE} t
+      LEFT JOIN task_project_links l ON t.notion_id = l.task_id
+      WHERE t.client_id = ? OR t.notion_id = ?
+      GROUP BY t.client_id
+    `).get(taskId, taskId) as TaskRowWithLinks | undefined;
+    
+    return row ? mapRowToTaskWithLinks(row) : null;
+  } else {
+    const row = readRowById(taskId);
+    return row ? mapRowToTask(row) : null;
+  }
 }
 
 export function createLocalTask(payload: NotionCreatePayload) {
@@ -915,10 +984,27 @@ export function buildSubtaskRelationships(
  */
 export function getSubtasks(parentTaskId: string): Task[] {
   const db = getDb();
-  const rows = db.prepare(
-    `SELECT * FROM ${TABLE} WHERE parent_task_id = ? AND sync_status != 'trashed'`
-  ).all(parentTaskId) as TaskRow[];
-  return rows.map(mapRowToTask);
+  
+  // Check if task_project_links table exists
+  const linksTableExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='task_project_links'"
+  ).get();
+  
+  if (linksTableExists) {
+    const rows = db.prepare(`
+      SELECT t.*, GROUP_CONCAT(l.project_id) as linked_project_ids
+      FROM ${TABLE} t
+      LEFT JOIN task_project_links l ON t.notion_id = l.task_id
+      WHERE t.parent_task_id = ? AND t.sync_status != 'trashed'
+      GROUP BY t.client_id
+    `).all(parentTaskId) as TaskRowWithLinks[];
+    return rows.map(mapRowToTaskWithLinks);
+  } else {
+    const rows = db.prepare(
+      `SELECT * FROM ${TABLE} WHERE parent_task_id = ? AND sync_status != 'trashed'`
+    ).all(parentTaskId) as TaskRow[];
+    return rows.map(mapRowToTask);
+  }
 }
 
 // ============================================================================
@@ -959,10 +1045,28 @@ export function markTasksAsTrashed(taskIds: string[]): number {
 
 export function listTrashedTasks(): Task[] {
   const db = getDb();
-  const rows = db
-    .prepare(`SELECT * FROM ${TABLE} WHERE sync_status = 'trashed' ORDER BY trashed_at DESC`)
-    .all() as TaskRow[];
-  return rows.map(mapRowToTask);
+  
+  // Check if task_project_links table exists
+  const linksTableExists = db.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='task_project_links'"
+  ).get();
+  
+  if (linksTableExists) {
+    const rows = db.prepare(`
+      SELECT t.*, GROUP_CONCAT(l.project_id) as linked_project_ids
+      FROM ${TABLE} t
+      LEFT JOIN task_project_links l ON t.notion_id = l.task_id
+      WHERE t.sync_status = 'trashed'
+      GROUP BY t.client_id
+      ORDER BY t.trashed_at DESC
+    `).all() as TaskRowWithLinks[];
+    return rows.map(mapRowToTaskWithLinks);
+  } else {
+    const rows = db
+      .prepare(`SELECT * FROM ${TABLE} WHERE sync_status = 'trashed' ORDER BY trashed_at DESC`)
+      .all() as TaskRow[];
+    return rows.map(mapRowToTask);
+  }
 }
 
 export function countTrashedTasks(): number {

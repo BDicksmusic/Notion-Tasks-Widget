@@ -145,6 +145,8 @@ export interface NotionSettings {
   recurrenceProperty?: string;
   // Subtask relation property - links subtasks to parent task
   parentTaskProperty?: string;
+  // Sub-Actions relation property - links parent task to its subtasks (reverse of parentTaskProperty)
+  subActionsProperty?: string;
   // Initial status to reset to after recurring completion
   initialStatus?: string;
   // Widget Link - Date property to track when task was last synced to widget
@@ -167,8 +169,27 @@ export interface AppPreferences {
   // Collapsible task columns - show on hover
   collapseTimeColumn?: boolean;    // Column 3: Estimate time, Start session
   collapseProjectColumn?: boolean; // Column 4: Add to project, Add subtasks
+  autoExpandProjectRow?: boolean;  // When true, auto-expand project row if task has a project assigned
   // UI interaction sounds
   enableUISounds?: boolean;        // Enable click/hover/menu sounds
+  // Webhook real-time sync
+  webhookEnabled?: boolean;
+  webhookUserId?: string;
+  webhookUrl?: string;
+}
+
+export interface WebhookEvent {
+  id: string;
+  type: string;
+  timestamp: string;
+  data: {
+    type?: string;
+    entity?: {
+      id: string;
+      type: string;
+    };
+    [key: string]: unknown;
+  };
 }
 
 export interface WritingSettings {
@@ -717,6 +738,8 @@ export interface UpdateInfo {
 export interface SavedView {
   id: string;
   name: string;
+  /** Emoji icon for the view tab */
+  icon?: string;
   createdAt: string;
   updatedAt: string;
   /** Day filter setting */

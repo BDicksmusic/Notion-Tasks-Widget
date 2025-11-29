@@ -211,6 +211,9 @@ function parseNotionPage(page: any, settings: NotionSettings): Task {
     }
   }
   
+  // Get subtask IDs from Sub-Actions relation
+  const subtaskIds = settings.subActionsProperty ? getRelationIds(settings.subActionsProperty) : undefined;
+  
   return {
     id: page.id,
     uniqueId: getUniqueId(),
@@ -231,6 +234,7 @@ function parseNotionPage(page: any, settings: NotionSettings): Task {
     projectIds: settings.projectRelationProperty ? getRelationIds(settings.projectRelationProperty) : undefined,
     recurrence: settings.recurrenceProperty ? getMultiSelect(settings.recurrenceProperty) : undefined,
     parentTaskId: settings.parentTaskProperty ? getRelationIds(settings.parentTaskProperty)?.[0] : undefined,
+    subtaskIds: subtaskIds && subtaskIds.length > 0 ? subtaskIds : undefined,
     syncStatus: 'synced',
     localOnly: false
   };
@@ -318,7 +322,7 @@ export async function createTask(payload: NotionCreatePayload): Promise<Task | n
     throw new Error('Notion not configured');
   }
   
-  console.log('[NotionTasks] Creating task:', payload.title);
+  console.log('[NotionTasks] Creating task:', payload.title, 'parentTaskId:', payload.parentTaskId || 'none');
   
   const properties: any = {
     [settings.titleProperty]: {
@@ -343,10 +347,10 @@ export async function createTask(payload: NotionCreatePayload): Promise<Task | n
     };
   }
   
-  // Deadline type
+  // Deadline type (status property, not select)
   if (payload.hardDeadline !== undefined) {
     properties[settings.deadlineProperty] = {
-      select: { 
+      status: { 
         name: payload.hardDeadline ? settings.deadlineHardValue : settings.deadlineSoftValue 
       }
     };
@@ -385,23 +389,74 @@ export async function createTask(payload: NotionCreatePayload): Promise<Task | n
   }
   
   // Parent task (for subtasks)
+  // We need the parent's Notion ID (not local ID) for the relation
+  let notionParentId = '';
   if (payload.parentTaskId && settings.parentTaskProperty) {
-    properties[settings.parentTaskProperty] = {
-      relation: [{ id: payload.parentTaskId }]
-    };
+    notionParentId = payload.parentTaskId;
+    
+    // If it's a local ID, look up the actual Notion ID from the database
+    if (payload.parentTaskId.startsWith('local-')) {
+      // Import here to avoid circular dependency
+      const { getTask } = require('../db/repositories/taskRepository');
+      const parentTask = getTask(payload.parentTaskId);
+      console.log('[NotionTasks] Looking up parent task:', payload.parentTaskId);
+      console.log('[NotionTasks] Parent task found:', parentTask ? 'yes' : 'no');
+      if (parentTask) {
+        console.log('[NotionTasks] Parent task.id:', parentTask.id);
+        console.log('[NotionTasks] Parent task.title:', parentTask.title);
+      }
+      
+      if (parentTask && parentTask.id && !parentTask.id.startsWith('local-')) {
+        notionParentId = parentTask.id;
+        console.log('[NotionTasks] Using Notion ID for parent:', notionParentId);
+      } else {
+        // Parent task not yet synced to Notion - skip relation for now
+        console.log('[NotionTasks] Parent task not synced yet, skipping parent relation:', payload.parentTaskId);
+        notionParentId = '';
+      }
+    } else {
+      console.log('[NotionTasks] Parent already has Notion ID:', notionParentId);
+    }
+    
+    if (notionParentId) {
+      // Use "Main Actions" as the property name (user's actual Notion property)
+      // TODO: Fix settings window so this can be configured properly
+      const parentPropName = settings.parentTaskProperty || 'Main Actions';
+      const actualPropName = parentPropName === 'Parent Task' ? 'Main Actions' : parentPropName;
+      console.log('[NotionTasks] Setting parent relation property:', actualPropName);
+      properties[actualPropName] = {
+        relation: [{ id: notionParentId }]
+      };
+    }
   }
   
   const notionClient = getClient();
-  const page = await withRetry(
-    notionClient,
-    () => notionClient.pages.create({
-      parent: { database_id: settings.databaseId },
-      properties
-    }),
-    'Create task'
-  );
+  console.log('[NotionTasks] Calling Notion API to create page...');
   
-  console.log('[NotionTasks] Created task:', page.id);
+  let page: any;
+  try {
+    page = await withRetry(
+      notionClient,
+      () => notionClient.pages.create({
+        parent: { database_id: settings.databaseId },
+        properties
+      }),
+      'Create task'
+    );
+    console.log('[NotionTasks] Created task:', page.id);
+  } catch (apiError: any) {
+    console.error('[NotionTasks] Notion API error:', apiError?.message);
+    console.error('[NotionTasks] Error code:', apiError?.code);
+    console.error('[NotionTasks] Error body:', apiError?.body);
+    throw apiError;
+  }
+  
+  // For two-way relations, setting "Main Actions" on subtask should auto-update 
+  // "Sub-Actions" on parent via Notion's built-in relation syncing
+  if (notionParentId) {
+    console.log('[NotionTasks] Linked subtask to parent:', notionParentId.substring(0, 8));
+  }
+  
   return parseNotionPage(page, settings);
 }
 
@@ -446,10 +501,10 @@ export async function updateTask(taskId: string, updates: TaskUpdatePayload): Pr
     }
   }
   
-  // Deadline type
+  // Deadline type (status property, not select)
   if (updates.hardDeadline !== undefined) {
     properties[settings.deadlineProperty] = {
-      select: { 
+      status: { 
         name: updates.hardDeadline ? settings.deadlineHardValue : settings.deadlineSoftValue 
       }
     };
@@ -532,17 +587,29 @@ export async function updateTask(taskId: string, updates: TaskUpdatePayload): Pr
   }
   
   const notionClient = getClient();
-  const page = await withRetry(
-    notionClient,
-    () => notionClient.pages.update({
-      page_id: taskId,
-      properties
-    }),
-    'Update task'
-  );
   
-  console.log('[NotionTasks] Updated task:', taskId.substring(0, 8));
-  return parseNotionPage(page, settings);
+  try {
+    const page = await withRetry(
+      notionClient,
+      () => notionClient.pages.update({
+        page_id: taskId,
+        properties
+      }),
+      'Update task'
+    );
+    
+    console.log('[NotionTasks] Updated task:', taskId.substring(0, 8));
+    return parseNotionPage(page, settings);
+  } catch (error: any) {
+    // Handle archived pages gracefully
+    if (error?.body?.message?.includes('archived') || error?.message?.includes('archived')) {
+      console.warn('[NotionTasks] Cannot update archived task:', taskId.substring(0, 8));
+      // Return null to indicate update was skipped (task is archived in Notion)
+      return null;
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 /**

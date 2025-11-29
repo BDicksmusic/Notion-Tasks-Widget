@@ -36,8 +36,10 @@ import TimeLogWidget from './components/TimeLogWidget';
 import ProjectsWidget from './components/ProjectsWidget';
 import SearchInput from './components/SearchInput';
 import ViewSelector from './components/ViewSelector';
+import ViewTabs from './components/ViewTabs';
 import ChatbotPanel from './components/ChatbotPanel';
 import ImportQueueMenu from './components/ImportQueueMenu';
+import FilterPillsToolbar from './components/FilterPillsToolbar';
 import { playWidgetSound, playUISound } from './utils/sounds';
 import {
   FilterIcon,
@@ -282,12 +284,12 @@ const App = () => {
     null
   );
   const [syncStatus, setSyncStatus] = useState<SyncStateSummary | null>(null);
-  const [dayFilter, setDayFilter] = useState<'all' | 'today' | 'week'>(() => {
+  const [dayFilter, setDayFilter] = useState<'all' | 'today' | 'tomorrow' | 'week' | 'overdue' | 'has-date' | 'no-date'>(() => {
     if (typeof window === 'undefined') return 'all';
     const stored =
       window.localStorage?.getItem('widget.dayFilter') ??
       window.localStorage?.getItem('widget.taskFilter');
-    if (stored === 'all' || stored === 'today' || stored === 'week') {
+    if (stored === 'all' || stored === 'today' || stored === 'tomorrow' || stored === 'week' || stored === 'overdue' || stored === 'has-date' || stored === 'no-date') {
       return stored;
     }
     return 'all';
@@ -329,6 +331,7 @@ const App = () => {
     const stored = window.localStorage?.getItem(GROUPING_STORAGE_KEY);
     return isGroupingOption(stored) ? stored : 'none';
   });
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
   const [statusOptions, setStatusOptions] = useState<TaskStatusOption[]>([]);
   const [orderOptions, setOrderOptions] = useState<TaskOrderOption[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -644,19 +647,65 @@ const App = () => {
     window.localStorage?.setItem(SEARCH_QUERY_STORAGE_KEY, searchQuery);
   }, [searchQuery]);
 
-  // Handle Escape to close search panel
+  // Comprehensive Escape key handler - closes UI elements in priority order
   useEffect(() => {
-    if (!searchExpanded) return;
-    
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+    const handleEscapeKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      
+      // Check if any dropdown/popover is open in the DOM
+      // These have their own Escape handlers, so let them close first
+      const hasOpenDropdown = document.querySelector(
+        '.status-select-dropdown, .date-field-popover, .filter-pill-menu, ' +
+        '.mass-edit-dropdown, .import-queue-dropdown, .view-selector-dropdown, ' +
+        '.task-status-dropdown, [role="listbox"]'
+      );
+      if (hasOpenDropdown) {
+        // Dropdown's own handler will close it - don't do anything else this press
+        return;
+      }
+      
+      // Check if user is typing in an input - blur it first
+      const activeElement = document.activeElement as HTMLElement;
+      const isInTextInput = activeElement?.matches('input, textarea, [contenteditable="true"]');
+      if (isInTextInput) {
+        activeElement.blur();
+        return;
+      }
+      
+      // Priority 1: Close search panel
+      if (searchExpanded) {
         setSearchExpanded(false);
+        return;
+      }
+      
+      // Priority 2: Close chatbot panel
+      if (chatbotOpen) {
+        setChatbotOpen(false);
+        return;
+      }
+      
+      // Priority 3: Close inspector panel
+      if (inspectorTaskId) {
+        setInspectorTaskId(null);
+        return;
+      }
+      
+      // Priority 4: Exit focus mode
+      if (focusTaskId) {
+        setFocusTaskId(null);
+        return;
+      }
+      
+      // Priority 5: Deselect task (only if we have a selection and we're in task view)
+      if (selectedTaskId && activeWidget === 'tasks') {
+        setSelectedTaskId(null);
+        return;
       }
     };
     
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [searchExpanded]);
+    window.addEventListener('keydown', handleEscapeKey);
+    return () => window.removeEventListener('keydown', handleEscapeKey);
+  }, [searchExpanded, chatbotOpen, inspectorTaskId, focusTaskId, selectedTaskId, activeWidget]);
 
   useEffect(() => {
     if (viewMode === 'capture') {
@@ -730,6 +779,21 @@ const App = () => {
     []
   );
 
+  // Handler for creating a task from project view with minimal info
+  const handleCreateTaskFromProject = useCallback(
+    async (payload: { title: string; projectId: string; status?: string }) => {
+      const fullPayload: NotionCreatePayload = {
+        title: payload.title,
+        projectId: payload.projectId,
+        status: payload.status,
+        urgent: false,
+        important: false,
+      };
+      await handleAddTask(fullPayload);
+    },
+    [handleAddTask]
+  );
+
   const handleCreateTimeLogEntry = useCallback(
     async (payload: TimeLogEntryPayload) => {
       await widgetAPI.createTimeLogEntry(payload);
@@ -757,7 +821,23 @@ const App = () => {
     if (view.activeWidget) {
       setActiveWidget(view.activeWidget);
     }
+    // Set the active view ID so ViewTabs knows which tab is active
+    setActiveViewId(view.id);
   }, []);
+
+  // Reset filters to the saved view's state
+  const handleResetFilters = useCallback(async () => {
+    if (!activeViewId) return;
+    try {
+      const views = await widgetAPI.getSavedViews();
+      const activeView = views.find(v => v.id === activeViewId);
+      if (activeView) {
+        handleApplyView(activeView);
+      }
+    } catch (error) {
+      console.error('Unable to reset filters:', error);
+    }
+  }, [activeViewId, handleApplyView]);
 
   const handleOpenSettings = useCallback(() => {
     // Always open Control Center - it's the primary settings interface
@@ -1089,16 +1169,11 @@ const App = () => {
         : undefined;
 
     const isCaptureMode = !dockState.collapsed && viewMode === 'capture';
-    const buttonText = dockState.collapsed
-      ? 'Open Widget'
-      : isCaptureMode
-        ? 'Open Full Widget'
-        : 'Collapse Widget';
     const buttonLabel = dockState.collapsed
-      ? 'Open Widget'
+      ? 'Expand widget'
       : isCaptureMode
-        ? 'Open Full Widget'
-        : 'Collapse Widget';
+        ? 'Open full widget'
+        : 'Collapse widget';
 
     // Show timer in collapsed view if session is active
     // Note: isCountingDown may not be available when this function is first defined
@@ -1179,23 +1254,39 @@ const App = () => {
         </div>
       ) : null;
 
+    // Next action indicator for collapsed view (when no active session)
+    const nextActionIndicator =
+      isCollapsedVariant && collapsedView !== 'thin' && !showTimerInCollapsed && nextAction ? (
+        <button
+          type="button"
+          className="collapsed-next-action"
+          onClick={() => {
+            setFocusTaskId(nextAction.id);
+            widgetAPI.requestExpand();
+          }}
+          title={`Next: ${nextAction.title}${nextAction.dueDate ? ` (Due: ${new Date(nextAction.dueDate).toLocaleDateString()})` : ''}`}
+        >
+          <span className="next-action-label">Next</span>
+          <span className="next-action-title">{nextAction.title}</span>
+          {nextAction.projectId && <span className="next-action-project">•</span>}
+        </button>
+      ) : null;
+
     return (
       <div
         className={wrapperClasses}
         style={collapsedPositionStyle}
       >
         <div className="bottom-controls-left">
-          {collapsedSessionIndicator}
           <button
             type="button"
-            className={`widget-toggle-button ${buttonIsInOpenState ? 'is-collapsed' : ''}`}
+            className={`icon-button collapsed-icon-btn widget-toggle-button ${buttonIsInOpenState ? 'is-collapsed' : ''}`}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               console.log('Widget toggle button clicked');
               
               if (isCaptureMode) {
-                // If in capture mode, expand to full
                 if (appPreferences?.enableSounds) {
                   playWidgetSound('expand');
                 }
@@ -1203,128 +1294,115 @@ const App = () => {
                 widgetAPI.setCaptureState(false);
                 widgetAPI.requestExpand();
               } else {
-                // Standard toggle
                 handleWidgetToggleClick(e);
               }
             }}
             aria-label={buttonLabel}
             title={buttonLabel}
           >
-            <span className="widget-toggle-text">
-              {buttonText}
-            </span>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="6" x2="21" y2="6"/>
+              <line x1="3" y1="12" x2="21" y2="12"/>
+              <line x1="3" y1="18" x2="21" y2="18"/>
+            </svg>
           </button>
-          {!isCollapsedVariant && (
-            <button
-              type="button"
-              className={`pin-toggle ${pinned ? 'is-active' : ''}`}
-              onClick={() => handlePinToggle(!pinned)}
-              aria-pressed={pinned}
-              title="Keep the widget from auto-collapsing on hover"
-            >
-              <span className="pin-icon" aria-hidden="true">
-                ✔
-              </span>
-              <span>Pin</span>
-            </button>
-          )}
           {isCollapsedVariant && collapsedView !== 'thin' && (
             <button
               type="button"
-              className={`pin-toggle collapsed-pin ${pinned ? 'is-active' : ''}`}
+              className={`icon-button collapsed-icon-btn collapsed-pin ${pinned ? 'is-active' : ''}`}
               onClick={async () => {
                 const newPinState = !pinned;
-                // Just update the pin preference without expanding
                 await handleAppPreferenceChange({ pinWidget: newPinState });
-                // If unpinning, schedule return to thin state
                 if (!newPinState) {
                   scheduleThinState();
                 } else {
-                  // If pinning, clear any pending thin timer
                   clearThinTimer();
                 }
               }}
               aria-pressed={pinned}
-              title={pinned ? 'Unpin (will return to minimal view)' : 'Pin to stay in this view'}
+              title={pinned ? 'Unpin widget' : 'Pin widget'}
             >
-              <span className="pin-icon" aria-hidden="true">
-                📌
-              </span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 17v5"/>
+                <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.76z"/>
+              </svg>
             </button>
           )}
+        </div>
+        {isCollapsedVariant && collapsedView !== 'thin' && (
+          <div className="bottom-controls-center">
+            {collapsedSessionIndicator}
+            {nextActionIndicator}
+          </div>
+        )}
+        <div className="bottom-controls-right">
           {isCollapsedVariant && collapsedView !== 'thin' && (
-            <div className="widget-switch collapsed-widget-switch">
+            <>
               <button
                 type="button"
-                className={activeWidget === 'tasks' ? 'active' : ''}
-                onClick={() => {
-                  setActiveWidget('tasks');
-                  widgetAPI.requestExpand();
-                }}
-                title="Tasks"
-              >
-                ☰
-              </button>
-              <button
-                type="button"
-                className={activeWidget === 'writing' ? 'active' : ''}
+                className={`icon-button collapsed-icon-btn ${activeWidget === 'writing' ? 'is-active' : ''}`}
                 onClick={() => {
                   setActiveWidget('writing');
                   widgetAPI.requestExpand();
                 }}
                 title="Writing"
               >
-                ✏️
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                </svg>
               </button>
               <button
                 type="button"
-                className={activeWidget === 'timelog' ? 'active' : ''}
+                className={`icon-button collapsed-icon-btn ${chatbotOpen ? 'is-active' : ''}`}
                 onClick={() => {
-                  setActiveWidget('timelog');
-                  widgetAPI.requestExpand();
+                  playUISound(chatbotOpen ? 'panel-close' : 'panel-open');
+                  setChatbotOpen(!chatbotOpen);
+                  if (!chatbotOpen) {
+                    widgetAPI.requestExpand();
+                  }
                 }}
-                title="Timelog"
+                title={chatbotOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
               >
-                ⏱
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+                  <circle cx="8" cy="14" r="1.5"/>
+                  <circle cx="16" cy="14" r="1.5"/>
+                </svg>
               </button>
-              <button
-                type="button"
-                className={activeWidget === 'projects' ? 'active' : ''}
-                onClick={() => {
-                  setActiveWidget('projects');
-                  widgetAPI.requestExpand();
-                }}
-                title="Projects"
-              >
-                📁
-              </button>
-            </div>
+            </>
           )}
-        </div>
-        <div className="bottom-controls-right">
           {!isCollapsedVariant && (
             <>
               <button
                 type="button"
-                className={`icon-button sync-button${syncStatus?.state === 'syncing' ? ' is-syncing' : ''}${syncStatus?.state === 'error' || syncStatus?.state === 'offline' ? ' has-error' : ''}`}
-                onClick={handleForceSync}
-                title={syncStatus?.message ?? 'Sync with Notion'}
-                aria-label="Sync with Notion"
+                className={`icon-button pin-toggle ${pinned ? 'is-active' : ''}`}
+                onClick={() => handlePinToggle(!pinned)}
+                aria-pressed={pinned}
+                title={pinned ? 'Unpin widget' : 'Pin widget'}
               >
-                <span className="sync-button-icon">
-                  {syncStatus?.state === 'error' || syncStatus?.state === 'offline' ? '!' : '⟳'}
-                </span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 17v5"/>
+                  <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.76z"/>
+                </svg>
               </button>
               {canUseWindowControls && (
                 <>
                   <button
                     type="button"
-                    className={`icon-button ${chatbotOpen ? 'active' : ''}`}
-                    onClick={() => setChatbotOpen(!chatbotOpen)}
+                    className={`icon-button ai-button ${chatbotOpen ? 'active' : ''}`}
+                    onClick={() => {
+                      playUISound(chatbotOpen ? 'panel-close' : 'panel-open');
+                      setChatbotOpen(!chatbotOpen);
+                    }}
                     title={chatbotOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
                     aria-label={chatbotOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
                   >
-                    🤖
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z"/>
+                      <circle cx="8" cy="14" r="1.5"/>
+                      <circle cx="16" cy="14" r="1.5"/>
+                    </svg>
                   </button>
                   {canUseWindowControls && (
                     <button
@@ -1365,26 +1443,16 @@ const App = () => {
                   setQuickAddCollapsed(false);
                   setActiveOrganizerPanel(null);
                 } else if (viewMode === 'capture') {
-                  // If in Capture Mode, closing Quick Capture should collapse the widget
                   handleWidgetToggleClick();
                 } else {
                   setQuickAddCollapsed(!quickAddCollapsed);
                 }
               }}
               aria-expanded={!quickAddCollapsed}
-              aria-label={
-                isCollapsedVariant
-                  ? 'Open Quick Capture'
-                  : quickAddCollapsed
-                    ? 'Open Quick Capture'
-                    : 'Collapse Quick Capture'
-              }
+              aria-label="Quick Capture"
+              title="Quick Capture"
             >
-              {isCollapsedVariant
-                ? 'Open Quick Capture'
-                : quickAddCollapsed
-                  ? 'Open Quick Capture'
-                  : 'Collapse Quick Capture'}
+              +
             </button>
           )}
         </div>
@@ -1470,11 +1538,39 @@ const App = () => {
           return false;
         }
       }
+      if (dayFilter === 'tomorrow') {
+        if (dueDateTimestamp === null) {
+          return false;
+        }
+        const tomorrowStart = todayTimestamp + 24 * 60 * 60 * 1000;
+        const tomorrowEnd = tomorrowStart + 24 * 60 * 60 * 1000 - 1;
+        if (dueDateTimestamp < tomorrowStart || dueDateTimestamp > tomorrowEnd) {
+          return false;
+        }
+      }
       if (dayFilter === 'week') {
         if (dueDateTimestamp === null) {
           return false;
         }
         if (dueDateTimestamp > endOfWeekTimestamp) {
+          return false;
+        }
+      }
+      if (dayFilter === 'overdue') {
+        if (dueDateTimestamp === null) {
+          return false;
+        }
+        if (dueDateTimestamp >= todayTimestamp) {
+          return false;
+        }
+      }
+      if (dayFilter === 'has-date') {
+        if (dueDateTimestamp === null) {
+          return false;
+        }
+      }
+      if (dayFilter === 'no-date') {
+        if (dueDateTimestamp !== null) {
           return false;
         }
       }
@@ -1603,9 +1699,17 @@ const App = () => {
       ? `No tasks match "${searchQuery}"`
       : dayFilter === 'today'
         ? 'No tasks due today match these filters.'
-        : dayFilter === 'week'
-          ? 'No tasks due this week match these filters.'
-          : 'No tasks match the current filters.';
+        : dayFilter === 'tomorrow'
+          ? 'No tasks due tomorrow match these filters.'
+          : dayFilter === 'week'
+            ? 'No tasks due this week match these filters.'
+            : dayFilter === 'overdue'
+              ? 'No overdue tasks match these filters.'
+              : dayFilter === 'has-date'
+                ? 'No tasks with dates match these filters.'
+                : dayFilter === 'no-date'
+                  ? 'No tasks without dates match these filters.'
+                  : 'No tasks match the current filters.';
 
   const listLoading = loading || waitingForSettings;
 
@@ -1630,6 +1734,11 @@ const App = () => {
     async (taskId: string, updates: TaskUpdatePayload, skipUndo = false) => {
       // Find the task to get its previous state
       const task = tasks.find((t) => t.id === taskId);
+      
+      // If completing a task, remember the taskId to maintain selection position
+      if ('status' in updates && updates.status === notionSettings?.completedStatus) {
+        lastCompletedTaskIdRef.current = taskId;
+      }
       
       try {
         await rawUpdateTask(taskId, updates);
@@ -1833,13 +1942,119 @@ const App = () => {
     return combined;
   }, [prioritizedTasks, activeTaskIdSet, focusTaskId]);
 
+  // Calculate "Next Action" - the most urgent task to work on
+  const nextAction = useMemo(() => {
+    const now = Date.now();
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+    const todayEndTime = todayEnd.getTime();
+    
+    // Filter to incomplete tasks only
+    const incompleteTasks = displayTasks.filter(task => 
+      task.normalizedStatus !== 'complete' && !activeTaskIdSet.has(task.id)
+    );
+    
+    if (incompleteTasks.length === 0) return null;
+    
+    // Score each task based on priority criteria
+    const scoredTasks = incompleteTasks.map(task => {
+      let score = 0;
+      const dueDate = task.dueDate ? new Date(task.dueDate).getTime() : null;
+      const deadline = task.deadlineDate ? new Date(task.deadlineDate).getTime() : null;
+      
+      // Priority 1: Overdue tasks (highest priority)
+      if (dueDate && dueDate < now) {
+        score += 1000;
+      }
+      if (deadline && deadline < now) {
+        score += 500;
+      }
+      
+      // Priority 2: Due today
+      if (dueDate && dueDate <= todayEndTime && dueDate >= now) {
+        score += 300;
+      }
+      
+      // Priority 3: Has a deadline coming up (within 3 days)
+      const threeDays = now + (3 * 24 * 60 * 60 * 1000);
+      if (deadline && deadline <= threeDays && deadline >= now) {
+        score += 200;
+      }
+      
+      // Priority 4: Part of a project (has context)
+      if (task.projectId) {
+        score += 50;
+      }
+      
+      // Priority 5: Earlier due date wins
+      if (dueDate) {
+        // Closer dates get higher scores (inverse of days away)
+        const daysAway = Math.max(0, (dueDate - now) / (24 * 60 * 60 * 1000));
+        score += Math.max(0, 100 - daysAway * 5);
+      }
+      
+      // Priority 6: Matrix priority (Do Now > Schedule > Delegate > Eliminate)
+      if (task.matrix === 'do') score += 40;
+      else if (task.matrix === 'schedule') score += 30;
+      else if (task.matrix === 'delegate') score += 20;
+      
+      return { task, score };
+    });
+    
+    // Sort by score (highest first) and return top task
+    scoredTasks.sort((a, b) => b.score - a.score);
+    return scoredTasks[0]?.task ?? null;
+  }, [displayTasks, activeTaskIdSet]);
+
+  // Track the last completed task ID to maintain selection position
+  const lastCompletedTaskIdRef = useRef<string | null>(null);
+  
   useEffect(() => {
     if (!orderedTasks.length) {
       setSelectedTaskId(null);
+      lastCompletedTaskIdRef.current = null;
       return;
     }
-    if (!selectedTaskId || !orderedTasks.some((task) => task.id === selectedTaskId)) {
-      setSelectedTaskId(orderedTasks[0].id);
+    
+    // If we just completed a task, use the stored index to select the next one
+    if (lastCompletedTaskIdRef.current !== null) {
+      const stored = lastCompletedTaskIdRef.current;
+      lastCompletedTaskIdRef.current = null; // Clear immediately to prevent re-use
+      
+      // Check if we stored an index directly (from toggleSelectedCompletion)
+      if (typeof stored === 'string' && stored.startsWith('__index__')) {
+        const rememberedIndex = parseInt(stored.replace('__index__', ''), 10);
+        if (!isNaN(rememberedIndex) && rememberedIndex >= 0) {
+          // Select the task at the remembered index (or closest valid index)
+          const targetIndex = Math.min(rememberedIndex, orderedTasks.length - 1);
+          if (targetIndex >= 0 && orderedTasks[targetIndex]) {
+            setSelectedTaskId(orderedTasks[targetIndex].id);
+            return;
+          }
+        }
+      } else {
+        // We stored a taskId (from handleUpdateTask checkbox click)
+        const completedTaskId = stored;
+        const completedIndex = orderedTasks.findIndex((t) => t.id === completedTaskId);
+        
+        if (completedIndex >= 0) {
+          // Task still in list - select it (or next if filtered)
+          const targetIndex = Math.min(completedIndex, orderedTasks.length - 1);
+          if (orderedTasks[targetIndex]) {
+            setSelectedTaskId(orderedTasks[targetIndex].id);
+            return;
+          }
+        }
+      }
+      
+      // Fallback after task completion: clear selection (don't auto-select first)
+      setSelectedTaskId(null);
+      return;
+    }
+    
+    // Clear selection if the selected task no longer exists (don't auto-select first)
+    if (selectedTaskId && !orderedTasks.some((task) => task.id === selectedTaskId)) {
+      setSelectedTaskId(null);
     }
   }, [orderedTasks, selectedTaskId]);
 
@@ -1905,11 +2120,19 @@ const App = () => {
 
   const toggleSelectedCompletion = useCallback(async () => {
     if (!selectedTask || !notionSettings?.completedStatus) return;
+    
+    // Remember the index BEFORE completing, so we can select the next task
+    const currentIndex = orderedTasks.findIndex((task) => task.id === selectedTask.id);
+    if (currentIndex >= 0) {
+      // Store the index we want to select after completion (same position)
+      lastCompletedTaskIdRef.current = `__index__${currentIndex}`;
+    }
+    
     const isComplete = selectedTask.status === notionSettings.completedStatus;
     await handleUpdateTask(selectedTask.id, {
       status: isComplete ? defaultTodoStatus || null : notionSettings.completedStatus
     });
-  }, [selectedTask, notionSettings?.completedStatus, defaultTodoStatus, handleUpdateTask]);
+  }, [selectedTask, orderedTasks, notionSettings?.completedStatus, defaultTodoStatus, handleUpdateTask]);
 
   const applyOrderToSlots = useCallback(
     async (nextIds: string[]) => {
@@ -1974,6 +2197,30 @@ const App = () => {
 
   const closeInspector = useCallback(() => {
     setInspectorTaskId(null);
+  }, []);
+
+  // Click-to-deselect: clear selection when clicking outside task rows
+  const handleClickToDeselect = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    // Don't deselect if clicking on a task row or interactive element within it
+    if (target.closest('.task-row')) {
+      return;
+    }
+    // Don't deselect if clicking on actual interactive elements
+    if (
+      target.closest('button') ||
+      target.closest('input') ||
+      target.closest('select') ||
+      target.closest('a') ||
+      target.closest('[role="button"]') ||
+      target.closest('[role="option"]') ||
+      target.closest('[role="listbox"]') ||
+      target.closest('.task-group-header')
+    ) {
+      return;
+    }
+    // Clear selection
+    setSelectedTaskId(null);
   }, []);
 
   useEffect(() => {
@@ -2372,8 +2619,16 @@ const App = () => {
   const filterSummaryParts: string[] = [];
   if (dayFilter === 'today') {
     filterSummaryParts.push('Due today');
+  } else if (dayFilter === 'tomorrow') {
+    filterSummaryParts.push('Due tomorrow');
   } else if (dayFilter === 'week') {
     filterSummaryParts.push('Due this week');
+  } else if (dayFilter === 'overdue') {
+    filterSummaryParts.push('Overdue');
+  } else if (dayFilter === 'has-date') {
+    filterSummaryParts.push('Has a date');
+  } else if (dayFilter === 'no-date') {
+    filterSummaryParts.push('No date');
   }
   if (deadlineFilter === 'hard') {
     filterSummaryParts.push('Hard deadlines');
@@ -2451,7 +2706,7 @@ const App = () => {
         className={`widget-surface ${viewMode === 'capture' ? 'is-capture-mode' : ''} ${hasActiveSession ? 'has-active-session' : ''} ${crossWindowDrag.isDragging && crossWindowDrag.sourceWindow === 'fullscreen' ? 'is-receiving-drag' : ''}`}
         onPointerEnter={handleShellPointerEnter}
         onPointerLeave={handleShellPointerLeave}
-        onClick={dockState.collapsed ? handleHandleClick : undefined}
+        onClick={dockState.collapsed ? handleHandleClick : handleClickToDeselect}
         onDragOver={(e) => {
           if (crossWindowDrag.sourceWindow === 'fullscreen') {
             e.preventDefault();
@@ -2478,6 +2733,21 @@ const App = () => {
         )}
         {viewMode === 'full' && (
           <header className="widget-header">
+          {/* View selector - standalone island */}
+          {activeWidget === 'tasks' && (
+            <div className="view-selector-island">
+              <ViewSelector
+                dayFilter={dayFilter}
+                matrixFilter={matrixFilter}
+                deadlineFilter={deadlineFilter}
+                statusFilter={statusFilter}
+                sortRules={sortRules}
+                grouping={grouping}
+                activeWidget={activeWidget}
+                onApplyView={handleApplyView}
+              />
+            </div>
+          )}
           <div className="widget-toolbar-cluster">
             {!useHoverMode && (
               <button
@@ -2500,7 +2770,7 @@ const App = () => {
                     highlighted={filterTriggerHighlighted}
                     onClick={() => toggleOrganizerPanel('filters')}
                     ariaControls="task-organizer-panel"
-                    title={filterSummary}
+                    title={filtersPanelOpen ? 'Hide filters' : 'Show filters'}
                   />
                 </div>
                 <SortButton
@@ -2531,25 +2801,10 @@ const App = () => {
                     {orderedTasks.length}
                   </span>
                 )}
-                {!searchQuery && filterSummaryParts.length > 0 && (
-                  <span className="filter-summary-text" title={filterSummary}>
-                    {filterSummary}
-                  </span>
-                )}
               </div>
             )}
           </div>
           <div className="header-actions">
-            <ViewSelector
-              dayFilter={dayFilter}
-              matrixFilter={matrixFilter}
-              deadlineFilter={deadlineFilter}
-              statusFilter={statusFilter}
-              sortRules={sortRules}
-              grouping={grouping}
-              activeWidget={activeWidget}
-              onApplyView={handleApplyView}
-            />
             <div className="widget-switch widget-tabs">
               <button
                 type="button"
@@ -2557,16 +2812,17 @@ const App = () => {
                 onClick={() => setActiveWidget('tasks')}
                 title="Tasks"
               >
-                <span className="tab-icon">☰</span>
+                <span className="tab-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="8" y1="6" x2="21" y2="6"/>
+                    <line x1="8" y1="12" x2="21" y2="12"/>
+                    <line x1="8" y1="18" x2="21" y2="18"/>
+                    <line x1="3" y1="6" x2="3.01" y2="6"/>
+                    <line x1="3" y1="12" x2="3.01" y2="12"/>
+                    <line x1="3" y1="18" x2="3.01" y2="18"/>
+                  </svg>
+                </span>
                 <span className="tab-count">{focusTaskId ? 1 : displayTasks.length}</span>
-              </button>
-              <button
-                type="button"
-                className={activeWidget === 'writing' ? 'active' : ''}
-                onClick={() => setActiveWidget('writing')}
-                title="Writing"
-              >
-                <span className="tab-icon">✏️</span>
               </button>
               <button
                 type="button"
@@ -2574,7 +2830,12 @@ const App = () => {
                 onClick={() => setActiveWidget('timelog')}
                 title="Timelog"
               >
-                <span className="tab-icon">⏱</span>
+                <span className="tab-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                  </svg>
+                </span>
               </button>
               <button
                 type="button"
@@ -2582,10 +2843,12 @@ const App = () => {
                 onClick={() => setActiveWidget('projects')}
                 title="Projects"
               >
-                <span className="tab-icon">📁</span>
-                {projectCount > 0 && (
-                  <span className="tab-count">{projectCount}</span>
-                )}
+                <span className="tab-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </span>
+                <span className="tab-count">{projectCount}</span>
               </button>
             </div>
             {focusTaskId && (
@@ -2597,17 +2860,61 @@ const App = () => {
                 Exit focus
               </button>
             )}
-            <ImportQueueMenu onImportStarted={() => fetchTasks()} />
-            <button
-              type="button"
-              className="gear-button"
-              onClick={handleOpenSettings}
-              title="Open Control Center"
-            >
-              ⚙️
-            </button>
+            <div className="header-actions-right">
+              <ImportQueueMenu onImportStarted={() => fetchTasks()} />
+              <button
+                type="button"
+                className="icon-button"
+                onClick={async () => {
+                  try {
+                    if (typeof widgetAPI.openFullScreenWindow === 'function') {
+                      await widgetAPI.openFullScreenWindow();
+                    }
+                  } catch (error) {
+                    console.error('Failed to open full-screen window:', error);
+                  }
+                }}
+                title="Open full-screen view"
+                aria-label="Open full-screen view"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3"/>
+                  <path d="M21 8V5a2 2 0 0 0-2-2h-3"/>
+                  <path d="M3 16v3a2 2 0 0 0 2 2h3"/>
+                  <path d="M16 21h3a2 2 0 0 0 2-2v-3"/>
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="gear-button"
+                onClick={handleOpenSettings}
+                title="Open Control Center"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </header>
+        )}
+        
+        {/* View tabs - Notion-style saved view tabs */}
+        {viewMode === 'full' && activeWidget === 'tasks' && (
+          <ViewTabs
+            dayFilter={dayFilter}
+            matrixFilter={matrixFilter}
+            deadlineFilter={deadlineFilter}
+            statusFilter={statusFilter}
+            sortRules={sortRules}
+            grouping={grouping}
+            activeWidget={activeWidget}
+            activeViewId={activeViewId}
+            onApplyView={handleApplyView}
+            onActiveViewChange={setActiveViewId}
+            onResetFilters={handleResetFilters}
+          />
         )}
         
         {/* Expandable search panel */}
@@ -2642,125 +2949,18 @@ const App = () => {
                 >
                   {filtersPanelOpen && (
                     <div className="task-organizer-pane">
-                    <div className="task-organizer-section">
-                      <div className="filter-row">
-                        <div className="filter-cell align-start">
-                          <div
-                            className="widget-switch task-filter-switch day-filter-switch"
-                            role="group"
-                            aria-label="Day filter"
-                          >
-                            <button
-                              type="button"
-                              data-day="all"
-                              className={dayFilter === 'all' ? 'active' : ''}
-                              aria-pressed={dayFilter === 'all'}
-                              onClick={() => setDayFilter('all')}
-                            >
-                              All
-                            </button>
-                            <button
-                              type="button"
-                              data-day="today"
-                              className={dayFilter === 'today' ? 'active' : ''}
-                              aria-pressed={dayFilter === 'today'}
-                              onClick={() => setDayFilter('today')}
-                            >
-                              Today
-                            </button>
-                            <button
-                              type="button"
-                              data-day="week"
-                              className={dayFilter === 'week' ? 'active' : ''}
-                              aria-pressed={dayFilter === 'week'}
-                              onClick={() => setDayFilter('week')}
-                            >
-                              Week
-                            </button>
-                          </div>
-                        </div>
-                        <div className="filter-cell align-end">
-                          <div
-                            className="widget-switch task-filter-switch status-switch"
-                            role="group"
-                            aria-label="Status filter"
-                          >
-                            {STATUS_FILTER_BUTTONS.map((option) => {
-                              const isActive = statusFilter === option.value;
-                              return (
-                                <button
-                                  key={option.value}
-                                  type="button"
-                                  data-status={toFilterSlug(option.value)}
-                                  className={isActive ? 'active' : ''}
-                                  aria-pressed={isActive}
-                                  onClick={() =>
-                                    setStatusFilter((prev) =>
-                                      prev === option.value ? 'all' : option.value
-                                    )
-                                  }
-                                  title={option.label}
-                                  aria-label={option.label}
-                                >
-                                  {option.emoji ?? option.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="filter-row">
-                        <div className="filter-cell align-start">
-                          <div
-                            className="widget-switch task-filter-switch deadline-filter-switch"
-                            role="group"
-                            aria-label="Deadline filter"
-                          >
-                            <button
-                              type="button"
-                              data-deadline="all"
-                              className={deadlineFilter === 'all' ? 'active' : ''}
-                              aria-pressed={deadlineFilter === 'all'}
-                              onClick={() => setDeadlineFilter('all')}
-                            >
-                              All
-                            </button>
-                            <button
-                              type="button"
-                              data-deadline="hard"
-                              className={deadlineFilter === 'hard' ? 'active' : ''}
-                              aria-pressed={deadlineFilter === 'hard'}
-                              onClick={() => setDeadlineFilter('hard')}
-                            >
-                              Hard only
-                            </button>
-                          </div>
-                        </div>
-                        <div className="filter-cell align-end">
-                          <div
-                            className="widget-switch task-filter-switch matrix-switch"
-                            role="group"
-                            aria-label="Matrix filter"
-                          >
-                            {MATRIX_FILTER_BUTTONS.map((option) => (
-                              <button
-                                key={option.id}
-                                type="button"
-                                data-matrix={toFilterSlug(option.id)}
-                                className={
-                                  matrixFilter === option.id ? 'active' : ''
-                                }
-                                aria-pressed={matrixFilter === option.id}
-                                onClick={() => setMatrixFilter(option.id)}
-                                title={option.description}
-                                aria-label={option.description}
-                              >
-                                {option.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
+                      <FilterPillsToolbar
+                        dayFilter={dayFilter}
+                        deadlineFilter={deadlineFilter}
+                        statusFilter={statusFilter}
+                        matrixFilter={matrixFilter}
+                        onDayFilterChange={setDayFilter}
+                        onDeadlineFilterChange={setDeadlineFilter}
+                        onStatusFilterChange={setStatusFilter}
+                        onMatrixFilterChange={setMatrixFilter}
+                        sortCount={sortRules.length}
+                        onSortClick={() => setActiveOrganizerPanel('sort')}
+                      />
                       <div className="task-organizer-section-footer">
                         <p className="task-organizer-section-title">
                           Filters
@@ -2780,8 +2980,7 @@ const App = () => {
                         </div>
                       </div>
                     </div>
-                  </div>
-                    )}
+                  )}
                   {sortPanelOpen && (
                     <div className="task-organizer-pane">
                       <SortPanel
@@ -2894,6 +3093,7 @@ const App = () => {
                   }}
                   collapseTimeColumn={appPreferences?.collapseTimeColumn}
                   collapseProjectColumn={appPreferences?.collapseProjectColumn}
+                  autoExpandProjectRow={appPreferences?.autoExpandProjectRow}
                 />
               )}
               {/* Task Queue Panel - shows when there are queued tasks */}
@@ -3030,6 +3230,7 @@ const App = () => {
               onCreateWritingEntry={handleCreateWritingEntry}
               statusOptions={statusOptions}
               onUpdateTask={handleUpdateTask}
+              onCreateTask={handleCreateTaskFromProject}
             />
             {!dockState.collapsed && renderBottomControls('inline')}
           </section>
@@ -3119,3 +3320,4 @@ const App = () => {
 };
 
 export default App;
+

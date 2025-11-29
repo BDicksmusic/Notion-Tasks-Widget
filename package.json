@@ -28,6 +28,7 @@
     "start": "cross-env NODE_ENV=production electron .",
     "start:reset": "cross-env NODE_ENV=production electron . --reset-import",
     "mcp:notion": "tsx src/mcp/notionServer.ts",
+    "deploy:worker": "cd cloudflare-worker && npx wrangler deploy",
     "typecheck": "tsc --noEmit --project tsconfig.renderer.json",
     "generate-icons": "node scripts/generate-icons.js",
     "db:prepare-backup": "tsx scripts/create-backup-db.ts",

@@ -55,6 +55,7 @@ import {
   mapStatusToFilterValue
 } from '@shared/statusFilters';
 import { platformBridge } from '@shared/platform';
+import { playUISound } from '../utils/sounds';
 import {
   type SortRule,
   type GroupingOption,
@@ -403,6 +404,8 @@ const FullScreenApp = () => {
     useState(false);
   const [notesPanelOpen, setNotesPanelOpen] = useState(false);
   const [chatbotOpen, setChatbotOpen] = useState(false);
+  const [chatbotExpanded, setChatbotExpanded] = useState(false);
+  const [quickAddMode, setQuickAddMode] = useState<'task' | 'capture'>('task');
   const [workspaceNotesCollapsed, setWorkspaceNotesCollapsed] = useState(true);
   const [workspaceLinksCollapsed, setWorkspaceLinksCollapsed] = useState(true);
   const [workspaceShowCompleted, setWorkspaceShowCompleted] = useState(false);
@@ -1614,6 +1617,23 @@ const FullScreenApp = () => {
         
         // Escape - Close panels, exit modes
         if (event.key === 'Escape') {
+          // Check if any dropdown/popover is open - let their handlers close them first
+          const hasOpenDropdown = document.querySelector(
+            '.status-select-dropdown, .date-field-popover, .filter-pill-menu, ' +
+            '.mass-edit-dropdown, .import-queue-dropdown, .view-selector-dropdown, ' +
+            '.task-status-dropdown, [role="listbox"]'
+          );
+          if (hasOpenDropdown) {
+            return; // Let dropdown's own handler close it
+          }
+          
+          // Blur any focused input first
+          const activeElement = document.activeElement as HTMLElement;
+          if (activeElement?.matches('input, textarea, [contenteditable="true"]')) {
+            activeElement.blur();
+            return;
+          }
+          
           // Close notes panel first
           if (notesPanelOpen) {
             event.preventDefault();
@@ -1636,6 +1656,12 @@ const FullScreenApp = () => {
           if (projectWorkspaceMode) {
             event.preventDefault();
             setProjectWorkspaceMode(false);
+            return;
+          }
+          // Clear task selection
+          if (selectedTask) {
+            event.preventDefault();
+            setSelectedTask(null);
             return;
           }
         }
@@ -1742,6 +1768,21 @@ const FullScreenApp = () => {
       }
     },
     []
+  );
+
+  // Handler for creating a task from project view with minimal info
+  const handleCreateTaskFromProject = useCallback(
+    async (payload: { title: string; projectId: string; status?: string }) => {
+      const fullPayload: NotionCreatePayload = {
+        title: payload.title,
+        projectId: payload.projectId,
+        status: payload.status,
+        urgent: false,
+        important: false,
+      };
+      await handleAddTask(fullPayload);
+    },
+    [handleAddTask]
   );
 
   const handleCreateWritingEntry = useCallback(
@@ -3104,6 +3145,7 @@ const FullScreenApp = () => {
                 projects={projects}
                 collapseTimeColumn={appPreferences?.collapseTimeColumn}
                 collapseProjectColumn={appPreferences?.collapseProjectColumn}
+                autoExpandProjectRow={appPreferences?.autoExpandProjectRow}
               />
             </div>
           </div>
@@ -3308,6 +3350,7 @@ const FullScreenApp = () => {
                 projects={projects}
                 collapseTimeColumn={appPreferences?.collapseTimeColumn}
                 collapseProjectColumn={appPreferences?.collapseProjectColumn}
+                autoExpandProjectRow={appPreferences?.autoExpandProjectRow}
               />
             </div>
           </section>
@@ -4404,6 +4447,7 @@ const FullScreenApp = () => {
               projects={projects}
               collapseTimeColumn={appPreferences?.collapseTimeColumn}
               collapseProjectColumn={appPreferences?.collapseProjectColumn}
+              autoExpandProjectRow={appPreferences?.autoExpandProjectRow}
             />
           )}
         </div>
@@ -4461,7 +4505,9 @@ const FullScreenApp = () => {
                 if (viewMode === item.id) {
                   // Clicking active item toggles header visibility
                   setHeaderCollapsed(!headerCollapsed);
+                  playUISound('click');
                 } else {
+                  playUISound('tab-switch');
                   setViewMode(item.id);
                 }
               }}
@@ -4482,7 +4528,10 @@ const FullScreenApp = () => {
         <button
           type="button"
           className="header-show-btn"
-          onClick={() => setHeaderCollapsed(false)}
+          onClick={() => {
+            playUISound('click');
+            setHeaderCollapsed(false);
+          }}
           title="Show header"
         >
           <span className="header-show-icon">▼</span>
@@ -4921,6 +4970,7 @@ const FullScreenApp = () => {
                   projects={projects}
                   collapseTimeColumn={appPreferences?.collapseTimeColumn}
                   collapseProjectColumn={appPreferences?.collapseProjectColumn}
+                  autoExpandProjectRow={appPreferences?.autoExpandProjectRow}
                 />
               </div>
             </section>
@@ -4976,29 +5026,69 @@ const FullScreenApp = () => {
               </div>
             )}
           </div>
-          {/* Bottom Bar: Quick Add + Capture Note */}
+          {/* Bottom Bar: Quick Add with Task/Capture tabs + AI Chat */}
           <div className="tasks-bottom-bar">
             <div className={`dashboard-quick-add-bar ${quickAddCollapsed ? 'is-collapsed' : ''}`}>
-              <button
-                type="button"
-                className="quick-add-toggle"
-                onClick={() => setQuickAddCollapsed(!quickAddCollapsed)}
-              >
-                <span className="quick-add-toggle-icon">{quickAddCollapsed ? '＋' : '−'}</span>
-                <span className="quick-add-toggle-label">{quickAddCollapsed ? 'Quick Add' : 'Collapse'}</span>
-              </button>
+              <div className="quick-add-header">
+                <button
+                  type="button"
+                  className="quick-add-toggle"
+                  onClick={() => {
+                    playUISound(quickAddCollapsed ? 'panel-open' : 'panel-close');
+                    setQuickAddCollapsed(!quickAddCollapsed);
+                  }}
+                >
+                  <span className="quick-add-toggle-icon">{quickAddCollapsed ? '＋' : '−'}</span>
+                  <span className="quick-add-toggle-label">{quickAddCollapsed ? 'Quick Add' : 'Collapse'}</span>
+                </button>
+                {!quickAddCollapsed && (
+                  <div className="quick-add-tabs">
+                    <button
+                      type="button"
+                      className={`quick-add-tab ${quickAddMode === 'task' ? 'is-active' : ''}`}
+                      onClick={() => {
+                        playUISound('tab-switch');
+                        setQuickAddMode('task');
+                      }}
+                    >
+                      <span className="tab-icon">✓</span>
+                      <span className="tab-label">Task</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={`quick-add-tab ${quickAddMode === 'capture' ? 'is-active' : ''}`}
+                      onClick={() => {
+                        playUISound('tab-switch');
+                        setQuickAddMode('capture');
+                      }}
+                    >
+                      <span className="tab-icon">📝</span>
+                      <span className="tab-label">Capture</span>
+                    </button>
+                  </div>
+                )}
+              </div>
               {!quickAddCollapsed && (
                 <div className="quick-add-content">
-              <QuickAdd
-                onAdd={handleAddTask}
-                statusOptions={statusOptions}
-                manualStatuses={manualStatuses}
-                completedStatus={notionSettings?.completedStatus}
-                    isCollapsed={false}
-                    onCollapseToggle={() => setQuickAddCollapsed(true)}
-                    projects={projects}
-                    enableDragToPlace={true}
-                  />
+                  {quickAddMode === 'task' ? (
+                    <QuickAdd
+                      onAdd={handleAddTask}
+                      statusOptions={statusOptions}
+                      manualStatuses={manualStatuses}
+                      completedStatus={notionSettings?.completedStatus}
+                      isCollapsed={false}
+                      onCollapseToggle={() => setQuickAddCollapsed(true)}
+                      projects={projects}
+                      enableDragToPlace={true}
+                    />
+                  ) : (
+                    <div className="quick-capture-content">
+                      <WritingWidget
+                        settings={writingSettings}
+                        onCreate={handleCreateWritingEntry}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -5006,54 +5096,34 @@ const FullScreenApp = () => {
             <button
               type="button"
               className={`capture-note-toggle ${chatbotOpen ? 'is-active' : ''}`}
-              onClick={() => setChatbotOpen(!chatbotOpen)}
+              onClick={() => {
+                playUISound(chatbotOpen ? 'panel-close' : 'panel-open');
+                setChatbotOpen(!chatbotOpen);
+              }}
               title="AI Chat Assistant"
             >
               <span className="capture-note-icon">🤖</span>
               <span className="capture-note-label">{chatbotOpen ? 'Close AI' : 'AI Chat'}</span>
             </button>
-            
-            <button
-              type="button"
-              className={`capture-note-toggle ${notesPanelOpen ? 'is-active' : ''}`}
-              onClick={() => setNotesPanelOpen(!notesPanelOpen)}
-            >
-              <span className="capture-note-icon">📝</span>
-              <span className="capture-note-label">{notesPanelOpen ? 'Close Notes' : 'Capture Note'}</span>
-            </button>
           </div>
           
           {/* AI Chat Panel */}
           {chatbotOpen && (
-            <div className="fullscreen-chatbot-overlay">
+            <div className={`fullscreen-chatbot-overlay ${chatbotExpanded ? 'is-expanded' : ''}`}>
               <ChatbotPanel
                 tasks={tasks}
                 projects={projects}
                 onTasksUpdated={() => void fetchTasks()}
-                onClose={() => setChatbotOpen(false)}
+                onClose={() => {
+                  setChatbotOpen(false);
+                  setChatbotExpanded(false);
+                }}
+                isExpanded={chatbotExpanded}
+                onToggleExpand={() => setChatbotExpanded(!chatbotExpanded)}
               />
             </div>
           )}
           
-          {/* Slide-in Notes Panel */}
-          <aside className={`notes-slide-panel ${notesPanelOpen ? 'is-open' : ''}`}>
-            <div className="notes-panel-header">
-              <h4>📝 Capture Notes</h4>
-              <button
-                type="button"
-                className="notes-panel-close"
-                onClick={() => setNotesPanelOpen(false)}
-              >
-                ✕
-              </button>
-            </div>
-            <div className="notes-panel-content">
-              <WritingWidget
-                settings={writingSettings}
-                onCreate={handleCreateWritingEntry}
-              />
-            </div>
-          </aside>
         </div>
       ) : viewMode === 'calendar' ? (
         /* Master Calendar View */
@@ -6382,29 +6452,69 @@ const FullScreenApp = () => {
                 </div>
               </div>
               
-              {/* Bottom Bar: Quick Add (left) + Capture Note (right) */}
+              {/* Bottom Bar: Quick Add with Task/Capture tabs + AI Chat */}
               <div className="projects-bottom-bar">
                 <div className={`dashboard-quick-add-bar ${quickAddCollapsed ? 'is-collapsed' : ''}`}>
-                  <button
-                    type="button"
-                    className="quick-add-toggle"
-                    onClick={() => setQuickAddCollapsed(!quickAddCollapsed)}
-                  >
-                    <span className="quick-add-toggle-icon">{quickAddCollapsed ? '＋' : '−'}</span>
-                    <span className="quick-add-toggle-label">{quickAddCollapsed ? 'Quick Add' : 'Collapse'}</span>
-                  </button>
+                  <div className="quick-add-header">
+                    <button
+                      type="button"
+                      className="quick-add-toggle"
+                      onClick={() => {
+                        playUISound(quickAddCollapsed ? 'panel-open' : 'panel-close');
+                        setQuickAddCollapsed(!quickAddCollapsed);
+                      }}
+                    >
+                      <span className="quick-add-toggle-icon">{quickAddCollapsed ? '＋' : '−'}</span>
+                      <span className="quick-add-toggle-label">{quickAddCollapsed ? 'Quick Add' : 'Collapse'}</span>
+                    </button>
+                    {!quickAddCollapsed && (
+                      <div className="quick-add-tabs">
+                        <button
+                          type="button"
+                          className={`quick-add-tab ${quickAddMode === 'task' ? 'is-active' : ''}`}
+                          onClick={() => {
+                            playUISound('tab-switch');
+                            setQuickAddMode('task');
+                          }}
+                        >
+                          <span className="tab-icon">✓</span>
+                          <span className="tab-label">Task</span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`quick-add-tab ${quickAddMode === 'capture' ? 'is-active' : ''}`}
+                          onClick={() => {
+                            playUISound('tab-switch');
+                            setQuickAddMode('capture');
+                          }}
+                        >
+                          <span className="tab-icon">📝</span>
+                          <span className="tab-label">Capture</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   {!quickAddCollapsed && (
                     <div className="quick-add-content">
-                      <QuickAdd
-                        onAdd={handleAddTask}
-                        statusOptions={statusOptions}
-                        manualStatuses={manualStatuses}
-                        completedStatus={notionSettings?.completedStatus}
-                        isCollapsed={false}
-                        onCollapseToggle={() => setQuickAddCollapsed(true)}
-                        projects={projects}
-                        enableDragToPlace={false}
-                      />
+                      {quickAddMode === 'task' ? (
+                        <QuickAdd
+                          onAdd={handleAddTask}
+                          statusOptions={statusOptions}
+                          manualStatuses={manualStatuses}
+                          completedStatus={notionSettings?.completedStatus}
+                          isCollapsed={false}
+                          onCollapseToggle={() => setQuickAddCollapsed(true)}
+                          projects={projects}
+                          enableDragToPlace={false}
+                        />
+                      ) : (
+                        <div className="quick-capture-content">
+                          <WritingWidget
+                            settings={writingSettings}
+                            onCreate={handleCreateWritingEntry}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -6412,55 +6522,34 @@ const FullScreenApp = () => {
                 <button
                   type="button"
                   className={`capture-note-toggle ${chatbotOpen ? 'is-active' : ''}`}
-                  onClick={() => setChatbotOpen(!chatbotOpen)}
+                  onClick={() => {
+                    playUISound(chatbotOpen ? 'panel-close' : 'panel-open');
+                    setChatbotOpen(!chatbotOpen);
+                  }}
                   title="AI Chat Assistant"
                 >
                   <span className="capture-note-icon">🤖</span>
                   <span className="capture-note-label">{chatbotOpen ? 'Close AI' : 'AI Chat'}</span>
-                </button>
-                
-                <button
-                  type="button"
-                  className={`capture-note-toggle ${notesPanelOpen ? 'is-active' : ''}`}
-                  onClick={() => setNotesPanelOpen(!notesPanelOpen)}
-                >
-                  <span className="capture-note-icon">📝</span>
-                  <span className="capture-note-label">{notesPanelOpen ? 'Close Notes' : 'Capture Note'}</span>
                 </button>
               </div>
             </div>
             
             {/* AI Chat Panel for Projects View */}
             {chatbotOpen && (
-              <div className="fullscreen-chatbot-overlay">
+              <div className={`fullscreen-chatbot-overlay ${chatbotExpanded ? 'is-expanded' : ''}`}>
                 <ChatbotPanel
                   tasks={tasks}
                   projects={projects}
                   onTasksUpdated={() => void fetchTasks()}
-                  onClose={() => setChatbotOpen(false)}
+                  onClose={() => {
+                    setChatbotOpen(false);
+                    setChatbotExpanded(false);
+                  }}
+                  isExpanded={chatbotExpanded}
+                  onToggleExpand={() => setChatbotExpanded(!chatbotExpanded)}
                 />
               </div>
             )}
-            
-            {/* Slide-in Notes Panel from Right */}
-            <aside className={`notes-slide-panel ${notesPanelOpen ? 'is-open' : ''}`}>
-              <div className="notes-panel-header">
-                <h4>📝 Capture Notes</h4>
-                <button
-                  type="button"
-                  className="notes-panel-close"
-                  onClick={() => setNotesPanelOpen(false)}
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="notes-panel-content">
-          <WritingWidget
-            settings={writingSettings}
-            onCreate={handleCreateWritingEntry}
-          />
-              </div>
-            </aside>
           </div>
           );
         })()

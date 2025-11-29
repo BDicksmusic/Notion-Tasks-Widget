@@ -116,6 +116,8 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
   }, [syncLog]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    
     const handleClickOutside = (event: MouseEvent) => {
       if (
         menuRef.current &&
@@ -126,11 +128,19 @@ export const ImportQueueMenu: React.FC<ImportQueueMenuProps> = ({
         setIsOpen(false);
       }
     };
+    
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
 
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, [isOpen]);
 
   const handleSync = async (type: ImportType) => {

@@ -17,9 +17,11 @@ try {
   // Can't even write to log - really bad
 }
 
-// Suppress all stdout/stderr when not running in a terminal
-if (!process.stdout?.isTTY) {
-  // Create no-op write streams to prevent EPIPE errors
+// Suppress all stdout/stderr when not running in a terminal AND not in dev mode
+// In dev mode, we need to see logs for debugging!
+const _isDev = process.env.NODE_ENV === 'development' || process.env.VITE_DEV_SERVER_URL;
+if (!process.stdout?.isTTY && !_isDev) {
+  // Create no-op write streams to prevent EPIPE errors in production
   const nullWrite = () => true;
   
   if (process.stdout) {
@@ -152,6 +154,7 @@ import {
   getTaskCount,
   buildSubtaskRelationships,
   getSubtasks,
+  upsertRemoteTask,
   // Trash management
   listTrashedTasks,
   countTrashedTasks,
@@ -541,6 +544,9 @@ const createSettingsWindow = async () => {
       const url = `${process.env.VITE_DEV_SERVER_URL}/settings.html`;
       console.log('Loading settings URL:', url);
       await settingsWindow.loadURL(url);
+      // Open DevTools immediately after loading
+      console.log('Opening DevTools for settings window (after load)');
+      settingsWindow.webContents.openDevTools({ mode: 'detach' });
     } else {
       const filePath = path.join(rendererDist, 'settings.html');
       console.log('Loading settings file:', filePath);
@@ -554,6 +560,10 @@ const createSettingsWindow = async () => {
   settingsWindow.once('ready-to-show', () => {
     console.log('settingsWindow ready-to-show');
     settingsWindow?.show();
+    // Auto-open DevTools in dev mode to debug blank page issues
+    if (isDev) {
+      settingsWindow?.webContents.openDevTools({ mode: 'detach' });
+    }
   });
   
   // Fallback show
@@ -561,6 +571,11 @@ const createSettingsWindow = async () => {
     if (settingsWindow && !settingsWindow.isVisible()) {
         console.log('Force showing settingsWindow');
         settingsWindow.show();
+    }
+    // Also open DevTools in fallback to ensure we can debug
+    if (isDev && settingsWindow) {
+      console.log('Opening DevTools for settingsWindow');
+      settingsWindow.webContents.openDevTools({ mode: 'detach' });
     }
   }, 1000);
 
@@ -1023,8 +1038,16 @@ app.whenReady().then(async () => {
   }
 
   // Register global shortcut for full-screen window (Ctrl+F or Cmd+F)
+  // Only triggers when one of our windows is focused
   const fullscreenShortcut = process.platform === 'darwin' ? 'Command+F' : 'Control+F';
   globalShortcut.register(fullscreenShortcut, async () => {
+    // Check if any of our windows are focused before handling the shortcut
+    const focusedWindow = BrowserWindow.getFocusedWindow();
+    if (!focusedWindow) {
+      // No window focused - don't intercept the shortcut
+      return;
+    }
+    
     try {
       await createFullScreenWindow();
     } catch (error) {
@@ -1093,14 +1116,42 @@ ipcMain.handle('tasks:getSubtasks', async (_event, parentTaskId: string) => {
   return getSubtasks(parentTaskId);
 });
 ipcMain.handle('tasks:add', async (_event, payload: NotionCreatePayload) => {
-  const task = createLocalTask(payload);
-  // Immediately push to Notion using direct API
-  if (isNotionConfigured()) {
-    createNotionTask(payload).catch((err) => {
-      console.error('[IPC] tasks:add - Notion push failed:', err);
-    });
+  console.log('[IPC] tasks:add called with:', payload.title);
+  
+  // Step 1: Create locally first for immediate UI response
+  let localTask;
+  try {
+    localTask = createLocalTask(payload);
+    console.log('[IPC] tasks:add - Created locally:', localTask.id);
+  } catch (localErr: any) {
+    console.error('[IPC] tasks:add - Local create failed:', localErr?.message || localErr);
+    throw localErr;
   }
-  return task;
+  
+  // Step 2: Push to Notion (await to see errors clearly)
+  if (isNotionConfigured()) {
+    console.log('[IPC] tasks:add - Notion configured, pushing...');
+    try {
+      const notionTask = await createNotionTask(payload);
+      if (notionTask) {
+        console.log('[IPC] tasks:add - Synced to Notion:', notionTask.id);
+        upsertRemoteTask(
+          { ...localTask, ...notionTask },
+          notionTask.id,
+          new Date().toISOString()
+        );
+      } else {
+        console.warn('[IPC] tasks:add - Notion returned null');
+      }
+    } catch (notionErr: any) {
+      console.error('[IPC] tasks:add - Notion push failed:', notionErr?.message || notionErr);
+      // Task remains local-only
+    }
+  } else {
+    console.log('[IPC] tasks:add - Notion not configured');
+  }
+  
+  return localTask;
 });
 ipcMain.handle(
   'tasks:update',
@@ -1624,6 +1675,36 @@ ipcMain.handle('sync:force', async () => {
     console.error('[IPC] sync:force failed:', error);
     return { state: 'error', lastSync: null, error: String(error) };
   }
+});
+
+// ============================================================================
+// WEBHOOK REAL-TIME SYNC
+// ============================================================================
+ipcMain.handle('webhook:register', async () => {
+  const { registerWebhook } = await import('./services/webhookService');
+  return registerWebhook();
+});
+
+ipcMain.handle('webhook:enable', async () => {
+  const { startWebhookPolling, getWebhookStatus } = await import('./services/webhookService');
+  startWebhookPolling(5000); // Poll every 5 seconds
+  return getWebhookStatus();
+});
+
+ipcMain.handle('webhook:disable', async () => {
+  const { disableWebhook } = await import('./services/webhookService');
+  await disableWebhook();
+  return { enabled: false };
+});
+
+ipcMain.handle('webhook:status', async () => {
+  const { getWebhookStatus } = await import('./services/webhookService');
+  return getWebhookStatus();
+});
+
+ipcMain.handle('webhook:getVerificationToken', async () => {
+  const { getVerificationToken } = await import('./services/webhookService');
+  return getVerificationToken();
 });
 
 ipcMain.handle('sync:timestamps', () => ({

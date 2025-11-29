@@ -8,6 +8,7 @@ import RichBodyEditor, {
   valueToMarkdownBlocks,
   valueToPlainText
 } from './RichBodyEditor';
+import { playUISound } from '../utils/sounds';
 
 interface Props {
   settings: WritingSettings | null;
@@ -58,6 +59,7 @@ const WritingWidget = ({ settings, onCreate }: Props) => {
     const safeTitle = title.trim();
     const safeContent = valueToPlainText(bodyValueRef.current);
     if (!safeTitle || !safeContent) {
+      playUISound('error');
       setFeedback({
         kind: 'error',
         message: 'Title and content are required'
@@ -80,12 +82,14 @@ const WritingWidget = ({ settings, onCreate }: Props) => {
       setSubmitting(true);
       setFeedback(null);
       await onCreate(payload);
+      playUISound('success');
       setFeedback({
         kind: 'success',
         message: 'Writing entry captured in Notion'
       });
       resetForm();
     } catch (err) {
+      playUISound('error');
       setFeedback({
         kind: 'error',
         message:

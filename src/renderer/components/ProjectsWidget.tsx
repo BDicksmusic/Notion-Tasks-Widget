@@ -31,6 +31,7 @@ export interface ProjectsWidgetProps {
   onCreateWritingEntry?: (payload: WritingEntryPayload) => Promise<void>;
   statusOptions?: Array<{ id: string; name: string }>;
   onUpdateTask?: (taskId: string, updates: TaskUpdatePayload) => Promise<void>;
+  onCreateTask?: (payload: { title: string; projectId: string; status?: string }) => Promise<void>;
 }
 
 // Widget only uses list view (board/gantt are in fullscreen)
@@ -58,7 +59,8 @@ const ProjectsWidget: FC<ProjectsWidgetProps> = ({
   onProjectCountChange,
   onCreateWritingEntry,
   statusOptions = [],
-  onUpdateTask
+  onUpdateTask,
+  onCreateTask
 }) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -443,6 +445,7 @@ const ProjectsWidget: FC<ProjectsWidgetProps> = ({
           onToggleDateEditor={() => setEditDatesProjectId(
             editDatesProjectId === insight.project.id ? null : insight.project.id
           )}
+          onCreateTask={onCreateTask}
         />
       ))}
     </div>
@@ -513,6 +516,7 @@ interface ProjectCardProps {
   onUpdateTask?: (taskId: string, updates: TaskUpdatePayload) => Promise<void>;
   showDateEditor: boolean;
   onToggleDateEditor: () => void;
+  onCreateTask?: (payload: { title: string; projectId: string; status?: string }) => Promise<void>;
 }
 
 const ProjectCard: FC<ProjectCardProps> = ({
@@ -533,8 +537,13 @@ const ProjectCard: FC<ProjectCardProps> = ({
   statusOptions,
   onUpdateTask,
   showDateEditor,
-  onToggleDateEditor
+  onToggleDateEditor,
+  onCreateTask
 }) => {
+  // State for inline task creation
+  const [showAddTask, setShowAddTask] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [isAddingTask, setIsAddingTask] = useState(false);
   const {
     project,
     openTasks,
@@ -853,136 +862,120 @@ const ProjectCard: FC<ProjectCardProps> = ({
                     const rankA = matrixOrder.indexOf(getMatrixCategory(a));
                     const rankB = matrixOrder.indexOf(getMatrixCategory(b));
                     return rankA - rankB;
-                  }).map((task) => {
-                    const matrixCategory = getMatrixCategory(task);
-                    const matrixInfo = MATRIX_LABELS[matrixCategory] || { label: '', class: '' };
-                    const isHovered = hoveredTaskId === task.id;
-                    const isSelected = selectedTaskId === task.id;
-                    const dueDateLabel = task.dueDate ? formatDate(new Date(task.dueDate)) : null;
-                    const deadlineEmoji = task.dueDate ? (task.hardDeadline ? '🔴' : '🔵') : null;
-                    
-                    return (
-                      <div
-                        key={task.id}
-                        className={`project-task-item ${isHovered ? 'is-hovered' : ''} ${isSelected ? 'is-selected' : ''}`}
-                        onMouseEnter={() => onHoverTask(task.id)}
-                        onMouseLeave={() => onHoverTask(null)}
-                        onDoubleClick={() => onTaskDoubleClick(task)}
-                      >
-                        <button
-                          type="button"
-                          className="task-checkbox-btn"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleTaskComplete(task);
-                          }}
-                          title="Mark as complete"
-                        >
-                          ○
-                        </button>
-                        <span
-                          className="task-title"
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            onTaskDoubleClick(task);
-                          }}
-                        >
-                          {task.title}
-                        </span>
-                        <div className="task-meta">
-                          {dueDateLabel && (
-                            <span className="task-due">
-                              {dueDateLabel}
-                            </span>
-                          )}
-                          {deadlineEmoji && (
-                            <span
-                              className={`task-deadline-flag ${task.hardDeadline ? 'hard' : 'soft'}`}
-                              title={task.hardDeadline ? 'Hard deadline' : 'Soft deadline'}
-                            >
-                              {deadlineEmoji}
-                            </span>
-                          )}
-                          {matrixInfo.label && (
-                            <span className={`task-matrix-badge ${matrixInfo.class}`}>
-                              {matrixInfo.label}
-                            </span>
-                          )}
-                        </div>
-                        
-                        {/* Task popup on selection */}
-                        {isSelected && (
-                          <TaskDetailPopup
-                            task={task}
-                            completedStatus={completedStatus}
-                            onClose={() => onTaskDoubleClick(task)}
-                            onToggleTaskComplete={onToggleTaskComplete}
-                            onUpdateTask={onUpdateTask}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
+                  }).map((task) => (
+                    <ProjectTaskItem
+                      key={task.id}
+                      task={task}
+                      isHovered={hoveredTaskId === task.id}
+                      isSelected={selectedTaskId === task.id}
+                      completedStatus={completedStatus}
+                      statusOptions={statusOptions}
+                      onHover={onHoverTask}
+                      onSelect={onTaskDoubleClick}
+                      onToggleComplete={onToggleTaskComplete}
+                      onUpdateTask={onUpdateTask}
+                    />
+                  ))}
                 </div>
               )}
               {completedTasks.length > 0 && (
                 <div className="tasks-section completed">
                   <div className="tasks-section-header">Completed ({completedTasks.length})</div>
                   {completedTasks.map((task) => (
-                    <div
+                    <ProjectTaskItem
                       key={task.id}
-                      className={`project-task-item completed ${selectedTaskId === task.id ? 'is-selected' : ''}`}
-                      onMouseEnter={() => onHoverTask(task.id)}
-                      onMouseLeave={() => onHoverTask(null)}
-                      onDoubleClick={() => onTaskDoubleClick(task)}
-                    >
-                      <button
-                        type="button"
-                        className="task-checkbox-btn completed"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onToggleTaskComplete(task);
-                        }}
-                        title="Mark as to-do"
-                      >
-                        ✓
-                      </button>
-                      <span
-                        className="task-title"
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          onTaskDoubleClick(task);
-                        }}
-                      >
-                        {task.title}
-                      </span>
-                      <div className="task-meta">
-                        {task.dueDate && (
-                          <span className="task-due">
-                            {formatDate(new Date(task.dueDate))}
-                          </span>
-                        )}
-                        {task.dueDate && (
-                          <span
-                            className={`task-deadline-flag ${task.hardDeadline ? 'hard' : 'soft'}`}
-                            title={task.hardDeadline ? 'Hard deadline' : 'Soft deadline'}
-                          >
-                            {task.hardDeadline ? '🔴' : '🔵'}
-                          </span>
-                        )}
-                      </div>
-
-                      {selectedTaskId === task.id && (
-                        <TaskDetailPopup
-                          task={task}
-                          completedStatus={completedStatus}
-                          onClose={() => onTaskDoubleClick(task)}
-                          onToggleTaskComplete={onToggleTaskComplete}
-                          onUpdateTask={onUpdateTask}
-                        />
-                      )}
-                    </div>
+                      task={task}
+                      isCompleted
+                      isHovered={hoveredTaskId === task.id}
+                      isSelected={selectedTaskId === task.id}
+                      completedStatus={completedStatus}
+                      statusOptions={statusOptions}
+                      onHover={onHoverTask}
+                      onSelect={onTaskDoubleClick}
+                      onToggleComplete={onToggleTaskComplete}
+                      onUpdateTask={onUpdateTask}
+                    />
                   ))}
+                </div>
+              )}
+
+              {/* Add Task Button at bottom of task list */}
+              {onCreateTask && (
+                <div className="project-add-task-section">
+                  {!showAddTask ? (
+                    <button
+                      type="button"
+                      className="project-add-task-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAddTask(true);
+                      }}
+                    >
+                      <span className="add-task-icon">+</span>
+                      <span>Add Task</span>
+                    </button>
+                  ) : (
+                    <form
+                      className="project-add-task-form"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!newTaskTitle.trim() || isAddingTask) return;
+                        
+                        setIsAddingTask(true);
+                        try {
+                          await onCreateTask({
+                            title: newTaskTitle.trim(),
+                            projectId: project.id,
+                            status: statusOptions[0]?.name
+                          });
+                          setNewTaskTitle('');
+                          setShowAddTask(false);
+                        } catch (err) {
+                          console.error('Failed to create task:', err);
+                        } finally {
+                          setIsAddingTask(false);
+                        }
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="text"
+                        className="project-add-task-input"
+                        placeholder="Task title..."
+                        value={newTaskTitle}
+                        onChange={(e) => setNewTaskTitle(e.target.value)}
+                        autoFocus
+                        disabled={isAddingTask}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') {
+                            setShowAddTask(false);
+                            setNewTaskTitle('');
+                          }
+                        }}
+                      />
+                      <div className="project-add-task-actions">
+                        <button
+                          type="submit"
+                          className="project-add-task-submit"
+                          disabled={!newTaskTitle.trim() || isAddingTask}
+                        >
+                          {isAddingTask ? '...' : 'Add'}
+                        </button>
+                        <button
+                          type="button"
+                          className="project-add-task-cancel"
+                          onClick={() => {
+                            setShowAddTask(false);
+                            setNewTaskTitle('');
+                          }}
+                          disabled={isAddingTask}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               )}
             </div>
@@ -1037,6 +1030,203 @@ const ProjectCard: FC<ProjectCardProps> = ({
         </div>
       )}
     </article>
+  );
+};
+
+// Project Task Item Component - with clickable date and status
+interface ProjectTaskItemProps {
+  task: Task;
+  isCompleted?: boolean;
+  isHovered: boolean;
+  isSelected: boolean;
+  completedStatus?: string;
+  statusOptions: Array<{ id: string; name: string }>;
+  onHover: (taskId: string | null) => void;
+  onSelect: (task: Task) => void;
+  onToggleComplete: (task: Task) => void;
+  onUpdateTask?: (taskId: string, updates: TaskUpdatePayload) => Promise<void>;
+}
+
+const ProjectTaskItem: FC<ProjectTaskItemProps> = ({
+  task,
+  isCompleted = false,
+  isHovered,
+  isSelected,
+  completedStatus,
+  statusOptions,
+  onHover,
+  onSelect,
+  onToggleComplete,
+  onUpdateTask,
+}) => {
+  const [editingDate, setEditingDate] = useState(false);
+  const [editingStatus, setEditingStatus] = useState(false);
+  const [dateValue, setDateValue] = useState(task.dueDate?.split('T')[0] || '');
+  
+  const matrixCategory = getMatrixCategory(task);
+  const matrixInfo = MATRIX_LABELS[matrixCategory] || { label: '', class: '' };
+  const dueDateLabel = task.dueDate ? formatDate(new Date(task.dueDate)) : null;
+
+  const handleDateSave = async () => {
+    if (onUpdateTask && dateValue !== (task.dueDate?.split('T')[0] || '')) {
+      await onUpdateTask(task.id, { dueDate: dateValue || null });
+    }
+    setEditingDate(false);
+  };
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (onUpdateTask) {
+      await onUpdateTask(task.id, { status: newStatus });
+    }
+    setEditingStatus(false);
+  };
+
+  const handleToggleDeadlineType = async () => {
+    if (onUpdateTask) {
+      await onUpdateTask(task.id, { hardDeadline: !task.hardDeadline });
+    }
+  };
+
+  return (
+    <div
+      className={`project-task-item ${isCompleted ? 'completed' : ''} ${isHovered ? 'is-hovered' : ''} ${isSelected ? 'is-selected' : ''}`}
+      onMouseEnter={() => onHover(task.id)}
+      onMouseLeave={() => onHover(null)}
+      onDoubleClick={() => onSelect(task)}
+    >
+      {/* Checkbox */}
+      <button
+        type="button"
+        className={`task-checkbox-btn ${isCompleted ? 'completed' : ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleComplete(task);
+        }}
+        title={isCompleted ? 'Mark as to-do' : 'Mark as complete'}
+      >
+        {isCompleted ? '✓' : '○'}
+      </button>
+
+      {/* Task Content - wraps */}
+      <div className="task-content">
+        <span className="task-title-wrap">{task.title}</span>
+        
+        {/* Inline metadata row */}
+        <div className="task-inline-meta">
+          {/* Status badge - clickable dropdown */}
+          <div className="task-status-wrapper">
+            {editingStatus ? (
+              <div className="task-status-dropdown">
+                <div className="status-dropdown-header">
+                  <span>Change Status</span>
+                  <button
+                    type="button"
+                    className="status-dropdown-close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingStatus(false);
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="status-dropdown-options">
+                  {statusOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`status-dropdown-option ${task.status === opt.name ? 'active' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStatusChange(opt.name);
+                      }}
+                    >
+                      {opt.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="task-status-badge"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingStatus(true);
+                }}
+                title="Click to change status"
+              >
+                {task.status || 'No status'}
+              </button>
+            )}
+          </div>
+
+          {/* Date - clickable */}
+          <div className="task-date-wrapper">
+            {editingDate ? (
+              <input
+                type="date"
+                className="task-date-input"
+                value={dateValue}
+                onChange={(e) => setDateValue(e.target.value)}
+                onBlur={handleDateSave}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleDateSave();
+                  if (e.key === 'Escape') setEditingDate(false);
+                }}
+                autoFocus
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <button
+                type="button"
+                className="task-date-badge"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingDate(true);
+                }}
+                title="Click to edit date"
+              >
+                {dueDateLabel || '+ Add date'}
+              </button>
+            )}
+          </div>
+
+          {/* Deadline type toggle - hard/soft */}
+          {task.dueDate && (
+            <button
+              type="button"
+              className={`task-deadline-toggle ${task.hardDeadline ? 'hard' : 'soft'}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleDeadlineType();
+              }}
+              title={task.hardDeadline ? 'Hard deadline - click to make soft' : 'Soft deadline - click to make hard'}
+            >
+              {task.hardDeadline ? '🔴 Hard' : '🔵 Soft'}
+            </button>
+          )}
+
+          {/* Matrix badge */}
+          {matrixInfo.label && !isCompleted && (
+            <span className={`task-matrix-badge ${matrixInfo.class}`}>
+              {matrixInfo.label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Task popup on selection */}
+      {isSelected && (
+        <TaskDetailPopup
+          task={task}
+          completedStatus={completedStatus}
+          onClose={() => onSelect(task)}
+          onToggleTaskComplete={onToggleComplete}
+          onUpdateTask={onUpdateTask}
+        />
+      )}
+    </div>
   );
 };
 

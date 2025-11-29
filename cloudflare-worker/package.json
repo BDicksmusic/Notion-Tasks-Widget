@@ -1,0 +1,16 @@
+{
+  "name": "notion-tasks-webhook-relay",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker to relay Notion webhooks to desktop app",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240117.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^4.51.0"
+  }
+}

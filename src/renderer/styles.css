@@ -3,24 +3,405 @@
 
 :root {
   color-scheme: dark;
-  --notion-bg: #191919;
-  --notion-bg-secondary: #202020;
+  
+  /* Two-tone background system */
+  --notion-bg: hsl(0, 0%, 10%);           /* Dark - main content areas */
+  --notion-bg-secondary: hsl(0, 0%, 13%); /* Gray - chrome (sidebar, header, bars) */
+  --notion-bg-tertiary: hsl(0, 0%, 16%);  /* Lifted elements within chrome */
+  --notion-bg-elevated: hsl(0, 0%, 15%);  /* Floating elements (dropdowns, modals) */
+  
   --notion-bg-hover: rgba(255, 255, 255, 0.055);
-  --notion-bg-active: rgba(255, 255, 255, 0.09);
-  --notion-border: rgba(255, 255, 255, 0.09);
-  --notion-text: rgba(255, 255, 255, 0.9);
-  --notion-text-muted: rgba(255, 255, 255, 0.443);
+  --notion-bg-active: rgba(255, 255, 255, 0.08);
+  --notion-border: rgba(255, 255, 255, 0.08);
+  
+  /* Notion-style text opacities */
+  --notion-text: rgba(255, 255, 255, 0.81);
+  --notion-text-secondary: rgba(255, 255, 255, 0.6);
+  --notion-text-muted: rgba(255, 255, 255, 0.44);
+  --notion-text-faint: rgba(255, 255, 255, 0.282);
+  
+  /* Accent colors */
   --notion-blue: #2383e2;
-  --notion-red: #e03e3e;
+  --notion-blue-hover: #0077d4;
+  --notion-red: #eb5757;
+  --notion-green: #4dab9a;
+  --notion-orange: #d9730d;
+  --notion-yellow: #cb912f;
+  --notion-purple: #9065b0;
+  --notion-pink: #c14c8a;
+  
   --notion-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol';
-  --radius-md: 6px;
+  
+  /* Notion uses subtle radii */
+  --radius-xs: 3px;
   --radius-sm: 4px;
+  --radius-md: 6px;
   --radius-lg: 8px;
-  --matrix-green: #22c55e;
-  --matrix-blue: #2563eb;
-  --matrix-yellow: #facc15;
-  --matrix-orange: #fb923c;
-  --matrix-gray: #9ca3af;
+  
+  /* Faster transitions like Notion */
+  --transition-fast: 50ms ease-out;
+  --transition-normal: 80ms ease-out;
+  --transition-slow: 200ms ease;
+  
+  /* Matrix colors - using Notion's palette */
+  --matrix-green: rgb(68, 131, 97);
+  --matrix-blue: rgb(51, 126, 169);
+  --matrix-yellow: rgb(203, 145, 47);
+  --matrix-orange: rgb(217, 115, 13);
+  --matrix-gray: rgb(155, 154, 151);
+  
+  /* Notion's actual color palette */
+  --notion-color-gray: rgb(155, 154, 151);
+  --notion-color-brown: rgb(100, 71, 58);
+  --notion-color-orange: rgb(217, 115, 13);
+  --notion-color-yellow: rgb(203, 145, 47);
+  --notion-color-green: rgb(68, 131, 97);
+  --notion-color-blue: rgb(51, 126, 169);
+  --notion-color-purple: rgb(144, 101, 176);
+  --notion-color-pink: rgb(193, 76, 138);
+  --notion-color-red: rgb(212, 76, 71);
+  
+  /* Tag backgrounds using Notion colors */
+  --tag-gray-bg: rgba(155, 154, 151, 0.2);
+  --tag-brown-bg: rgba(100, 71, 58, 0.3);
+  --tag-orange-bg: rgba(217, 115, 13, 0.2);
+  --tag-yellow-bg: rgba(203, 145, 47, 0.2);
+  --tag-green-bg: rgba(68, 131, 97, 0.25);
+  --tag-blue-bg: rgba(51, 126, 169, 0.25);
+  --tag-purple-bg: rgba(144, 101, 176, 0.2);
+  --tag-pink-bg: rgba(193, 76, 138, 0.2);
+  --tag-red-bg: rgba(212, 76, 71, 0.2);
+}
+
+/* ========================================
+   LIGHT MODE - System Preference Based
+   ======================================== */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    
+    /* Two-tone background system - Light mode */
+    --notion-bg: hsl(0, 0%, 100%);              /* White - main content areas */
+    --notion-bg-secondary: hsl(30, 14%, 97%);   /* Warm off-white - chrome (sidebar, header, bars) */
+    --notion-bg-tertiary: hsl(40, 12%, 94%);    /* Slightly darker for lifted elements */
+    --notion-bg-elevated: hsl(0, 0%, 100%);     /* White for floating elements */
+    
+    --notion-bg-hover: rgba(55, 53, 47, 0.08);
+    --notion-bg-active: rgba(55, 53, 47, 0.16);
+    --notion-border: rgba(55, 53, 47, 0.09);
+    
+    /* Notion-style text opacities - Light mode uses dark text */
+    --notion-text: rgba(55, 53, 47, 0.9);
+    --notion-text-secondary: rgba(55, 53, 47, 0.65);
+    --notion-text-muted: rgba(55, 53, 47, 0.45);
+    --notion-text-faint: rgba(55, 53, 47, 0.3);
+    
+    /* Accent colors - Adjusted for light backgrounds */
+    --notion-blue: #2383e2;
+    --notion-blue-hover: #0b6e99;
+    --notion-red: #e03e3e;
+    --notion-green: #0f7b6c;
+    --notion-orange: #d9730d;
+    --notion-yellow: #dfab01;
+    --notion-purple: #6940a5;
+    --notion-pink: #ad1a72;
+    
+    /* Matrix colors - Light mode variants */
+    --matrix-green: rgb(15, 123, 108);
+    --matrix-blue: rgb(11, 110, 153);
+    --matrix-yellow: rgb(223, 171, 1);
+    --matrix-orange: rgb(217, 115, 13);
+    --matrix-gray: rgb(155, 154, 151);
+    
+    /* Notion's light mode color palette */
+    --notion-color-gray: rgb(155, 154, 151);
+    --notion-color-brown: rgb(100, 71, 58);
+    --notion-color-orange: rgb(217, 115, 13);
+    --notion-color-yellow: rgb(223, 171, 1);
+    --notion-color-green: rgb(15, 123, 108);
+    --notion-color-blue: rgb(11, 110, 153);
+    --notion-color-purple: rgb(105, 64, 165);
+    --notion-color-pink: rgb(173, 26, 114);
+    --notion-color-red: rgb(224, 62, 62);
+    
+    /* Tag backgrounds - Notion's light mode pastel backgrounds */
+    --tag-gray-bg: #ebeced;
+    --tag-brown-bg: #e9e5e3;
+    --tag-orange-bg: #faebdd;
+    --tag-yellow-bg: #fbf3db;
+    --tag-green-bg: #ddedea;
+    --tag-blue-bg: #ddebf1;
+    --tag-purple-bg: #eae4f2;
+    --tag-pink-bg: #f4dfeb;
+    --tag-red-bg: #fbe4e4;
+  }
+  
+  /* Light mode component overrides for hardcoded rgba values */
+  
+  /* Widget surface shadows - lighter for light mode */
+  .widget-surface {
+    box-shadow: 
+      rgba(15, 15, 15, 0.04) 0px 0px 0px 1px,
+      rgba(15, 15, 15, 0.06) 0px 3px 6px,
+      rgba(15, 15, 15, 0.1) 0px 9px 24px;
+  }
+  
+  /* Filter switch buttons */
+  .task-filter-switch button:hover {
+    background: rgba(55, 53, 47, 0.08);
+  }
+  
+  .task-filter-switch button.active,
+  .task-filter-switch button[aria-pressed='true'] {
+    background: rgba(55, 53, 47, 0.1);
+  }
+  
+  .task-filter-switch button[data-day="all"],
+  .task-filter-switch button[data-deadline="all"],
+  .task-filter-switch button[data-matrix="all"],
+  .task-filter-switch button[data-status="all"] {
+    border-color: rgba(55, 53, 47, 0.15);
+  }
+  
+  .task-filter-switch button[data-day="all"].active,
+  .task-filter-switch button[data-deadline="all"].active,
+  .task-filter-switch button[data-matrix="all"].active,
+  .task-filter-switch button[data-status="all"].active {
+    background: rgba(55, 53, 47, 0.12);
+    border-color: rgba(55, 53, 47, 0.25);
+  }
+  
+  /* Matrix switch buttons */
+  .matrix-switch button:hover:not(.active) {
+    background: rgba(55, 53, 47, 0.08);
+  }
+  
+  /* Checkbox styles */
+  .widget-checkbox {
+    border-color: rgba(55, 53, 47, 0.4);
+    background: transparent;
+  }
+  
+  .widget-checkbox:hover {
+    border-color: rgba(55, 53, 47, 0.6);
+    background: rgba(55, 53, 47, 0.04);
+  }
+  
+  /* Task row dividers */
+  .task-row-divider {
+    border-color: rgba(55, 53, 47, 0.09);
+  }
+  
+  /* Input fields */
+  input[type="text"],
+  input[type="number"],
+  input[type="search"],
+  textarea,
+  select {
+    background: hsl(0, 0%, 100%);
+    border-color: rgba(55, 53, 47, 0.16);
+    color: rgba(55, 53, 47, 0.9);
+  }
+  
+  input[type="text"]:focus,
+  input[type="number"]:focus,
+  input[type="search"]:focus,
+  textarea:focus,
+  select:focus {
+    border-color: rgba(55, 53, 47, 0.4);
+    box-shadow: 0 0 0 2px rgba(55, 53, 47, 0.08);
+  }
+  
+  input::placeholder,
+  textarea::placeholder {
+    color: rgba(55, 53, 47, 0.4);
+  }
+  
+  /* Dropdown menus */
+  .dropdown-menu,
+  .context-menu,
+  .popover {
+    background: hsl(0, 0%, 100%);
+    border-color: rgba(55, 53, 47, 0.09);
+    box-shadow: 
+      0 0 0 1px rgba(55, 53, 47, 0.06),
+      0 4px 12px rgba(55, 53, 47, 0.1),
+      0 8px 24px rgba(55, 53, 47, 0.15);
+  }
+  
+  /* Task items hover states */
+  .task-item:hover,
+  .list-item:hover {
+    background: rgba(55, 53, 47, 0.04);
+  }
+  
+  /* Scrollbar styling for light mode */
+  ::-webkit-scrollbar-track {
+    background: rgba(55, 53, 47, 0.04);
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: rgba(55, 53, 47, 0.2);
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(55, 53, 47, 0.35);
+  }
+  
+  /* Quick add input */
+  .quick-add input,
+  .quick-add-input {
+    background: hsl(0, 0%, 100%);
+    border-color: rgba(55, 53, 47, 0.12);
+  }
+  
+  .quick-add input:focus,
+  .quick-add-input:focus {
+    border-color: rgba(55, 53, 47, 0.3);
+    background: hsl(0, 0%, 100%);
+  }
+  
+  /* Search panel */
+  .widget-search-panel {
+    background: hsl(0, 0%, 100%);
+    border-color: rgba(55, 53, 47, 0.12);
+  }
+  
+  .widget-search-panel input {
+    background: hsl(0, 0%, 100%);
+    color: rgba(55, 53, 47, 0.9);
+  }
+  
+  /* Icon buttons */
+  .icon-button:hover,
+  .toolbar-button:hover,
+  .dynamic-button:hover {
+    background: rgba(55, 53, 47, 0.08);
+  }
+  
+  .icon-button:active,
+  .toolbar-button:active,
+  .dynamic-button:active {
+    background: rgba(55, 53, 47, 0.12);
+  }
+  
+  /* Modals and dialogs */
+  .modal-overlay,
+  .dialog-overlay {
+    background: rgba(255, 255, 255, 0.7);
+  }
+  
+  .modal-content,
+  .dialog-content {
+    background: hsl(0, 0%, 100%);
+    border-color: rgba(55, 53, 47, 0.09);
+    box-shadow: 
+      0 0 0 1px rgba(55, 53, 47, 0.04),
+      0 8px 32px rgba(55, 53, 47, 0.15);
+  }
+  
+  /* View tabs */
+  .view-tab:hover {
+    background: rgba(55, 53, 47, 0.06);
+  }
+  
+  .view-tab.active {
+    background: rgba(55, 53, 47, 0.08);
+  }
+  
+  /* Settings panel */
+  .settings-panel,
+  .settings-content {
+    background: hsl(0, 0%, 100%);
+  }
+  
+  .settings-section {
+    border-color: rgba(55, 53, 47, 0.09);
+  }
+  
+  /* Tooltip styles */
+  .tooltip,
+  [data-tooltip]:hover::after {
+    background: rgba(55, 53, 47, 0.9);
+    color: white;
+  }
+  
+  /* Tags in light mode need darker text for contrast */
+  .tag,
+  .notion-tag,
+  .task-tag {
+    color: rgba(55, 53, 47, 0.8);
+  }
+  
+  /* Priority indicators */
+  .priority-indicator {
+    opacity: 0.9;
+  }
+  
+  /* Calendar/date related */
+  .date-badge,
+  .calendar-day {
+    color: rgba(55, 53, 47, 0.7);
+  }
+  
+  .date-badge.overdue {
+    color: #e03e3e;
+  }
+  
+  /* Bottom controls bar */
+  .bottom-controls {
+    background: var(--notion-bg-secondary);
+    border-color: rgba(55, 53, 47, 0.09);
+  }
+  
+  /* Task window */
+  .task-window-surface {
+    background: hsl(0, 0%, 100%);
+    border-color: rgba(55, 53, 47, 0.09);
+  }
+  
+  /* Log surface */
+  .log-surface {
+    background: hsl(0, 0%, 100%);
+    border-color: rgba(55, 53, 47, 0.09);
+  }
+  
+  /* Writing widget */
+  .writing-widget {
+    background: hsl(0, 0%, 100%);
+  }
+  
+  /* Time tracking */
+  .time-entry,
+  .session-item {
+    border-color: rgba(55, 53, 47, 0.06);
+  }
+  
+  .time-entry:hover,
+  .session-item:hover {
+    background: rgba(55, 53, 47, 0.04);
+  }
+  
+  /* Resize handles */
+  .resize-handle:hover {
+    background: rgba(55, 53, 47, 0.15);
+  }
+  
+  /* Empty states */
+  .empty-state {
+    color: rgba(55, 53, 47, 0.45);
+  }
+  
+  /* Code/mono text */
+  code,
+  .mono {
+    background: rgba(55, 53, 47, 0.06);
+  }
+  
+  /* Selection states */
+  ::selection {
+    background: rgba(35, 131, 226, 0.3);
+  }
 }
 
 * {
@@ -90,7 +471,8 @@ html:has(.fullscreen-app) {
   flex-direction: column;
   gap: 0;
   padding: 12px;
-  background: var(--notion-bg);
+  /* Two-tone: outer shell uses secondary (gray) */
+  background: var(--notion-bg-secondary);
   border: 1px solid var(--notion-border);
   border-radius: var(--radius-lg);
   box-shadow: rgba(15, 15, 15, 0.1) 0px 0px 0px 1px, rgba(15, 15, 15, 0.2) 0px 3px 6px, rgba(15, 15, 15, 0.4) 0px 9px 24px;
@@ -109,7 +491,7 @@ html:has(.fullscreen-app) {
 
 /* Purple background when session is active */
 .widget-surface.has-active-session {
-  background: var(--notion-bg);
+  background: var(--notion-bg-secondary);
 }
 
 .widget-surface button,
@@ -209,7 +591,8 @@ html:has(.fullscreen-app) {
   margin: 1px;
   display: flex;
   flex-direction: column;
-  background: var(--notion-bg);
+  /* Two-tone: outer shell uses secondary (gray) */
+  background: var(--notion-bg-secondary);
   border: 1px solid var(--notion-border);
   border-radius: var(--radius-lg);
   box-shadow: rgba(15, 15, 15, 0.1) 0px 0px 0px 1px,
@@ -223,6 +606,11 @@ html:has(.fullscreen-app) {
   flex: 1;
   padding: 12px;
   overflow: auto;
+  /* Two-tone: content area is darker/recessed */
+  background: var(--notion-bg);
+  margin: 0 6px;
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .task-window-footer {
@@ -439,12 +827,12 @@ html:has(.fullscreen-app) {
 
 /* Header */
 .widget-header {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 8px 12px;
+  gap: 8px;
+  padding: 6px 8px 8px;
   margin-bottom: 0;
+  /* Inherits from widget surface - no separate background */
 }
 
 /* Expandable search panel below header */
@@ -489,33 +877,37 @@ html:has(.fullscreen-app) {
   }
 }
 
+/* View selector island - separate from toolbar cluster */
+.view-selector-island {
+  display: flex;
+  align-items: center;
+  margin-right: 8px;
+}
+
 .widget-toolbar-cluster {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   min-height: 34px;
-  align-self: flex-end;
+  flex: 1;
 }
 
+/* Notion-style ghost button */
 .dynamic-button {
   border: none;
-  background: var(--notion-bg-secondary);
-  color: var(--notion-text);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 6px 12px;
+  background: transparent;
+  color: var(--notion-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 5px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease, box-shadow 120ms ease;
-  border: 1px solid var(--notion-border);
+  transition: all var(--transition-normal);
 }
 
 .dynamic-button:hover {
   background: var(--notion-bg-hover);
   color: var(--notion-text);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .dynamic-button:active {
@@ -525,7 +917,11 @@ html:has(.fullscreen-app) {
 .widget-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 2px;
+  padding: 3px 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
 }
 
 .filter-summary-text {
@@ -541,67 +937,85 @@ html:has(.fullscreen-app) {
 .header-actions {
   display: flex;
   align-items: center;
-  justify-self: end;
-  gap: 8px;
+  margin-left: auto;
+  gap: 16px;
 }
 
+.header-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.header-actions-right .icon-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.header-actions-right .gear-button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--notion-text-muted);
+  transition: all 150ms ease;
+}
+
+.header-actions-right .gear-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--notion-text);
+}
+
+.header-actions-right .gear-button svg {
+  opacity: 0.6;
+  transition: opacity 150ms ease;
+}
+
+.header-actions-right .gear-button:hover svg {
+  opacity: 1;
+}
+
+/* Notion-style toggle button - minimal, no borders */
 .widget-toggle-button {
   border: none;
   background: transparent;
   color: var(--notion-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 10px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
-  border: 1px solid var(--notion-border);
+  transition: all var(--transition-normal);
   white-space: nowrap;
   flex-shrink: 0;
-  position: relative;
-  overflow: hidden;
-}
-
-.widget-toggle-button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: var(--notion-bg-hover);
-  transition: left 300ms cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 0;
-  pointer-events: none;
-}
-
-.widget-toggle-button:hover::before {
-  left: 0;
 }
 
 .widget-toggle-button:hover {
+  background: var(--notion-bg-hover);
   color: var(--notion-text);
-  border-color: var(--notion-border);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .widget-toggle-button:active {
   background: var(--notion-bg-active);
-  transform: translateY(0);
 }
 
 .widget-toggle-text {
   display: inline-block;
-  position: relative;
-  z-index: 1;
-  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.widget-toggle-button:hover .widget-toggle-text {
-  transform: scale(1.02);
 }
 
 .drag-handle {
@@ -625,21 +1039,22 @@ html:has(.fullscreen-app) {
   letter-spacing: 0.03em;
 }
 
+/* Notion-style icon buttons - subtle and minimal */
 .gear-button,
 .icon-button {
   font-size: 16px;
   border: none;
   background: transparent;
-  color: var(--notion-text-muted);
+  color: var(--notion-text-faint);
   cursor: pointer;
   padding: 4px;
   border-radius: var(--radius-sm);
-  transition: background 100ms ease, color 100ms ease;
+  transition: all var(--transition-fast);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 28px;
-  height: 28px;
+  min-width: 24px;
+  height: 24px;
 }
 
 .gear-button:hover,
@@ -649,12 +1064,12 @@ html:has(.fullscreen-app) {
 }
 
 .icon-button.active {
-  background: var(--notion-blue);
-  color: white;
+  background: var(--tag-blue-bg);
+  color: var(--notion-blue);
 }
 
 .icon-button.active:hover {
-  background: #1a6fc4;
+  background: rgba(0, 120, 223, 0.2);
 }
 
 /* Undo Toast */
@@ -767,6 +1182,15 @@ html:has(.fullscreen-app) {
   border-radius: var(--radius-sm);
 }
 
+/* Widget tabs in header - grouped pill style */
+.widget-switch.widget-tabs {
+  padding: 3px 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  gap: 2px;
+}
+
 .widget-switch button {
   border: none;
   background: transparent;
@@ -788,36 +1212,55 @@ html:has(.fullscreen-app) {
 .widget-switch button.active {
   background: var(--notion-bg-active);
   color: var(--notion-text);
-  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
-/* Collapsed widget switch - shown in bottom controls when collapsed */
-.collapsed-widget-switch {
-  margin-left: 8px;
-  padding: 1px;
-  gap: 1px;
-}
 
-.collapsed-widget-switch button {
-  padding: 4px 6px;
-  font-size: 14px;
-  min-width: 28px;
-}
-
-/* Widget tabs with emoji icons */
+/* Widget tabs with SVG icons */
 .widget-tabs button {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.widget-tabs button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.widget-tabs button.active {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .widget-tabs .tab-icon {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.widget-tabs .tab-icon svg {
+  opacity: 0.5;
+  transition: opacity 150ms ease;
+}
+
+.widget-tabs button:hover .tab-icon svg,
+.widget-tabs button.active .tab-icon svg {
+  opacity: 1;
 }
 
 .widget-tabs .tab-count {
   opacity: 0.5;
   font-size: 11px;
+  color: var(--notion-text-muted);
+}
+
+.widget-tabs button.active .tab-count {
+  opacity: 0.7;
 }
 
 /* View Selector */
@@ -825,17 +1268,19 @@ html:has(.fullscreen-app) {
   position: relative;
 }
 
+/* Notion-style view selector */
 .view-selector-trigger {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   border: none;
-  background: var(--notion-bg-secondary);
+  background: transparent;
   color: var(--notion-text-muted);
-  font-size: 12px;
+  font-size: 13px;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: all var(--transition-fast);
   transition: color 100ms ease, background 100ms ease;
 }
 
@@ -1028,9 +1473,356 @@ html:has(.fullscreen-app) {
   color: var(--notion-text);
 }
 
+/* ============================================================================
+   VIEW TABS - Notion-style horizontal tab bar for saved views
+   ============================================================================ */
+
+.view-tabs-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  min-height: 38px;
+  background: var(--notion-bg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.view-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+/* Individual view tab - Notion style */
+.view-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+  font-weight: 400;
+  border-radius: 0;
+  cursor: pointer;
+  transition: color 100ms ease;
+  white-space: nowrap;
+  position: relative;
+}
+
+.view-tab:hover {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.view-tab.is-active {
+  color: rgba(255, 255, 255, 0.9);
+  background: transparent;
+}
+
+.view-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  height: 2px;
+  background: rgb(35, 131, 226);
+  border-radius: 0;
+}
+
+.view-tab-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.view-tab-name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Add button */
+.view-tab-add {
+  padding: 6px 10px;
+  color: var(--notion-text-muted);
+  opacity: 0.7;
+}
+
+.view-tab-add:hover {
+  opacity: 1;
+  background: var(--notion-bg-hover);
+}
+
+.view-tab-add-icon {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+/* Naming form inline */
+.view-tab-naming {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.view-tab-icon-picker-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--notion-border);
+  background: var(--notion-bg-elevated);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+
+.view-tab-icon-picker-trigger:hover {
+  border-color: var(--notion-accent);
+  background: var(--notion-bg-hover);
+}
+
+.view-tab-icon-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  padding: 8px;
+  background: var(--notion-bg-elevated);
+  border: 1px solid var(--notion-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  z-index: 1000;
+}
+
+.icon-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+
+.icon-option:hover {
+  background: var(--notion-bg-hover);
+}
+
+.icon-option.is-selected {
+  background: var(--notion-accent);
+}
+
+.view-tab-name-input {
+  width: 120px;
+  padding: 6px 8px;
+  border: 1px solid var(--notion-border);
+  background: var(--notion-bg);
+  color: var(--notion-text);
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.view-tab-name-input:focus {
+  border-color: var(--notion-accent);
+}
+
+.view-tab-save-btn,
+.view-tab-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+
+.view-tab-save-btn {
+  background: var(--notion-accent);
+  color: white;
+}
+
+.view-tab-save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.view-tab-save-btn:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+
+.view-tab-cancel-btn {
+  background: transparent;
+  color: var(--notion-text-muted);
+}
+
+.view-tab-cancel-btn:hover {
+  background: var(--notion-bg-hover);
+  color: var(--notion-text);
+}
+
+/* Save view button - Notion style orange */
+.view-tabs-save-changes {
+  padding: 4px 10px;
+  border: none;
+  background: rgb(180, 95, 52);
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 100ms ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.view-tabs-save-changes:hover {
+  background: rgb(200, 105, 58);
+}
+
+/* Reset button next to save */
+.view-tabs-reset {
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-weight: 400;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+  white-space: nowrap;
+}
+
+.view-tabs-reset:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Context menu */
+.view-tab-context-menu {
+  position: fixed;
+  min-width: 160px;
+  padding: 4px 0;
+  background: var(--notion-bg-elevated);
+  border: 1px solid var(--notion-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: var(--notion-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.context-menu-item:hover {
+  background: var(--notion-bg-hover);
+}
+
+.context-menu-item-danger:hover {
+  background: rgba(235, 87, 87, 0.15);
+  color: var(--notion-red);
+}
+
+.context-menu-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Icon picker overlay modal */
+.view-tab-icon-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002;
+}
+
+.view-tab-icon-picker-modal {
+  background: var(--notion-bg-elevated);
+  border: 1px solid var(--notion-border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  padding: 16px;
+  min-width: 280px;
+}
+
+.icon-picker-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--notion-text-muted);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.icon-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.icon-picker-close {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  background: var(--notion-bg-hover);
+  color: var(--notion-text-muted);
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 100ms ease;
+}
+
+.icon-picker-close:hover {
+  background: var(--notion-bg-active);
+  color: var(--notion-text);
+}
+
 .pin-toggle {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
   border: none;
   background: transparent;
@@ -1043,9 +1835,10 @@ html:has(.fullscreen-app) {
 }
 
 .pin-toggle .pin-icon {
-  font-size: 0.9rem;
-  opacity: 0.35;
-  transition: opacity 0.2s ease;
+  font-size: 13px;
+  opacity: 0.4;
+  transition: all 0.2s ease;
+  filter: grayscale(1);
 }
 
 .pin-toggle:hover {
@@ -1053,37 +1846,44 @@ html:has(.fullscreen-app) {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.pin-toggle:hover .pin-icon {
+  opacity: 0.7;
+  filter: grayscale(0.3);
+}
+
 .pin-toggle.is-active {
   color: var(--notion-text);
+  background: rgba(251, 191, 36, 0.1);
 }
 
 .pin-toggle.is-active .pin-icon {
   opacity: 1;
+  filter: grayscale(0);
 }
 
-/* Collapsed pin button */
-.pin-toggle.collapsed-pin {
-  padding: 4px 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-md);
+/* AI Assistant button */
+.ai-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.pin-toggle.collapsed-pin .pin-icon {
-  font-size: 1rem;
-  opacity: 0.6;
+.ai-button svg {
+  opacity: 0.5;
+  transition: all 0.2s ease;
 }
 
-.pin-toggle.collapsed-pin:hover {
-  background: rgba(255, 255, 255, 0.12);
+.ai-button:hover svg {
+  opacity: 0.8;
 }
 
-.pin-toggle.collapsed-pin.is-active {
-  background: rgba(168, 85, 247, 0.2);
-  color: rgb(168, 85, 247);
+.ai-button.active {
+  background: rgba(139, 92, 246, 0.15);
 }
 
-.pin-toggle.collapsed-pin.is-active .pin-icon {
+.ai-button.active svg {
   opacity: 1;
+  color: #a78bfa;
 }
 
 /* Main Content Area */
@@ -1151,31 +1951,26 @@ html:has(.fullscreen-app) {
 .task-filter-bar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
-  margin: 8px 4px 4px;
+  gap: 4px;
+  padding: 0;
+  margin: 0;
   max-height: 360px;
   opacity: 1;
-  transform: translateY(0);
-  background: rgba(20, 20, 20, 0.55);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 6px 30px rgba(0, 0, 0, 0.35);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0;
+  box-shadow: none;
   transition:
     max-height 240ms ease,
     opacity 180ms ease,
-    transform 240ms ease,
     margin 180ms ease,
-    padding 180ms ease,
-    background 180ms ease,
-    border-color 180ms ease;
-  will-change: max-height, opacity, transform;
+    padding 180ms ease;
 }
 
 .task-filter-bar.is-collapsed {
   max-height: 0;
   opacity: 0;
-  transform: translateY(-8px);
   margin-top: 0;
   padding-top: 0;
   padding-bottom: 0;
@@ -1187,26 +1982,21 @@ html:has(.fullscreen-app) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px 24px;
     align-items: start;
-    transition: opacity 180ms ease, transform 240ms ease;
+    transition: opacity 180ms ease;
 }
 
 .task-filter-bar.is-collapsed .task-filter-grid {
     opacity: 0;
-    transform: translateY(-6px);
 }
 
 .task-organizer-panel {
-  animation: organizerPaneIn 120ms ease forwards;
-  opacity: 0;
-  transform: translateY(-6px);
   position: relative;
+  z-index: 1000;
 }
 
-@keyframes organizerPaneIn {
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.task-organizer-pane {
+  position: relative;
+  z-index: 1001;
 }
 
 .filter-cell {
@@ -1239,53 +2029,64 @@ html:has(.fullscreen-app) {
     justify-content: flex-start;
 }
 
+/* Notion-style filter switch */
 .task-filter-switch {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    gap: 2px;
     flex-wrap: wrap;
-    padding: 3px;
-    background: var(--notion-bg-secondary);
+    padding: 2px;
+    background: transparent;
     border-radius: var(--radius-sm);
-    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* Notion-style filter buttons */
 .task-filter-switch button {
-    --filter-accent-bg: var(--notion-bg-active);
-    --filter-accent-border: rgba(255, 255, 255, 0.08);
-    --filter-accent-color: var(--notion-text);
     border: none;
     background: transparent;
-    border: 1px solid transparent;
     color: var(--notion-text-muted);
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 400;
+    padding: 4px 8px;
     min-width: 0;
-    min-height: 26px;
-    line-height: 1.2;
-    border-radius: calc(var(--radius-sm) - 1px);
+    height: 26px;
+    line-height: 1;
+    border-radius: 4px;
     text-align: center;
-    transition:
-        background 140ms ease,
-        color 140ms ease,
-        box-shadow 140ms ease;
+    transition: all 80ms ease;
+    cursor: pointer;
+    white-space: nowrap;
 }
 
 .task-filter-switch button:hover {
     color: var(--notion-text);
-    background: var(--notion-bg-hover);
+    background: rgba(255, 255, 255, 0.06);
 }
 
+/* Active filter button - Notion style with subtle fill */
 .task-filter-switch button.active,
 .task-filter-switch button[aria-pressed='true'] {
-    background: var(--filter-accent-bg, var(--notion-bg-active));
-    border-color: var(
-        --filter-accent-border,
-        rgba(255, 255, 255, 0.08)
-    );
-    color: var(--filter-accent-color, var(--notion-text));
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--notion-text);
+    font-weight: 500;
+}
+
+/* Special "All" button style - bordered like Notion */
+.task-filter-switch button[data-day="all"],
+.task-filter-switch button[data-deadline="all"],
+.task-filter-switch button[data-matrix="all"],
+.task-filter-switch button[data-status="all"] {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 3px 10px;
+    border-radius: 4px;
+}
+
+.task-filter-switch button[data-day="all"].active,
+.task-filter-switch button[data-deadline="all"].active,
+.task-filter-switch button[data-matrix="all"].active,
+.task-filter-switch button[data-status="all"].active {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
 }
 
 .task-filter-switch button:focus-visible {
@@ -1293,37 +2094,27 @@ html:has(.fullscreen-app) {
     outline-offset: 1px;
 }
 
+/* Status filter - icon buttons */
 .status-switch button {
-    min-width: 36px;
+    min-width: 28px;
+    padding: 4px 6px;
 }
 
+/* Matrix filter buttons */
 .matrix-switch button {
-    font-size: 11px;
-    padding: 4px 8px;
-    transition: transform 120ms ease, box-shadow 150ms ease;
+    font-size: 12px;
+    padding: 4px 10px;
 }
 
+/* Simple hover without transform */
 .matrix-switch button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    background: rgba(255, 255, 255, 0.08);
 }
 
-.matrix-switch button:active {
-    transform: translateY(0) scale(0.95);
-}
-
-.day-filter-switch button[data-day='all'],
-.deadline-filter-switch button[data-deadline='all'],
-.matrix-switch button[data-matrix='all'] {
-    --filter-accent-bg: rgba(148, 163, 184, 0.2);
-    --filter-accent-border: rgba(148, 163, 184, 0.5);
-    --filter-accent-color: #f8fafc;
-}
-
-.day-filter-switch button[data-day='today'] {
-    --filter-accent-bg: rgba(37, 99, 235, 0.28);
-    --filter-accent-border: rgba(37, 99, 235, 0.6);
-    --filter-accent-color: #e0f2ff;
+/* Day filter "Today" and "Week" text styling */
+.day-filter-switch button[data-day='today'],
+.day-filter-switch button[data-day='week'] {
+    font-weight: 400;
 }
 
 .day-filter-switch button[data-day='week'] {
@@ -1332,64 +2123,58 @@ html:has(.fullscreen-app) {
     --filter-accent-color: #ecfdf5;
 }
 
-.status-switch button[data-status='inbox'] {
-    --filter-accent-bg: rgba(59, 130, 246, 0.28);
-    --filter-accent-border: rgba(59, 130, 246, 0.65);
-    --filter-accent-color: #e0f2ff;
+/* Status icon colors when active - subtle tint backgrounds */
+.status-switch button[data-status='inbox'].active {
+    background: rgba(59, 130, 246, 0.2);
+    color: hsl(214, 70%, 70%);
 }
 
-.status-switch button[data-status='to-do'] {
-    --filter-accent-bg: rgba(250, 204, 21, 0.4);
-    --filter-accent-border: rgba(250, 204, 21, 0.75);
-    --filter-accent-color: #1f2937;
+.status-switch button[data-status='to-do'].active {
+    background: rgba(250, 180, 21, 0.2);
+    color: hsl(40, 90%, 65%);
 }
 
-.status-switch button[data-status='active'] {
-    --filter-accent-bg: rgba(34, 197, 94, 0.32);
-    --filter-accent-border: rgba(34, 197, 94, 0.65);
-    --filter-accent-color: #052e16;
+.status-switch button[data-status='active'].active {
+    background: rgba(34, 197, 94, 0.2);
+    color: hsl(145, 60%, 55%);
 }
 
-.status-switch button[data-status='waiting'] {
-    --filter-accent-bg: rgba(249, 115, 22, 0.38);
-    --filter-accent-border: rgba(249, 115, 22, 0.7);
-    --filter-accent-color: #1f1300;
+.status-switch button[data-status='waiting'].active {
+    background: rgba(249, 115, 22, 0.2);
+    color: hsl(25, 90%, 60%);
 }
 
-.status-switch button[data-status='done'] {
-    --filter-accent-bg: rgba(148, 163, 184, 0.35);
-    --filter-accent-border: rgba(148, 163, 184, 0.65);
-    --filter-accent-color: #f8fafc;
+.status-switch button[data-status='done'].active,
+.status-switch button[data-status='all'].active {
+    background: rgba(148, 163, 184, 0.2);
+    color: var(--notion-text);
 }
 
-.deadline-filter-switch button[data-deadline='hard'] {
-    --filter-accent-bg: rgba(224, 62, 62, 0.32);
-    --filter-accent-border: rgba(224, 62, 62, 0.7);
-    --filter-accent-color: #fff1f2;
+/* Deadline "Hard only" active state */
+.deadline-filter-switch button[data-deadline='hard'].active {
+    background: rgba(224, 62, 62, 0.2);
+    color: hsl(0, 65%, 65%);
 }
 
-.matrix-switch button[data-matrix='do-now'] {
-    --filter-accent-bg: rgba(34, 197, 94, 0.32);
-    --filter-accent-border: rgba(34, 197, 94, 0.7);
-    --filter-accent-color: #ecfdf5;
+/* Matrix button active states */
+.matrix-switch button[data-matrix='do-now'].active {
+    background: rgba(34, 197, 94, 0.2);
+    color: hsl(145, 60%, 55%);
 }
 
-.matrix-switch button[data-matrix='deep-work'] {
-    --filter-accent-bg: rgba(37, 99, 235, 0.32);
-    --filter-accent-border: rgba(37, 99, 235, 0.65);
-    --filter-accent-color: #dbeafe;
+.matrix-switch button[data-matrix='deep-work'].active {
+    background: rgba(37, 99, 235, 0.2);
+    color: hsl(214, 70%, 65%);
 }
 
-.matrix-switch button[data-matrix='delegate'] {
-    --filter-accent-bg: rgba(250, 204, 21, 0.42);
-    --filter-accent-border: rgba(250, 204, 21, 0.75);
-    --filter-accent-color: #1f2937;
+.matrix-switch button[data-matrix='delegate'].active {
+    background: rgba(250, 204, 21, 0.2);
+    color: hsl(45, 90%, 55%);
 }
 
-.matrix-switch button[data-matrix='trash'] {
-    --filter-accent-bg: rgba(251, 146, 60, 0.45);
-    --filter-accent-border: rgba(251, 146, 60, 0.8);
-    --filter-accent-color: #1f1300;
+.matrix-switch button[data-matrix='trash'].active {
+    background: rgba(251, 146, 60, 0.2);
+    color: hsl(25, 90%, 60%);
 }
 
 /* Hide Done Toggle - inline style matching other filter buttons */
@@ -1460,15 +2245,26 @@ html:has(.fullscreen-app) {
   display: flex;
   flex-direction: column;
   gap: 1px; /* Notion list style */
-  padding: 0;
+  padding: 6px;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
+  /* GPU acceleration for smoother scrolling */
+  transform: translateZ(0);
+  will-change: scroll-position;
+  /* Two-tone: content area is darker/recessed */
+  background: var(--notion-bg);
+  border-radius: var(--radius-md);
+  /* Subtle inset effect */
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 /* Virtualization spacers for lazy loading */
 .task-list-spacer {
   flex-shrink: 0;
   pointer-events: none;
+  /* Performance: skip painting for offscreen spacers */
+  contain: strict;
+  content-visibility: auto;
 }
 
 .task-row.has-active-session {
@@ -1489,9 +2285,34 @@ html:has(.fullscreen-app) {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  transition: background 100ms ease;
+  z-index: 1;
   cursor: default;
   position: relative;
+  /* Performance: contain layout/paint to prevent full-page recalculation */
+  contain: layout style;
+  /* Transition only on interaction, not during scroll */
+}
+
+.task-row:hover,
+.task-row:focus-within {
+  transition: background 100ms ease;
+}
+
+/* Suppress hover during scroll/click until mouse moves */
+.task-list.suppress-hover .task-row:hover {
+  background: transparent;
+}
+.task-list.suppress-hover .task-row.has-active-session:hover {
+  background: rgba(107, 33, 168, 0.15) !important;
+}
+.task-list.suppress-hover .task-row.is-selected:hover {
+  background: rgba(35, 131, 226, 0.08);
+}
+.task-list.suppress-hover .task-row.is-multi-selected:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+.task-list.suppress-hover .task-row:hover .task-drag-handle {
+  opacity: 0;
 }
 
 .task-row:first-child {
@@ -1509,8 +2330,8 @@ html:has(.fullscreen-app) {
 }
 
 .task-row.is-selected {
-  background: rgba(148, 163, 184, 0.16);
-  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(35, 131, 226, 0.08);
+  border: 1px solid rgba(35, 131, 226, 0.2);
 }
 
 .task-row.is-selected.has-active-session {
@@ -1769,21 +2590,27 @@ html:has(.fullscreen-app) {
   margin-right: 8px;
 }
 
+/* Notion-style drag handle - subtle, faint until hover */
 .task-drag-handle {
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--notion-text-faint);
   cursor: pointer;
-  padding: 0 8px;
-  font-size: 1.1rem;
-  border-radius: var(--radius-sm);
-  transition: color 120ms ease, background 120ms ease;
+  padding: 0 4px;
+  font-size: 12px;
+  border-radius: var(--radius-xs);
+  transition: all var(--transition-fast);
+  opacity: 0.5;
+}
+
+.task-row:hover .task-drag-handle {
+  opacity: 1;
 }
 
 .task-drag-handle:hover,
 .task-drag-handle:focus-visible {
-  color: #f3e8ff;
-  background: rgba(148, 163, 184, 0.12);
+  color: var(--notion-text-muted);
+  background: var(--notion-bg-hover);
 }
 
 .task-active-stack {
@@ -1796,6 +2623,9 @@ html:has(.fullscreen-app) {
     transparent
   );
   padding-bottom: 8px;
+  /* GPU acceleration for smooth sticky behavior */
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .task-active-stack .task-row {
@@ -1807,22 +2637,42 @@ html:has(.fullscreen-app) {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 6px;
+  margin: 6px 5px 0 5px;
+  padding-top: 6px;
+  position: relative;
 }
 
-/* Collapsible columns - hidden by default, shown on hover */
-.task-secondary-row.collapsible-column,
-.task-project-row.collapsible-column {
+/* Divider line with inset from edges */
+.task-secondary-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 15px;
+  right: 15px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Collapsible columns - collapsed height by default, content always visible */
+.task-secondary-row.collapsible-column {
   max-height: 0;
+  min-height: 0;
+  height: 0;
   overflow: hidden;
-  opacity: 0;
-  margin-top: 0;
-  transition: max-height 0.2s ease, opacity 0.15s ease, margin-top 0.2s ease;
+  margin: 0;
+  gap: 0;
+  padding: 0;
+  border: none;
+  transition: max-height 0.2s ease, margin 0.2s ease, padding 0.2s ease;
 }
 
-/* Show collapsible columns on task row hover */
-.task-row:hover .task-secondary-row.collapsible-column,
-.task-row:hover .task-project-row.collapsible-column,
+.task-secondary-row.collapsible-column::before {
+  display: none;
+}
+
+/* task-project-row.collapsible-column is defined below with its base styles */
+
+/* Show collapsible columns on task row CLICK (is-selected) - NOT hover */
 .task-row.is-selected .task-secondary-row.collapsible-column,
 .task-row.is-selected .task-project-row.collapsible-column,
 .task-row.is-focused-task .task-secondary-row.collapsible-column,
@@ -1830,8 +2680,24 @@ html:has(.fullscreen-app) {
 .task-row.is-keyboard-focused .task-secondary-row.collapsible-column,
 .task-row.is-keyboard-focused .task-project-row.collapsible-column {
   max-height: 100px;
-  opacity: 1;
+  min-height: 20px;
+  height: auto;
   margin-top: 6px;
+  gap: 12px;
+}
+
+/* Restore border on secondary row when expanded */
+.task-row.is-selected .task-secondary-row.collapsible-column,
+.task-row.is-focused-task .task-secondary-row.collapsible-column,
+.task-row.is-keyboard-focused .task-secondary-row.collapsible-column {
+  margin: 6px 5px 0 5px;
+  padding-top: 6px;
+}
+
+.task-row.is-selected .task-secondary-row.collapsible-column::before,
+.task-row.is-focused-task .task-secondary-row.collapsible-column::before,
+.task-row.is-keyboard-focused .task-secondary-row.collapsible-column::before {
+  display: block;
 }
 
 /* Keep expanded when any inner element is expanded (notes, editors, etc.) */
@@ -1843,8 +2709,16 @@ html:has(.fullscreen-app) {
 .task-row:has(.task-project-picker) .task-project-row.collapsible-column,
 .task-row:has(.add-subtask-container) .task-project-row.collapsible-column {
   max-height: 100px;
-  opacity: 1;
   margin-top: 6px;
+}
+
+/* Auto-expand project row when task has a project assigned (and setting enabled) */
+.task-project-row.collapsible-column.has-project {
+  max-height: 100px;
+  min-height: 20px;
+  height: auto;
+  margin-top: 6px;
+  gap: 12px;
 }
 
 .task-secondary-left {
@@ -1866,12 +2740,32 @@ html:has(.fullscreen-app) {
 /* Task Project Row - subtle project label */
 .task-project-row {
   position: relative;
-  margin-top: 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+
+
+}
+
+/* Only add margin/height when NOT in collapsible mode */
+.task-project-row:not(.collapsible-column) {
+  margin-top: 6px;
   min-height: 20px;
   gap: 12px;
+  margin: 0 15px 0 15px;
+}
+
+/* COLLAPSED STATE: Task project row when collapsed - no space taken */
+.task-project-row.collapsible-column {
+  max-height: 0;
+  min-height: 0;
+  height: 0;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  margin: 0 15px 0 15px;
+  transition: max-height 0.2s ease, margin 0.2s ease, padding 0.2s ease;
 }
 
 .task-project-row-left {
@@ -1897,22 +2791,15 @@ html:has(.fullscreen-app) {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 8px;
+  padding: 3px 6px;
   border-radius: 4px;
-  border: 1px dashed var(--notion-border);
+  border: none;
   background: transparent;
   color: var(--notion-text-muted);
   font-size: 11px;
   cursor: pointer;
   transition: all 150ms ease;
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* Show add subtask button on task row hover */
-.task-row:hover .add-subtask-btn {
-  opacity: 1;
-  pointer-events: auto;
+  opacity: 0.5;
 }
 
 /* Always show when form is active */
@@ -1921,9 +2808,9 @@ html:has(.fullscreen-app) {
 }
 
 .add-subtask-btn:hover {
-  border-color: var(--notion-blue);
-  color: var(--notion-blue);
-  border-style: solid;
+  color: var(--notion-text-secondary);
+  background: var(--notion-bg-hover);
+  opacity: 1;
 }
 
 .add-subtask-icon {
@@ -2014,17 +2901,19 @@ html:has(.fullscreen-app) {
   color: var(--notion-text);
 }
 
+/* Notion-style project label - subtle and minimal */
 .task-project-label {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 8px;
+  gap: 4px;
+  padding: 2px 6px;
   border: none;
   background: transparent;
-  color: var(--notion-text-muted);
+  color: var(--notion-text-faint);
   font-size: 11px;
   font-weight: 400;
   cursor: pointer;
+  opacity: 0.7;
   border-radius: var(--radius-sm);
   transition: all 150ms ease;
   opacity: 0.65;
@@ -2032,105 +2921,153 @@ html:has(.fullscreen-app) {
 
 .task-project-label:hover {
   background: var(--notion-bg-hover);
-  color: var(--notion-text);
+  color: var(--notion-text-secondary);
   opacity: 1;
-}
-
-.task-project-label .project-icon {
-  font-size: 10px;
-  opacity: 0.8;
 }
 
 .task-project-label .project-name {
-  max-width: 200px;
+  max-width: 280px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.01em;
 }
 
 .task-project-label .project-chevron {
-  font-size: 8px;
-  opacity: 0.6;
-  transition: transform 150ms ease;
+  font-size: 7px;
+  opacity: 0.4;
+  transition: transform var(--transition-fast);
+  margin-left: 2px;
 }
 
-.task-project-label.task-project-add {
-  opacity: 0;
+/* Add tag button - subtle text style with grayscale icon */
+.task-tag-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: none;
+  background: transparent;
   color: var(--notion-text-muted);
-}
-
-.task-row:hover .task-project-label.task-project-add {
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 150ms ease;
   opacity: 0.5;
 }
 
-.task-project-label.task-project-add:hover {
-  opacity: 1;
+.task-tag-add-btn:hover {
   background: var(--notion-bg-hover);
+  color: var(--notion-text-secondary);
+  opacity: 1;
 }
 
-.task-project-label.task-project-add .project-icon {
-  font-size: 12px;
-  font-weight: 500;
+.task-tag-add-btn .tag-icon {
+  font-size: 10px;
+  filter: grayscale(1);
+  opacity: 0.7;
+  transition: all 150ms ease;
+}
+
+.task-tag-add-btn:hover .tag-icon {
+  filter: grayscale(0.3);
+  opacity: 1;
+}
+
+.task-tag-add-btn .tag-label {
+  font-size: 11px;
+}
+
+/* "Add project" button - very subtle until hover */
+.task-project-label.task-project-add {
+  opacity: 0;
+  color: var(--notion-text-faint);
+}
+
+.task-row:hover .task-project-label.task-project-add {
+  opacity: 0.35;
+}
+
+.task-project-label.task-project-add:hover {
+  opacity: 0.7;
+  background: var(--notion-bg-hover);
 }
 
 /* Task Project Picker Dropdown */
 .task-project-picker-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 99999;
+  z-index: 2147483646;
   background: transparent;
 }
 
 .task-project-picker {
   position: fixed;
-  z-index: 100000;
-  min-width: 300px;
-  max-width: 420px;
-  max-height: 450px;
+  z-index: 2147483647;
+  min-width: 260px;
+  max-width: 300px;
+  max-height: 380px;
   overflow-y: auto;
-  padding: 10px;
-  background: var(--notion-bg-secondary);
-  border: 1px solid var(--notion-border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  padding: 6px;
+  background: var(--notion-bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  box-shadow: 
+    0 0 0 1px #000,
+    0 8px 16px rgba(0, 0, 0, 0.7),
+    0 16px 32px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .task-project-picker .project-option {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
-  padding: 16px 18px;
+  padding: 10px 12px;
   border: none;
   background: transparent;
   color: var(--notion-text);
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 450;
   text-align: left;
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   transition: background 100ms ease;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.task-project-picker .project-option:last-child {
-  border-bottom: none;
 }
 
 .task-project-picker .project-option:hover {
-  background: var(--notion-bg-hover);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .task-project-picker .project-option.is-selected {
-  background: rgba(147, 51, 234, 0.15);
-  color: #e9d5ff;
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+}
+
+.task-project-picker .project-option.is-selected::after {
+  content: '✓';
+  font-size: 12px;
+  font-weight: 600;
+  color: #3b82f6;
+  flex-shrink: 0;
 }
 
 .task-project-picker .project-option.is-selected:hover {
-  background: rgba(147, 51, 234, 0.25);
+  background: rgba(59, 130, 246, 0.25);
+}
+
+/* First option (No project) styling */
+.task-project-picker .project-option:first-child {
+  color: var(--notion-text-muted);
+  font-style: italic;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 4px;
+  padding-bottom: 12px;
 }
 
 /* Capture form project selector */
@@ -2139,38 +3076,53 @@ html:has(.fullscreen-app) {
   align-items: center;
 }
 
+/* Project row - separate section above notes */
+.capture-project-row {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  margin-top: 4px;
+}
+
 .project-select,
 .capture-project-select {
-  font-size: 12px;
-  padding: 6px 10px;
-  border: 1px solid var(--notion-border);
-  border-radius: var(--radius-sm);
-  background: var(--notion-bg-secondary);
-  color: var(--notion-text-muted);
+  font-size: 13px;
+  font-weight: 450;
+  padding: 8px 32px 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: var(--notion-bg-elevated);
+  color: var(--notion-text);
   cursor: pointer;
   transition: all 150ms ease;
-  max-width: 220px;
+  min-width: 180px;
+  max-width: 280px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
 }
 
 .project-select option,
 .capture-project-select option {
-  padding: 10px 12px;
-  line-height: 1.6;
+  padding: 12px 14px;
+  line-height: 1.5;
   font-size: 13px;
+  background: var(--notion-bg-elevated);
+  color: var(--notion-text);
 }
 
 .project-select:hover,
 .capture-project-select:hover {
-  background: var(--notion-bg-hover);
-  border-color: rgba(255, 255, 255, 0.15);
-  color: var(--notion-text);
+  background: var(--notion-bg-tertiary);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 .project-select:focus,
 .capture-project-select:focus {
   outline: none;
-  border-color: rgba(147, 51, 234, 0.5);
-  box-shadow: 0 0 0 2px rgba(147, 51, 234, 0.15);
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 .task-notes.estimate-editor {
@@ -2193,19 +3145,33 @@ html:has(.fullscreen-app) {
 }
 
 .bottom-controls.has-active-session {
-  background: rgba(107, 33, 168, 0.25);
-  border-color: rgba(107, 33, 168, 0.35);
+  background: linear-gradient(
+    135deg,
+    rgba(107, 33, 168, 0.25) 0%,
+    rgba(139, 92, 246, 0.15) 100%
+  );
+  border-color: rgba(139, 92, 246, 0.3);
+  box-shadow: 
+    0 4px 24px rgba(139, 92, 246, 0.15),
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 40px rgba(139, 92, 246, 0.08);
 }
 
 .bottom-controls.is-collapsed .collapsed-session-indicator {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 8px;
-  border-radius: var(--radius-sm);
-  background: rgba(107, 33, 168, 0.2);
-  border: 1px solid rgba(107, 33, 168, 0.4);
-  margin-right: 12px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.2) 0%,
+    rgba(99, 102, 241, 0.15) 100%
+  );
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  margin-right: 8px;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.1);
 }
 
 .collapsed-session-times {
@@ -2252,6 +3218,8 @@ html:has(.fullscreen-app) {
   background: rgba(255, 255, 255, 0.02);
   display: flex;
   flex-direction: column;
+  /* Performance: contain layout for grouped tasks */
+  contain: layout style;
 }
 
 .task-group-header {
@@ -2389,12 +3357,17 @@ html:has(.fullscreen-app) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
+  overflow: hidden;
 }
 
 .task-header-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  max-width: 50%;
+  justify-content: flex-end;
 }
 
 .task-header-left {
@@ -2404,60 +3377,60 @@ html:has(.fullscreen-app) {
   flex: 1;
 }
 
+/* Notion-style checkbox - soft rounded square */
 .complete-toggle {
-  width: 22px;
-  height: 22px;
-  min-width: 22px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.05);
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  border-radius: var(--radius-xs);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
   color: var(--notion-text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
   cursor: pointer;
-  margin-top: 2px;
-  transition: background 150ms ease, transform 120ms ease, box-shadow 200ms ease;
+  margin-top: 3px;
+  transition: all var(--transition-normal);
   padding: 0;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.25);
   position: relative;
   overflow: hidden;
+  flex-shrink: 0;
 }
 
+/* Checkmark - centered using flexbox positioning */
 .complete-toggle::after {
-  content: '✓';
-  font-size: 14px;
-  line-height: 1;
-  color: transparent;
-  transition: color 140ms ease, transform 200ms ease;
-  transform: scale(0.8);
+  content: '';
+  width: 4px;
+  height: 7px;
+  border: solid transparent;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translateY(-0.5px);
+  transition: border-color var(--transition-fast);
 }
 
+/* Show faint checkmark on hover when not complete */
 .complete-toggle[data-state='idle']:hover::after {
-  color: rgba(255, 255, 255, 0.55);
-  transform: scale(1);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 
 .complete-toggle:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--notion-text);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .complete-toggle:active {
-  transform: scale(0.92);
+  transform: scale(0.94);
 }
 
+/* Completed state - filled blue with white checkmark */
 .complete-toggle.is-complete {
   background: var(--notion-blue);
   border-color: var(--notion-blue);
-  color: #fff;
-  box-shadow: 0 3px 10px rgba(23, 105, 170, 0.45);
 }
 
 .complete-toggle.is-complete::after {
-  color: #fff;
-  transform: scale(1.2);
+  border-color: white;
 }
 
 .complete-hold-indicator {
@@ -2479,21 +3452,27 @@ html:has(.fullscreen-app) {
   font-weight: 400;
 }
 
+/* Notion-style inline text input */
 .task-title-input {
   flex: 1;
   min-width: 0;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-xs);
   color: var(--notion-text);
   font-size: 14px;
   padding: 2px 6px;
+  transition: all var(--transition-fast);
+}
+
+.task-title-input:hover {
+  background: var(--notion-bg-hover);
 }
 
 .task-title-input:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.35);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15);
+  background: var(--notion-bg-hover);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
 
 .is-complete .task-title {
@@ -2551,6 +3530,7 @@ html:has(.fullscreen-app) {
   justify-content: space-between;
   gap: 15px;
   padding-left: 2px;
+  overflow: hidden;
 }
 
 .property-group-left {
@@ -2585,17 +3565,23 @@ html:has(.fullscreen-app) {
   justify-content: space-between;
 }
 
+/* Notion-style link button */
 .open-link {
-  font-size: 11px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: var(--radius-xs);
+  border: none;
+  background: transparent;
   display: inline-flex;
   justify-content: center;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 600;
-  opacity: 1;
+  font-weight: 500;
+  color: var(--notion-text-muted);
+  transition: all var(--transition-fast);
+}
+
+.open-link:hover {
+  background: var(--notion-bg-hover);
+  color: var(--notion-text);
 }
 
 .date-stack {
@@ -2608,39 +3594,970 @@ html:has(.fullscreen-app) {
   text-align: left;
 }
 
+/* Notion-style status pills - using Notion's actual colors */
 .status-pill {
   min-width: 40px;
-  min-height: 32px;
+  min-height: 22px;
   max-width: 120px;
   text-align: center;
-  padding: 4px 10px;
+  padding: 3px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* Default/Gray */
+.status-pill.status-inbox,
+.status-pill.status-default {
+  background: var(--notion-color-gray);
+}
+
+/* To-do - Orange */
+.status-pill.status-todo {
+  background: var(--notion-color-orange);
+}
+
+/* Active/In Progress - Blue */
+.status-pill.status-active,
+.status-pill.status-inprogress {
+  background: var(--notion-color-blue);
+}
+
+/* Waiting - Yellow */
+.status-pill.status-waiting {
+  background: var(--notion-color-yellow);
+}
+
+/* Done/Complete - Green */
+.status-pill.status-done,
+.status-pill.status-complete {
+  background: var(--notion-color-green);
+}
+
+/* Purple */
+.status-pill.status-purple {
+  background: var(--notion-color-purple);
+}
+
+/* Pink */
+.status-pill.status-pink {
+  background: var(--notion-color-pink);
+}
+
+/* Red */
+.status-pill.status-red {
+  background: var(--notion-color-red);
+}
+
+/* Brown */
+.status-pill.status-brown {
+  background: var(--notion-color-brown);
+}
+
+/* Direct color mapping for status pills (from database color field) */
+.status-pill.status-gray {
+  background: var(--notion-color-gray);
+}
+
+.status-pill.status-blue {
+  background: var(--notion-color-blue);
+}
+
+.status-pill.status-green {
+  background: var(--notion-color-green);
+}
+
+.status-pill.status-orange {
+  background: var(--notion-color-orange);
+}
+
+.status-pill.status-yellow {
+  background: var(--notion-color-yellow);
+}
+
+.status-pill.status-purple {
+  background: var(--notion-color-purple);
+}
+
+.status-pill.status-pink {
+  background: var(--notion-color-pink);
+}
+
+.status-pill.status-red {
+  background: var(--notion-color-red);
+}
+
+/* ============================================
+   Filter Pills Toolbar - Notion-style Chips
+   ============================================ */
+.filter-pills-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 100;
+}
+
+/* Sort/Rules chips - Notion style */
+.filter-toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.filter-toolbar-chip:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.filter-toolbar-chip .chip-icon {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+/* Filter pill dropdown container */
+.filter-pill-dropdown {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+}
+
+/* Filter pill trigger button - Notion minimal style */
+.filter-pill-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.filter-pill-trigger:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* When filter has a value - subtle blue tint like Notion */
+.filter-pill-trigger.has-value {
+  background: rgba(35, 131, 226, 0.15);
+  color: rgb(35, 131, 226);
+}
+
+.filter-pill-trigger.has-value:hover {
+  background: rgba(35, 131, 226, 0.2);
+}
+
+.filter-pill-dropdown.is-open .filter-pill-trigger {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.filter-pill-label {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+
+.filter-pill-separator {
+  opacity: 0.5;
+  margin: 0 2px;
+}
+
+.filter-pill-value {
+  font-weight: 500;
+}
+
+.filter-pill-chevron {
+  font-size: 8px;
+  opacity: 0.5;
+  margin-left: 1px;
+  transition: transform 100ms ease;
+}
+
+.filter-pill-dropdown.is-open .filter-pill-chevron {
+  transform: rotate(180deg);
+}
+
+/* Filter dropdown menu - cleaner Notion style */
+.filter-pill-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 180px;
+  max-width: 280px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: rgb(37, 37, 37);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(0, 0, 0, 0.1);
+  animation: filterMenuIn 100ms ease-out;
+}
+
+@keyframes filterMenuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.filter-menu-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: transparent;
+}
+
+.filter-menu-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 80ms ease;
+  white-space: nowrap;
+}
+
+.filter-menu-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.filter-menu-option:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.filter-menu-option.is-active {
+  background: rgba(35, 131, 226, 0.15);
+  color: rgb(35, 131, 226);
+}
+
+.filter-menu-option.is-active:hover {
+  background: rgba(35, 131, 226, 0.2);
+}
+
+.filter-menu-option .option-icon {
+  font-size: 13px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.filter-menu-option .option-emoji {
+  font-size: 13px;
+}
+
+.filter-menu-option .option-color {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.filter-menu-option .option-chevron {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.4;
+}
+
+/* Filter menu divider */
+.filter-menu-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 0;
+}
+
+/* Filter menu section label */
+.filter-menu-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 6px 10px 4px;
+}
+
+/* Add filter button - Notion style */
+.filter-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.filter-add-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+/* Notion-style condition row (Is / Is not) */
+.filter-condition-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.filter-condition-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.filter-condition-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.filter-condition-btn .condition-checkbox {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.9);
+  background: transparent;
+}
+
+.filter-condition-btn.is-active .condition-checkbox {
+  background: rgb(35, 131, 226);
+  border-color: rgb(35, 131, 226);
+}
+
+/* Notion-style checkbox options */
+.filter-menu-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.filter-menu-checkbox:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.filter-menu-checkbox .checkbox-indicator {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.filter-menu-checkbox .checkbox-indicator.is-checked {
+  background: rgb(35, 131, 226);
+  border-color: rgb(35, 131, 226);
+}
+
+.filter-menu-checkbox .checkbox-indicator svg {
+  color: white;
+}
+
+.filter-menu-checkbox .checkbox-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.filter-menu-checkbox .checkbox-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.filter-menu-checkbox .checkbox-label {
+  flex: 1;
+}
+
+/* Clear selection button */
+.filter-menu-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 80ms ease, color 80ms ease;
+}
+
+.filter-menu-clear:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ============================================
+   Notion-style Filter Pill
+   ============================================ */
+.notion-filter-pill {
+  position: relative;
+}
+
+.notion-filter-pill-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.notion-filter-pill-trigger:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.notion-filter-pill.is-open .notion-filter-pill-trigger {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.notion-filter-pill.has-value .notion-filter-pill-trigger {
+  background: rgba(35, 131, 226, 0.15);
+  color: rgb(35, 131, 226);
+}
+
+.notion-filter-pill.has-value .notion-filter-pill-trigger:hover {
+  background: rgba(35, 131, 226, 0.2);
+}
+
+.notion-filter-pill .filter-pill-icon {
+  display: flex;
+  align-items: center;
+}
+
+.notion-filter-pill .filter-pill-condition {
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 2px;
+}
+
+.notion-filter-pill.has-value .filter-pill-condition {
+  color: rgba(35, 131, 226, 0.7);
+}
+
+.notion-filter-pill .filter-pill-separator {
+  opacity: 0.5;
+  margin: 0 2px;
+}
+
+.notion-filter-pill .filter-pill-value {
+  font-weight: 500;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Notion Filter Menu */
+.notion-filter-menu {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 260px;
+  max-width: 320px;
+  background: rgb(37, 37, 37);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.notion-filter-menu.simple {
+  min-width: 200px;
+  max-width: 260px;
+}
+
+/* Filter menu header */
+.notion-filter-menu-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.notion-filter-menu-header .filter-menu-field-name {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.notion-filter-menu-header .filter-menu-more {
+  margin-left: auto;
+  padding: 4px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.status-pill.status-inbox {
-  border-color: rgba(156, 163, 175, 0.5);
-  background: rgba(156, 163, 175, 0.15);
-  color: #d1d5db;
+.notion-filter-menu-header .filter-menu-more:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
 }
 
-.status-pill.status-todo {
-  border-color: rgba(251, 146, 60, 0.6);
-  background: rgba(251, 146, 60, 0.15);
-  color: #fdba74;
+/* Condition dropdown */
+.condition-dropdown {
+  position: relative;
 }
 
-.status-pill.status-active {
-  border-color: rgba(168, 85, 247, 0.6);
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
+.condition-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 80ms ease;
 }
 
-.status-pill.status-waiting {
-  border-color: rgba(250, 204, 21, 0.7);
-  background: rgba(250, 204, 21, 0.15);
-  color: #fde047;
+.condition-dropdown-trigger:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.condition-dropdown-menu {
+  position: fixed;
+  z-index: 2147483648;
+  min-width: 140px;
+  background: rgb(37, 37, 37);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.condition-dropdown-option {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.condition-dropdown-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.condition-dropdown-option.is-active {
+  background: rgba(35, 131, 226, 0.15);
+  color: rgb(35, 131, 226);
+}
+
+/* Filter search input */
+.notion-filter-search {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.notion-filter-search-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 100ms ease;
+}
+
+.notion-filter-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.notion-filter-search-input:focus {
+  border-color: rgba(35, 131, 226, 0.5);
+}
+
+/* Filter options list */
+.notion-filter-options {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.notion-filter-options-hint {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.notion-filter-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 80ms ease;
+}
+
+.notion-filter-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.notion-filter-option.is-selected {
+  background: rgba(35, 131, 226, 0.1);
+}
+
+.notion-filter-option .option-checkbox {
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.notion-filter-option .option-checkbox.is-checked {
+  background: rgb(35, 131, 226);
+  border-color: rgb(35, 131, 226);
+}
+
+.notion-filter-option .option-checkbox svg {
+  color: white;
+}
+
+.notion-filter-option .option-icon {
+  font-size: 14px;
+}
+
+.notion-filter-option .option-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.notion-filter-option .option-label {
+  flex: 1;
+}
+
+/* Filter footer */
+.notion-filter-footer {
+  padding: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.notion-filter-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 80ms ease, color 80ms ease;
+}
+
+.notion-filter-clear:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* ============================================
+   Status Select - Custom Notion-style Dropdown
+   ============================================ */
+.status-select-container {
+  position: relative;
+  display: inline-flex;
+}
+
+.status-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  border: none;
+  transition: all var(--transition-fast);
+  /* Inherits pill styling from .status-pill */
+}
+
+.status-select-trigger:hover {
+  filter: brightness(1.15);
+}
+
+.status-select-trigger.is-open {
+  filter: brightness(1.2);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.15);
+}
+
+.status-select-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Status circle indicator in trigger */
+.status-select-circle {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.9;
+}
+
+/* Circle types - empty, half, full */
+.status-circle-empty {
+  opacity: 0.7;
+}
+
+.status-circle-half {
+  opacity: 0.85;
+}
+
+.status-circle-full {
+  opacity: 1;
+}
+
+.status-select-label {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Status Dropdown */
+.status-select-dropdown {
+  position: fixed;
+  z-index: 2147483647;
+  min-width: 180px;
+  max-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--notion-bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 6px;
+  box-shadow: 
+    rgba(15, 15, 15, 0.05) 0px 0px 0px 1px,
+    rgba(15, 15, 15, 0.1) 0px 3px 6px,
+    rgba(15, 15, 15, 0.2) 0px 9px 24px;
+  animation: statusDropdownIn 120ms ease-out;
+}
+
+@keyframes statusDropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.status-select-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  margin-bottom: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--notion-text);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.status-select-option:last-child {
+  margin-bottom: 0;
+}
+
+.status-select-option:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.status-select-option.is-selected {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Circle indicator in dropdown options */
+.status-option-circle {
+  font-size: 12px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.status-option-circle.status-circle-empty {
+  opacity: 0.6;
+}
+
+.status-option-circle.status-circle-half {
+  opacity: 0.8;
+}
+
+.status-option-circle.status-circle-full {
+  opacity: 1;
+}
+
+.status-option-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+/* Checkmark shown at the start for selected items */
+.status-option-check {
+  font-size: 14px;
+  color: hsl(199, 89%, 60%);
+  font-weight: 600;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Color dot indicator in dropdown options */
+.status-option-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-option-color-dot.status-gray {
+  background: var(--notion-color-gray);
+}
+
+.status-option-color-dot.status-brown {
+  background: var(--notion-color-brown);
+}
+
+.status-option-color-dot.status-orange {
+  background: var(--notion-color-orange);
+}
+
+.status-option-color-dot.status-yellow {
+  background: var(--notion-color-yellow);
+}
+
+.status-option-color-dot.status-green {
+  background: var(--notion-color-green);
+}
+
+.status-option-color-dot.status-blue {
+  background: var(--notion-color-blue);
+}
+
+.status-option-color-dot.status-purple {
+  background: var(--notion-color-purple);
+}
+
+.status-option-color-dot.status-pink {
+  background: var(--notion-color-pink);
+}
+
+.status-option-color-dot.status-red {
+  background: var(--notion-color-red);
 }
 
 .property-item.status-item {
@@ -2658,143 +4575,230 @@ html:has(.fullscreen-app) {
   width: 100%;
 }
 
+/* Notion-style matrix/priority chips - rounded, clear typography */
 .matrix-chip {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
   border-radius: 999px;
-  border: 1px solid transparent;
+  border: none;
   margin-right: 4px;
+  color: white;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .matrix-select,
 .matrix-chip {
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition: all var(--transition-fast);
 }
 
 .matrix-select.matrix-green,
 .matrix-chip.matrix-green {
-  color: var(--matrix-green);
-  border-color: rgba(34, 197, 94, 0.4);
-  background: rgba(34, 197, 94, 0.12);
+  background: rgba(77, 171, 154, 0.85);
+  color: white;
 }
 
 .matrix-select.matrix-blue,
 .matrix-chip.matrix-blue {
-  color: var(--matrix-blue);
-  border-color: rgba(37, 99, 235, 0.4);
-  background: rgba(37, 99, 235, 0.12);
+  background: rgba(82, 156, 202, 0.85);
+  color: white;
 }
 
 .matrix-select.matrix-yellow,
 .matrix-chip.matrix-yellow {
-  color: #b7791f;
-  border-color: rgba(250, 204, 21, 0.4);
-  background: rgba(250, 204, 21, 0.15);
+  background: rgba(203, 145, 47, 0.85);
+  color: white;
 }
 
 .matrix-select.matrix-orange,
 .matrix-chip.matrix-orange {
-  color: #b45309;
-  border-color: rgba(251, 146, 60, 0.45);
-  background: rgba(251, 146, 60, 0.16);
+  background: rgba(217, 115, 13, 0.85);
+  color: white;
 }
 
 .matrix-select.matrix-gray,
 .matrix-chip.matrix-gray {
-  color: var(--matrix-gray);
-  border-color: rgba(156, 163, 175, 0.45);
-  background: rgba(156, 163, 175, 0.14);
+  background: rgba(155, 154, 151, 0.7);
+  color: white;
 }
 
-/* Shared Property Styles */
+/* Notion-style property controls - pill shaped, clear typography */
 .task-properties-row select,
 .task-properties-row .date-input,
 .deadline-chip {
     appearance: none;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    color: var(--notion-text);
+    background: rgba(255, 255, 255, 0.06);
+    border: none;
+    color: white;
     font-family: var(--notion-font);
-    font-size: 11px;
-    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    padding: 3px 10px;
     border-radius: 999px;
-  cursor: pointer;
-    height: 26px;
-  display: flex;
+    cursor: pointer;
+    height: 24px;
+    display: flex;
     align-items: center;
-    transition: background 100ms ease, color 100ms ease;  
+    transition: all var(--transition-fast);
 }
 
 .task-properties-row select:hover,
 .task-properties-row .date-input:hover,
 .deadline-chip:hover {
-    background: var(--notion-bg-hover);
-    color: var(--notion-text);
+    background: rgba(255, 255, 255, 0.1);
 }
 
+/* Notion-style pill select - rounded, clear typography */
 .pill-select {
     appearance: none;
     border-radius: 999px;
-    
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.03);
+    border: none;
+    background: rgba(255, 255, 255, 0.06);
     min-height: 24px;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 500;
-    transition: background 100ms ease, color 100ms ease;
+    letter-spacing: 0.01em;
+    padding: 3px 10px;
+    color: white;
+    transition: all var(--transition-fast);
 }
 
 .pill-select:hover {
-  background: var(--notion-bg-hover);
-  color: var(--notion-text);
-  
+    background: rgba(255, 255, 255, 0.1);
 }
 
+/* Notion-style pill input */
 .pill-input {
-    border-radius: 999px;
-    padding: 4px 14px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.03);
-    min-height: 32px;
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    border: none;
+    background: transparent;
+    min-height: 28px;
     color: var(--notion-text);
+    transition: all var(--transition-fast);
+}
+
+.pill-input:hover {
+    background: var(--notion-bg-hover);
+}
+
+.pill-input:focus {
+    background: var(--notion-bg-hover);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+    outline: none;
 }
 
 .date-field {
   position: relative;
   display: inline-flex;
   max-width: fit-content;
-  min-width: 90px;
 }
 
 .date-field.is-open {
   z-index: 9999;
 }
 
+/* Notion-style date field trigger button - text-like appearance */
+.date-field-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  padding: 3px 8px;
+  height: 24px;
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--notion-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.date-field-trigger:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--notion-text);
+}
+
+/* When date has a value - subtle text-like appearance */
+.date-field-trigger.has-value {
+  color: var(--notion-text);
+}
+
+.date-field-trigger.has-value:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* When date has a reminder - subtle color indicator */
+.date-field-trigger.has-reminder {
+  color: hsl(214, 70%, 65%);
+}
+
+/* Reminder indicator removed - now uses tooltip on hover */
+
+.date-field-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Date field icon and text */
+.date-field-icon {
+  display: none;
+}
+
+.date-field-text {
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Legacy date field input wrapper - kept for backwards compatibility */
 .date-field-input-wrapper {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.03);
-  padding: 0 2px 0 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 3px 8px 3px 10px;
   min-height: 24px;
-  gap: 3px;
+  gap: 5px;
+  transition: background var(--transition-fast);
+}
+
+.date-field-input-wrapper:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .date-field-input-wrapper.pill-input {
-  padding: 0 2px 0 8px;
+  padding: 3px 8px 3px 10px;
   min-height: 24px;
+}
+
+/* When date has a reminder, show with more emphasis */
+.date-field-input-wrapper.has-reminder {
+  background: rgba(35, 131, 226, 0.2);
+}
+
+.date-field-input-wrapper.has-reminder:hover {
+  background: rgba(35, 131, 226, 0.3);
 }
 
 .date-field-input {
   border: none;
   background: transparent;
   color: var(--notion-text);
-  font-size: 11.5px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
   padding: 0;
   min-width: 60px;
-  max-width: 96px;
+  max-width: 120px;
   flex: 1 1 auto;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2802,6 +4806,7 @@ html:has(.fullscreen-app) {
 
 .date-field-input::placeholder {
   color: var(--notion-text-muted);
+  font-weight: 400;
 }
 
 .date-field-input:focus {
@@ -2814,6 +4819,12 @@ html:has(.fullscreen-app) {
   color: var(--notion-text-muted);
   padding: 0 2px;
   cursor: pointer;
+  font-size: 13px;
+  transition: color var(--transition-fast);
+}
+
+.date-field-input-wrapper:hover .date-field-calendar {
+  color: var(--notion-text);
 }
 
 .date-field-input:disabled,
@@ -2824,78 +4835,409 @@ html:has(.fullscreen-app) {
 
 .date-field-popover {
   position: fixed;
-  z-index: 99999;
-  background: rgba(20, 20, 20, 0.98);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  z-index: 2147483647;
+  background: var(--notion-bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 12px;
   padding: 8px;
-  box-shadow: 0 12px 24px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,0,0,0.3);
+  box-shadow: 
+    0 0 0 1px #000,
+    0 8px 16px rgba(0, 0, 0, 0.7),
+    0 16px 32px rgba(0, 0, 0, 0.5);
   min-width: 240px;
   max-height: 85vh;
-  overflow-y: auto;
+  overflow: visible;
+}
+
+/* Text input at top of date popover */
+/* Notion-style date inputs row */
+.date-field-inputs-row {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Stacked layout when end date + time are enabled */
+.date-field-inputs-row.stacked {
+  flex-direction: column;
+  gap: 6px;
+}
+
+.date-input-group {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.date-field-date-input,
+.date-field-time-input {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--notion-text);
+  font-size: 13px;
+  padding: 6px 10px;
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.date-field-date-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.date-field-time-input {
+  width: 70px;
+  flex-shrink: 0;
+}
+
+.date-field-date-input:focus,
+.date-field-time-input:focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--notion-blue);
+}
+
+.date-field-date-input::placeholder,
+.date-field-time-input::placeholder {
+  color: var(--notion-text-muted);
+  font-size: 11px;
+}
+
+/* Legacy text input - kept for backwards compatibility */
+.date-field-text-input-wrapper {
+  padding: 8px 10px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.date-field-text-input {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--notion-text);
+  font-size: 14px;
+  padding: 8px 10px;
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+.date-field-text-input:focus {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--notion-blue);
+}
+
+.date-field-text-input::placeholder {
+  color: var(--notion-text-muted);
 }
 
 .date-field-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-top: 12px;
+  margin-bottom: 10px;
 }
 
 .date-field-header p {
   margin: 0;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--notion-text);
 }
 
-.date-field-header button {
-  border: none;
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  width: 28px;
-  height: 28px;
-  color: var(--notion-text);
+.date-field-today-btn {
+  background: transparent;
+  border: 1px solid var(--notion-border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: var(--notion-text-secondary);
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.date-field-today-btn:hover {
+  background: var(--notion-hover);
+  color: var(--notion-text);
+  border-color: var(--notion-text-secondary);
+}
+
+.date-field-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.date-field-nav button {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  color: var(--notion-text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms ease;
+}
+
+.date-field-nav button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--notion-text);
 }
 
 .date-field-weekdays,
 .date-field-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  gap: 2px;
+}
+
+.date-field-weekdays {
+  margin-bottom: 4px;
 }
 
 .date-field-weekdays span {
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 500;
   text-align: center;
   color: var(--notion-text-muted);
+  padding: 4px 0;
 }
 
 .date-field-cell {
   border: none;
-  border-radius: 6px;
-  padding: 4px 0;
+  border-radius: 50%;
+  aspect-ratio: 1;
+  width: 28px;
+  height: 28px;
+  margin: 0 auto;
   background: transparent;
   color: var(--notion-text);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease;
+}
+
+.date-field-cell:hover:not(.is-selected) {
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .date-field-cell.is-muted {
-  color: var(--notion-text-muted);
+  color: rgba(255, 255, 255, 0.3);
 }
 
 .date-field-cell.is-selected {
   background: var(--notion-blue);
   color: white;
+  font-weight: 500;
 }
 
 .date-field-cell.is-range {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 4px;
 }
 
 .date-field-cell.is-today:not(.is-selected) {
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+}
+
+/* DateField Options Section - Notion style */
+.date-field-options {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.date-field-option-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px;
+  border-radius: 4px;
+  min-height: 32px;
+}
+
+.date-field-option-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.option-label {
+  font-size: 13px;
+  color: var(--notion-text);
+  font-weight: 400;
+}
+
+/* Notion-style toggle switch */
+.option-toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.toggle-track {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  transition: background 200ms ease;
+}
+
+.option-toggle.is-on .toggle-track {
+  background: var(--notion-blue);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 200ms ease;
+}
+
+.option-toggle.is-on .toggle-thumb {
+  transform: translateX(14px);
+}
+
+/* Option value button (for Repeat, Remind) */
+.option-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--notion-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.option-value:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--notion-text);
+}
+
+.option-chevron {
+  font-size: 14px;
+  opacity: 0.5;
+  margin-left: 2px;
+}
+
+/* Time input row */
+.time-input-row {
+  padding-left: 4px;
+}
+
+.time-input {
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--notion-text);
+  font-size: 13px;
+  width: 100%;
+  max-width: 120px;
+}
+
+.time-input:focus {
+  outline: none;
+  border-color: var(--notion-blue);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Option row wrapper - needed for submenu positioning */
+.date-field-option-row-wrapper {
+  position: relative;
+}
+
+/* Clickable option row (for Repeat/Remind) */
+.date-field-option-row.clickable {
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.date-field-option-row.clickable:hover,
+.date-field-option-row.clickable.is-active {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.option-value-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--notion-text-muted);
+  font-size: 13px;
+}
+
+/* Submenu - positioned to the right using fixed positioning to escape container */
+.date-field-submenu {
+  position: fixed;
+  min-width: 220px;
+  background: rgba(20, 20, 20, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 100000;
+}
+
+.submenu-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--notion-text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.submenu-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.submenu-option.is-selected {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.submenu-label {
+  flex: 1;
+}
+
+.submenu-check {
+  color: var(--notion-blue);
+  font-size: 14px;
+  margin-left: 8px;
 }
 
 .date-field-time {
@@ -2998,18 +5340,24 @@ html:has(.fullscreen-app) {
 }
 
 .date-field-clear-btn {
-  padding: 6px 10px;
+  display: block;
+  width: 100%;
+  padding: 8px 4px;
+  margin-top: 4px;
   border-radius: 4px;
-  border: 1px solid transparent;
+  border: none;
   background: transparent;
   color: var(--notion-text-muted);
-  font-size: 11px;
+  font-size: 13px;
+  font-weight: 400;
   cursor: pointer;
+  text-align: left;
   transition: all 150ms ease;
 }
 
 .date-field-clear-btn:hover {
-  color: #f87171;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--notion-text);
 }
 
 /* DateField Secondary Panels */
@@ -3252,32 +5600,38 @@ select option {
 }
 
 /* Flags (Checkboxes) */
+/* Urgent/Important flag toggles - clean minimal style */
 .flag {
     display: inline-flex;
     align-items: center;
-    gap: 4px;
-    font-size: 11px;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
     color: var(--notion-text-muted);
     cursor: pointer;
-    padding: 2px 6px;
-    border-radius: 3px;
-    transition: background 100ms ease, color 100ms ease;
+    padding: 3px 4px;
+    border-radius: 4px;
+    transition: color var(--transition-fast);
 }
 
 .flag:hover {
-    background: var(--notion-bg-hover);
     color: var(--notion-text);
 }
 
 .flag input[type="checkbox"] {
     appearance: none;
-    width: 12px;
-    height: 12px;
-    border: 1px solid var(--notion-text-muted);
-    border-radius: 2px;
-  background: transparent;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid var(--notion-text-muted);
+    border-radius: 3px;
+    background: transparent;
     cursor: pointer;
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-fast);
 }
 
 .flag input[type="checkbox"]:checked {
@@ -3286,8 +5640,8 @@ select option {
 }
 
 .flag.urgent input[type="checkbox"]:checked {
-  background: #fbbf24;
-  border-color: #fbbf24;
+  background: #f59e0b;
+  border-color: #f59e0b;
 }
 
 .flag.urgent input[type="checkbox"]:checked::after {
@@ -3295,25 +5649,27 @@ select option {
 }
 
 .flag.urgent.is-active {
-  color: #fbbf24;
+  color: var(--notion-text);
 }
 
 .flag.important input[type="checkbox"]:checked {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: #3b82f6;
+  border-color: #3b82f6;
 }
 
 .flag.important.is-active {
-  color: #7fb3ff;
+  color: var(--notion-text);
 }
 
 .flag input[type="checkbox"]:checked::after {
     content: '✓';
     position: absolute;
     color: white;
-    font-size: 9px;
-    left: 1px;
-    top: -1px;
+    font-size: 10px;
+    font-weight: 700;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     line-height: 1;
 }
 
@@ -3325,18 +5681,810 @@ select option {
     margin-top: 6px;
 }
 
+/* Action links - clearer typography */
 .task-notes-toggle {
     border: none;
     background: transparent;
     color: var(--notion-text-muted);
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0.005em;
     cursor: pointer;
-    padding: 0;
+    padding: 2px 0;
+    transition: color var(--transition-fast);
 }
 
 .task-notes-toggle:hover {
     color: var(--notion-text);
-    text-decoration: underline;
+}
+
+/* ============================================
+   Notion-style Session Controls
+   ============================================ */
+
+/* Session button - Notion style */
+.notion-session-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.notion-session-btn:hover {
+    background: var(--notion-bg-hover);
+    color: var(--notion-text);
+}
+
+.notion-session-btn .session-play-icon {
+    font-size: 10px;
+    color: rgba(34, 197, 94, 0.8);
+}
+
+.notion-session-btn.is-active {
+    color: var(--notion-text);
+    background: rgba(167, 139, 250, 0.1);
+}
+
+.notion-session-btn.is-active .session-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #a78bfa;
+    animation: pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.85); }
+}
+
+/* Time remaining - Notion code style */
+.time-remaining-code {
+    font-family: 'SFMono-Regular', 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+    font-size: 11px;
+    padding: 2px 6px;
+    background: rgba(135, 131, 120, 0.15);
+    border-radius: 3px;
+    color: #eb5757;
+    color: var(--notion-text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+
+.time-remaining-code.is-low {
+    background: rgba(245, 158, 11, 0.15);
+    color: #f59e0b;
+}
+
+.time-remaining-code.is-overtime {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+}
+
+/* Estimate button - Notion style */
+.notion-estimate-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.notion-estimate-btn:hover {
+    background: var(--notion-bg-hover);
+    color: var(--notion-text);
+}
+
+/* Tracking button - Notion style */
+.notion-tracking-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.notion-tracking-btn:hover {
+    background: var(--notion-bg-hover);
+    color: var(--notion-text);
+}
+
+.notion-tracking-btn .tracking-icon {
+    font-size: 12px;
+}
+
+/* ============================================
+   Notion-style Session Panel
+   ============================================ */
+
+/* Panel header - title + actions */
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    position: relative;
+    padding-bottom: 6px;
+    margin-bottom: 4px;
+}
+
+.panel-title {
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--notion-text-muted);
+    opacity: 0.4;
+}
+
+.panel-header-actions {
+    position: absolute;
+    right: 0;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.panel-reset-btn {
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.panel-reset-btn:hover {
+    color: var(--notion-text);
+    background: var(--notion-bg-hover);
+}
+
+.notion-panel-close-sm {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 300;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+    line-height: 1;
+}
+
+.notion-panel-close-sm:hover {
+    background: var(--notion-bg-hover);
+    color: var(--notion-text);
+}
+
+.notion-session-panel {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0;
+    flex-wrap: wrap;
+}
+
+/* Quick presets - left side */
+.session-presets {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.session-preset-btn {
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: 1px solid var(--notion-border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+    font-variant-numeric: tabular-nums;
+}
+
+.session-preset-btn:hover {
+    color: var(--notion-text);
+    background: var(--notion-bg-hover);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.session-preset-btn.is-selected {
+    color: var(--notion-blue);
+    background: rgba(35, 131, 226, 0.1);
+    border-color: rgba(35, 131, 226, 0.3);
+}
+
+/* Preset chip wrapper for remove button */
+.preset-chip {
+    position: relative;
+    display: inline-flex;
+}
+
+.preset-chip:hover .preset-remove-btn {
+    opacity: 1;
+}
+
+.preset-remove-btn {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: var(--notion-bg-secondary);
+    border: 1px solid var(--notion-border);
+    border-radius: 50%;
+    cursor: pointer;
+    opacity: 0;
+    transition: all 120ms ease;
+    line-height: 1;
+}
+
+.preset-remove-btn:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Add preset input */
+.preset-add {
+    display: inline-flex;
+}
+
+.preset-add-input {
+    width: 52px;
+    padding: 5px 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: 1px dashed var(--notion-border);
+    border-radius: 4px;
+    text-align: center;
+    transition: all 120ms ease;
+}
+
+.preset-add-input::placeholder {
+    color: var(--notion-text-muted);
+    opacity: 0.6;
+}
+
+.preset-add-input:focus {
+    outline: none;
+    color: var(--notion-text);
+    border-style: solid;
+    border-color: var(--notion-blue);
+    background: var(--notion-bg-secondary);
+    width: 64px;
+}
+
+/* Custom input + start - right side */
+.session-custom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.session-input-group {
+    display: flex;
+    align-items: center;
+    background: var(--notion-bg-secondary);
+    border: 1px solid var(--notion-border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.notion-input.session-duration-input {
+    width: 52px;
+    padding: 6px 8px;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    border: none;
+    background: transparent;
+    color: var(--notion-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.notion-input.session-duration-input:focus {
+    outline: none;
+}
+
+.notion-input.session-duration-input::placeholder {
+    color: var(--notion-text-muted);
+}
+
+/* Hide number input spinners */
+.notion-input.session-duration-input::-webkit-outer-spin-button,
+.notion-input.session-duration-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.notion-input.session-duration-input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.session-unit-toggle {
+    display: flex;
+    border-left: 1px solid var(--notion-border);
+}
+
+.session-unit-toggle .unit-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.session-unit-toggle .unit-btn:first-child {
+    border-right: 1px solid var(--notion-border);
+}
+
+.session-unit-toggle .unit-btn:hover {
+    color: var(--notion-text);
+    background: var(--notion-bg-hover);
+}
+
+.session-unit-toggle .unit-btn.is-active {
+    color: var(--notion-text);
+    background: var(--notion-bg-hover);
+}
+
+.notion-start-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: white;
+    background: var(--notion-blue);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.notion-start-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.notion-start-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Responsive: Stack to 2 rows on smaller widths */
+@container (max-width: 400px) {
+    .notion-session-panel {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    
+    .session-presets {
+        justify-content: flex-start;
+    }
+    
+    .session-custom {
+        justify-content: flex-end;
+    }
+}
+
+/* Fallback for browsers without container queries */
+@media (max-width: 500px) {
+    .task-notes .notion-session-panel {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    
+    .task-notes .session-presets {
+        justify-content: flex-start;
+    }
+    
+    .task-notes .session-custom {
+        justify-content: flex-end;
+    }
+}
+
+/* Panel close button - Notion style */
+.notion-panel-close {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 300;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+    line-height: 1;
+}
+
+.notion-panel-close:hover {
+    background: var(--notion-bg-hover);
+    color: var(--notion-text);
+}
+
+/* Panel controls - top right corner */
+.panel-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.panel-controls .notion-panel-close {
+    position: static;
+}
+
+/* Settings gear button */
+.panel-settings-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.panel-settings-btn:hover {
+    background: var(--notion-bg-hover);
+    color: var(--notion-text);
+}
+
+.panel-settings-btn.is-active {
+    background: var(--notion-bg-hover);
+    color: var(--notion-text);
+}
+
+.panel-settings-btn .settings-icon {
+    font-size: 14px;
+    opacity: 0.7;
+}
+
+.panel-settings-btn:hover .settings-icon,
+.panel-settings-btn.is-active .settings-icon {
+    opacity: 1;
+}
+
+/* Settings dropdown */
+.panel-settings-dropdown {
+    margin-top: 12px;
+    padding: 8px;
+    background: var(--notion-bg-secondary);
+    border: 1px solid var(--notion-border);
+    border-radius: 8px;
+}
+
+.settings-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 120ms ease;
+}
+
+.settings-option:hover {
+    background: var(--notion-bg-hover);
+}
+
+.settings-option input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    accent-color: var(--notion-blue);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.settings-option .option-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.settings-option .option-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--notion-text);
+}
+
+.settings-option .option-hint {
+    font-size: 11px;
+    color: var(--notion-text-muted);
+    line-height: 1.4;
+}
+
+/* ============================================
+   Notion-style Estimate Panel
+   ============================================ */
+
+.notion-estimate-panel {
+    position: relative;
+}
+
+.estimate-panel-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0;
+    flex-wrap: wrap;
+}
+
+/* Quick presets - left side */
+.estimate-presets {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.estimate-preset-btn {
+    padding: 5px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: 1px solid var(--notion-border);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 120ms ease;
+    font-variant-numeric: tabular-nums;
+}
+
+.estimate-preset-btn:hover {
+    color: var(--notion-text);
+    background: var(--notion-bg-hover);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.estimate-preset-btn.is-selected {
+    color: #a78bfa;
+    background: rgba(167, 139, 250, 0.1);
+    border-color: rgba(167, 139, 250, 0.3);
+}
+
+/* Custom input + save - right side */
+.estimate-custom {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.estimate-input-group {
+    display: flex;
+    align-items: center;
+    background: var(--notion-bg-secondary);
+    border: 1px solid var(--notion-border);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.notion-input.estimate-duration-input {
+    width: 52px;
+    padding: 6px 8px;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    border: none;
+    background: transparent;
+    color: var(--notion-text);
+    font-variant-numeric: tabular-nums;
+}
+
+.notion-input.estimate-duration-input:focus {
+    outline: none;
+}
+
+.notion-input.estimate-duration-input::placeholder {
+    color: var(--notion-text-muted);
+}
+
+.notion-input.estimate-duration-input::-webkit-outer-spin-button,
+.notion-input.estimate-duration-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.notion-input.estimate-duration-input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.estimate-unit-toggle {
+    display: flex;
+    border-left: 1px solid var(--notion-border);
+}
+
+.estimate-unit-toggle .unit-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.estimate-unit-toggle .unit-btn:first-child {
+    border-right: 1px solid var(--notion-border);
+}
+
+.estimate-unit-toggle .unit-btn:hover {
+    color: var(--notion-text);
+    background: var(--notion-bg-hover);
+}
+
+.estimate-unit-toggle .unit-btn.is-active {
+    color: var(--notion-text);
+    background: var(--notion-bg-hover);
+}
+
+/* Save button - purple accent for estimates */
+.notion-save-btn {
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: white;
+    background: #8b5cf6;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.notion-save-btn:hover:not(:disabled) {
+    filter: brightness(1.1);
+}
+
+.notion-save-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Clear button */
+.notion-clear-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--notion-text-muted);
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 120ms ease;
+}
+
+.notion-clear-btn:hover:not(:disabled) {
+    color: var(--notion-text);
+    background: var(--notion-bg-hover);
+}
+
+/* Notion-style checkbox label */
+.notion-checkbox-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: var(--notion-bg-secondary);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 120ms ease;
+}
+
+.notion-checkbox-label:hover {
+    background: var(--notion-bg-hover);
+}
+
+.notion-checkbox {
+    width: 16px;
+    height: 16px;
+    margin-top: 2px;
+    accent-color: var(--notion-blue);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.notion-checkbox-label .checkbox-text {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--notion-text);
+}
+
+.notion-checkbox-label .checkbox-hint {
+    display: block;
+    font-size: 11px;
+    color: var(--notion-text-muted);
+    margin-top: 2px;
+}
+
+/* Responsive: Stack to 2 rows on smaller widths */
+@media (max-width: 500px) {
+    .task-notes .estimate-panel-content {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+    
+    .task-notes .estimate-presets {
+        justify-content: flex-start;
+    }
+    
+    .task-notes .estimate-custom {
+        justify-content: flex-end;
+    }
+}
+
+/* Inline notes toggle in flag row */
+.notes-toggle-inline {
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.01);
+    font-size: 11px;
+}
+
+.notes-toggle-inline:hover {
+    background: rgba(255, 255, 255, 0.08);
 }
 
 .task-notes {
@@ -3434,14 +6582,27 @@ select option {
     background: rgba(255, 255, 255, 0.12);
 }
 
+/* Notion-style deadline chips - rounded pills, clear typography */
 .chip-hard {
-    color: var(--notion-red);
-    background: rgba(224, 62, 62, 0.1);
+    background: rgba(212, 76, 71, 0.8);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: 999px;
+    padding: 3px 10px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 .chip-soft {
-    color: var(--notion-blue);
-    background: rgba(35, 131, 226, 0.1);
+    background: rgba(35, 131, 226, 0.7);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border-radius: 999px;
+    padding: 3px 10px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
 /* Bottom Controls */
@@ -3451,8 +6612,9 @@ select option {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-top: 12px;
-  margin-top: 12px;
+  padding: 8px 6px 0;
+  margin-top: 0;
+  /* Inherits from widget surface - no separate background */
 }
 
 .bottom-controls-left {
@@ -3473,28 +6635,136 @@ select option {
 
 .bottom-controls.is-collapsed {
   position: absolute;
-  bottom: 6px;
-  left: 12px;
-  right: 12px;
+  bottom: 0px;
+  left: 0px;
+  right: 0px;
   border-top: none;
-  padding: 6px 12px;
+  padding: 9px;
   margin-top: 0;
-  background: black;
-  border-radius: 14px;
-  box-shadow: none;
+  background: var(--notion-bg);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
   pointer-events: auto;
   z-index: 4;
-  transition:
-    padding 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    transform 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    opacity 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    background-color 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    height 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .bottom-controls.is-collapsed .bottom-controls-left {
   width: auto;
+  gap: 2px;
+}
+
+.bottom-controls.is-collapsed .bottom-controls-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Next Action indicator */
+.collapsed-next-action {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.collapsed-next-action:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.collapsed-next-action .next-action-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.collapsed-next-action .next-action-title {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collapsed-next-action:hover .next-action-title {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.collapsed-next-action .next-action-project {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+}
+
+/* Collapsed state button styles */
+.bottom-controls.is-collapsed .widget-toggle-button,
+.bottom-controls.is-collapsed .collapsed-icon-btn,
+.bottom-controls.is-collapsed .quick-add-toggle {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: currentColor;
+  background: transparent;
+  border-radius: 8px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.bottom-controls.is-collapsed .widget-toggle-button:hover,
+.bottom-controls.is-collapsed .collapsed-icon-btn:hover,
+.bottom-controls.is-collapsed .quick-add-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.bottom-controls.is-collapsed .widget-toggle-button svg,
+.bottom-controls.is-collapsed .collapsed-icon-btn svg {
+  opacity: 0.5;
+}
+
+.bottom-controls.is-collapsed .widget-toggle-button:hover svg,
+.bottom-controls.is-collapsed .collapsed-icon-btn:hover svg {
+  opacity: 0.9;
+}
+
+.bottom-controls.is-collapsed .collapsed-icon-btn.is-active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.bottom-controls.is-collapsed .collapsed-icon-btn.is-active svg {
+  opacity: 0.85;
+}
+
+/* Pin button specific - more subdued when active */
+.bottom-controls.is-collapsed .collapsed-pin.is-active {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.bottom-controls.is-collapsed .collapsed-pin.is-active svg {
+  opacity: 0.8;
+}
+
+.bottom-controls.is-collapsed .quick-add-toggle {
+  font-size: 18px;
+  font-weight: 300;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.bottom-controls.is-collapsed .quick-add-toggle:hover {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .bottom-controls.is-collapsed.is-thin {
@@ -3507,13 +6777,6 @@ select option {
   height: 12px;
   display: flex;
   align-items: center;
-  transition:
-    padding 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    transform 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    opacity 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    background-color 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    box-shadow 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94),
-    height 500ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .bottom-controls.is-collapsed.is-thin .bottom-controls-left {
@@ -3534,7 +6797,6 @@ select option {
   background: rgba(255, 255, 255, 0.1);
   opacity: 0.9;
   cursor: pointer;
-  transition: all 400ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
   pointer-events: auto;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   position: relative;
@@ -3629,7 +6891,6 @@ select option {
   left: 0;
   right: 0;
   height: 38px;
-  background: linear-gradient(to top, rgba(13, 13, 13, 0.672) 50%, rgba(71, 71, 71, 0) 100%);
   pointer-events: none;
   z-index: 10;
 }
@@ -3671,17 +6932,17 @@ select option {
   pointer-events: none;
 }
 
+/* Notion-style quick add toggle */
 .quick-add-toggle {
   border: none;
   background: transparent;
   color: var(--notion-text-muted);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease;
+  transition: all var(--transition-fast);
   border: 1px solid var(--notion-border);
   border-radius: var(--radius-sm);
   white-space: nowrap;
@@ -3773,9 +7034,10 @@ select option {
   flex-direction: column;
   align-items: flex-end;
   gap: 2px;
-  flex: 0 0 180px;
-  min-width: 180px;
+  flex: 0 1 auto;
+  min-width: 0;
   margin-right: 5px;
+  flex-shrink: 1;
 }
 
 .task-row-property-flags .flag {
@@ -3785,7 +7047,151 @@ select option {
 .task-row-flag-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
+}
+
+/* ============================================
+   Foam Mode - Compact Layout for Narrow Widths
+   ============================================ */
+
+/* Enable container queries on task properties row */
+.task-properties-row {
+  container-type: inline-size;
+  container-name: task-props;
+}
+
+/* Structured date field display */
+.date-field-placeholder {
+  color: var(--notion-text-muted);
+}
+
+.date-field-structured {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-field-structured .date-part {
+  font-weight: 500;
+}
+
+.date-field-structured .time-part {
+  opacity: 0.85;
+}
+
+.date-field-structured .time-part::before {
+  content: '·';
+  margin-right: 6px;
+  opacity: 0.5;
+}
+
+/* Same-day range: date on top, time range below */
+.date-field-structured.same-day-range {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.date-field-structured.same-day-range .time-range-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.date-field-structured.same-day-range .time-range-part .time-part::before {
+  content: none;
+}
+
+/* Subtle arrow indicator for time range row */
+.date-field-structured.same-day-range .time-range-part::before {
+  content: '↳';
+  opacity: 0.35;
+  margin-right: 3px;
+  font-size: 0.9em;
+}
+
+.date-field-structured .time-separator,
+.date-field-structured .date-separator {
+  opacity: 0.6;
+  margin: 0 2px;
+}
+
+.date-field-structured.date-range {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.date-field-structured.date-range .range-start,
+.date-field-structured.date-range .range-end {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.date-field-structured.date-range .date-separator {
+  display: none;
+}
+
+.date-field-structured.date-range .range-start .time-part::before,
+.date-field-structured.date-range .range-end .time-part::before {
+  content: none;
+}
+
+/* Subtle arrow indicator for end date row */
+.date-field-structured.date-range .range-end::before {
+  content: '↳';
+  opacity: 0.35;
+  margin-right: 3px;
+  font-size: 0.9em;
+}
+
+
+/* Foam Mode Container Query - triggers at narrow widths */
+@container task-props (max-width: 550px) {
+  /* Hide flag labels, show only checkboxes */
+  .flag .flag-label {
+    display: none;
+  }
+  
+  /* Make flag container more compact */
+  .task-row-property-flags {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  
+  .task-row-flag-row {
+    gap: 8px;
+  }
+  
+  /* Spread items apart */
+  .task-row-property-left {
+    flex: 1 1 auto;
+    min-width: 180px;
+    justify-content: flex-start;
+  }
+  
+}
+
+/* Very narrow foam mode - even more compact */
+@container task-props (max-width: 320px) {
+  .task-row-property-left {
+    flex-direction: column;
+    gap: 8px;
+    min-width: 150px;
+  }
+  
+  .property-item.status-item {
+    width: 100%;
+  }
+  
+  .matrix-inline.task-row-matrix-inline {
+    width: 100%;
+  }
 }
 
 .task-row-open-link {
@@ -3837,13 +7243,42 @@ select option {
   min-width: 80px;
 }
 
+/* Footer row: Project selector + Add Task button */
+.capture-footer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 8px 8px;
+  margin-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.capture-footer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.capture-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Legacy capture-actions - kept for compatibility */
 .capture-actions {
   display: flex;
   justify-content: flex-end;
-  align-items: flex-end;
+  align-items: center;
   gap: 16px;
   width: 100%;
   flex-wrap: wrap;
+  margin-top: 8px;
+  padding: 0 8px 8px;
 }
 
 .capture-actions-title {
@@ -3875,34 +7310,42 @@ select option {
 
 .capture-submit {
   border: none;
-  border-radius: 6px;
-  background: var(--notion-blue);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
   color: #fff;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  font-size: 12px;
-  padding: 8px 20px;
+  font-size: 11px;
+  padding: 10px 24px;
   cursor: pointer;
-  transition: opacity 120ms ease, background 120ms ease, box-shadow 120ms ease;
-  box-shadow: 0 0 0 0 rgba(35, 131, 226, 0);
+  transition: all 150ms ease;
+  box-shadow: 
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 0 0 0 rgba(59, 130, 246, 0);
 }
 
 .capture-submit:not(:disabled):hover {
-  background: #1a6fc4;
-  box-shadow: 0 0 0 2px rgba(35, 131, 226, 0.3);
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  box-shadow: 
+    0 2px 8px rgba(59, 130, 246, 0.4),
+    0 0 0 2px rgba(59, 130, 246, 0.2);
+  transform: translateY(-1px);
+}
+
+.capture-submit:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: 
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 0 0 2px rgba(59, 130, 246, 0.3);
 }
 
 .capture-submit:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
+  background: #374151;
 }
 
-/* When notes are hidden, raise the submit button closer to the "Add notes" button */
-.task-notes[data-state="closed"] ~ .capture-actions .capture-submit,
-.task-notes.is-closing ~ .capture-actions .capture-submit {
-  margin-top: -30px;
-}
 
 .capture-complete:disabled {
   opacity: 0.5;
@@ -3984,19 +7427,16 @@ select option {
   }
 }
 
+/* Notion-style filter section */
 .task-organizer-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  margin-bottom: 12px;
+  gap: 4px;
+  padding: 8px 12px;
 }
 
 .task-organizer-section:last-child {
   border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
 }
 
 .task-organizer-section-header {
@@ -4007,19 +7447,22 @@ select option {
   color: var(--notion-text-muted);
 }
 
+/* Notion-style filter footer */
 .task-organizer-section-footer {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 8px;
-  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 0;
+  padding: 4px 8px;
+  border-top: none;
 }
 
 .task-organizer-section-title {
-  font-size: 12px;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--notion-text-muted);
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 500;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -4028,8 +7471,8 @@ select option {
 
 .task-organizer-section-meta {
   font-size: 11px;
-  color: var(--notion-text-muted);
-  opacity: 0.8;
+  color: rgba(255, 255, 255, 0.4);
+  opacity: 1;
 }
 
 .task-organizer-section-actions {
@@ -4958,6 +8401,8 @@ select option {
     min-width: 200px;
     background: var(--notion-bg-secondary);
     border-right: 1px solid var(--notion-border);
+    /* Subtle lift effect against dark content */
+    box-shadow: 1px 0 0 rgba(255, 255, 255, 0.02);
     transition: width 200ms ease, min-width 200ms ease;
     z-index: 10;
     -webkit-app-region: drag;
@@ -5093,6 +8538,7 @@ select option {
     overflow: hidden;
     min-width: 0;
     position: relative;
+    background: var(--notion-bg);
 }
 
 /* Current view label in header */
@@ -5191,6 +8637,8 @@ select option {
     padding: 16px 24px;
     border-bottom: 1px solid var(--notion-border);
     background: var(--notion-bg-secondary);
+    /* Subtle depth shadow */
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02);
     flex-shrink: 0;
     min-height: 60px;
     max-height: 80px;
@@ -5233,6 +8681,9 @@ select option {
     max-width: 1400px;
     margin: 0 auto;
     width: 100%;
+    background: var(--notion-bg);
+    /* Subtle inset to create depth against chrome elements */
+    box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.15);
 }
 
 .fullscreen-content.task-log {
@@ -5254,6 +8705,11 @@ select option {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    /* Fullscreen content area is already dark, so remove task-list background */
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    padding: 0;
 }
 
 .fullscreen-content .task-log-body > .quick-add-wrapper {
@@ -6731,6 +10187,370 @@ select option {
 .tasks-toggle-count {
     opacity: 0.6;
     margin-left: auto;
+}
+
+/* Project Add Task Section */
+.project-add-task-section {
+    margin-top: 8px;
+}
+
+.project-add-task-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px dashed rgba(76, 175, 80, 0.3);
+    border-radius: 8px;
+    color: rgba(76, 175, 80, 0.9);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.project-add-task-btn:hover {
+    background: rgba(76, 175, 80, 0.15);
+    border-color: rgba(76, 175, 80, 0.5);
+    color: #4caf50;
+}
+
+.project-add-task-btn .add-task-icon {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.project-add-task-form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+}
+
+.project-add-task-input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: var(--notion-text);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 150ms ease;
+}
+
+.project-add-task-input:focus {
+    border-color: rgba(76, 175, 80, 0.5);
+}
+
+.project-add-task-input::placeholder {
+    color: var(--notion-text-muted);
+}
+
+.project-add-task-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.project-add-task-submit {
+    padding: 8px 16px;
+    background: rgba(76, 175, 80, 0.9);
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.project-add-task-submit:hover:not(:disabled) {
+    background: #4caf50;
+}
+
+.project-add-task-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.project-add-task-cancel {
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: var(--notion-text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.project-add-task-cancel:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--notion-text);
+}
+
+.project-add-task-cancel:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Project Task Item - New Layout */
+.project-task-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+    transition: all 150ms ease;
+    position: relative;
+}
+
+.project-task-item:hover,
+.project-task-item.is-hovered {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.project-task-item.is-selected {
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.project-task-item.completed {
+    opacity: 0.6;
+}
+
+.project-task-item.completed .task-title-wrap {
+    text-decoration: line-through;
+    color: var(--notion-text-muted);
+}
+
+/* Task checkbox */
+.project-task-item .task-checkbox-btn {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    border: 1.5px solid rgba(255, 255, 255, 0.3);
+    background: transparent;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 12px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 150ms ease;
+    margin-top: 2px;
+}
+
+.project-task-item .task-checkbox-btn:hover {
+    border-color: rgba(76, 175, 80, 0.6);
+    color: rgba(76, 175, 80, 0.8);
+}
+
+.project-task-item .task-checkbox-btn.completed {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: rgba(76, 175, 80, 0.4);
+    color: #4caf50;
+}
+
+/* Task content - allows wrapping */
+.project-task-item .task-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.project-task-item .task-title-wrap {
+    font-size: 13px;
+    color: var(--notion-text);
+    line-height: 1.4;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Inline metadata row */
+.task-inline-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+}
+
+/* Status badge - clickable */
+.task-status-wrapper {
+    position: relative;
+}
+
+.task-status-badge {
+    padding: 2px 8px;
+    background: rgba(139, 92, 246, 0.15);
+    border: 1px solid rgba(139, 92, 246, 0.3);
+    border-radius: 4px;
+    color: rgba(139, 92, 246, 0.9);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.task-status-badge:hover {
+    background: rgba(139, 92, 246, 0.25);
+    border-color: rgba(139, 92, 246, 0.5);
+}
+
+/* Status dropdown panel */
+.task-status-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 100;
+    min-width: 160px;
+    background: rgba(30, 30, 35, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.status-dropdown-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 11px;
+    color: var(--notion-text-muted);
+}
+
+.status-dropdown-close {
+    background: none;
+    border: none;
+    color: var(--notion-text-muted);
+    font-size: 16px;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.status-dropdown-close:hover {
+    color: var(--notion-text);
+}
+
+.status-dropdown-options {
+    display: flex;
+    flex-direction: column;
+    padding: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.status-dropdown-option {
+    padding: 8px 12px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--notion-text);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    transition: all 100ms ease;
+}
+
+.status-dropdown-option:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.status-dropdown-option.active {
+    background: rgba(139, 92, 246, 0.2);
+    color: rgb(167, 139, 250);
+}
+
+/* Date badge - clickable */
+.task-date-wrapper {
+    position: relative;
+}
+
+.task-date-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 4px;
+    color: rgba(59, 130, 246, 0.9);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.task-date-badge:hover {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.4);
+}
+
+.task-date-badge .deadline-indicator {
+    font-size: 10px;
+}
+
+.task-date-input {
+    padding: 2px 6px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    border-radius: 4px;
+    color: var(--notion-text);
+    font-size: 11px;
+    outline: none;
+    width: 120px;
+}
+
+/* Deadline type toggle */
+.task-deadline-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 150ms ease;
+}
+
+.task-deadline-toggle.hard {
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: rgba(239, 68, 68, 0.9);
+}
+
+.task-deadline-toggle.hard:hover {
+    background: rgba(239, 68, 68, 0.25);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+.task-deadline-toggle.soft {
+    background: rgba(59, 130, 246, 0.15);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: rgba(59, 130, 246, 0.9);
+}
+
+.task-deadline-toggle.soft:hover {
+    background: rgba(59, 130, 246, 0.25);
+    border-color: rgba(59, 130, 246, 0.5);
+}
+
+/* Matrix badge in task item */
+.task-inline-meta .task-matrix-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
 }
 
 /* Project Tasks List */
@@ -13257,6 +17077,8 @@ select option {
     padding: 8px 16px;
     background: var(--notion-bg-secondary);
     border-top: 1px solid var(--notion-border);
+    /* Subtle lift effect above content */
+    box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.02);
     flex-shrink: 0;
 }
 
@@ -21369,20 +25191,23 @@ select option {
   padding: 0;
 }
 
+/* Notion-style quick add toggle (dashboard) */
 .quick-add-toggle {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  width: auto; /* Changed from 100% - let it fit content on left */
+  padding: 8px 12px;
+  width: auto;
   background: transparent;
   border: none;
+  border-radius: var(--radius-sm);
   color: var(--notion-text-muted);
   cursor: pointer;
   font-size: 14px;
+  font-weight: 500;
   text-align: left;
-  transition: all 150ms ease;
-  margin-right: auto; /* Push to left side */
+  transition: all var(--transition-fast);
+  margin-right: auto;
 }
 
 .quick-add-toggle:hover {
@@ -21391,21 +25216,22 @@ select option {
 }
 
 .quick-add-toggle-icon {
-  font-size: 18px;
-  font-weight: 300;
-  width: 24px;
-  height: 24px;
+  font-size: 16px;
+  font-weight: 400;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--notion-bg-secondary);
-  border-radius: var(--radius-sm);
-  transition: all 150ms ease;
+  background: transparent;
+  border-radius: var(--radius-xs);
+  color: var(--notion-text-faint);
+  transition: all var(--transition-fast);
 }
 
 .quick-add-toggle:hover .quick-add-toggle-icon {
-  background: var(--accent-blue);
-  color: white;
+  background: var(--tag-blue-bg);
+  color: var(--notion-blue);
 }
 
 .dashboard-quick-add-bar.is-collapsed .quick-add-toggle {
@@ -21426,6 +25252,77 @@ select option {
   background: var(--notion-bg-secondary);
   border-radius: var(--radius-md);
   padding: 12px;
+}
+
+/* Quick Add Header with Tabs */
+.quick-add-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Notion-style tabs */
+.quick-add-tabs {
+  display: flex;
+  gap: 2px;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 2px;
+}
+
+.quick-add-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--notion-text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.quick-add-tab:hover {
+  background: var(--notion-bg-hover);
+  color: var(--notion-text);
+}
+
+.quick-add-tab.is-active {
+  background: var(--notion-bg-active);
+  color: var(--notion-text);
+}
+
+.quick-add-tab .tab-icon {
+  font-size: 14px;
+}
+
+.quick-add-tab .tab-label {
+  white-space: nowrap;
+}
+
+/* Quick Capture Content (Writing Widget in Quick Add) */
+.quick-capture-content {
+  padding: 0 16px 16px;
+}
+
+.quick-capture-content .writing-widget {
+  box-shadow: none;
+  border: none;
+  background: var(--notion-bg-secondary);
+  border-radius: var(--radius-md);
+  padding: 12px;
+}
+
+.quick-capture-content .writing-widget h2 {
+  display: none;
+}
+
+.quick-capture-content .log-form {
+  padding: 0;
 }
 
 /* Drag to Place Handle */
@@ -23133,65 +27030,709 @@ select option {
 }
 
 /* ===================================
-   SUBTASK STYLES
+   SUBTASK STYLES - Notion-like Design
    =================================== */
 
-.task-row.has-subtasks {
-  border-left: 3px solid rgba(59, 130, 246, 0.5);
-}
-
+/* Subtask indicators - left borders removed, pie chart is sufficient */
 .task-row.is-subtask {
   margin-left: 20px;
-  border-left: 2px solid rgba(148, 163, 184, 0.3);
 }
 
+/* Notion-style Subtask Pie Chart Indicator */
+.subtask-rollup-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--notion-text-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.subtask-rollup-pill:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--notion-text-secondary);
+}
+
+.subtask-rollup-pill.is-expanded {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.subtask-rollup-pill.all-done {
+  color: #86efac;
+}
+
+.subtask-rollup-pill.all-done:hover {
+  background: rgba(34, 197, 94, 0.08);
+}
+
+/* SVG Progress ring for subtask indicator */
+.subtask-progress-ring {
+  flex-shrink: 0;
+  transition: transform 150ms ease;
+}
+
+.subtask-rollup-pill:hover .subtask-progress-ring {
+  transform: scale(1.2);
+}
+
+.subtask-rollup-count {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* Overdue subtasks - red warning */
+.subtask-rollup-pill.has-overdue {
+  color: #ef4444;
+}
+
+.subtask-rollup-pill.has-overdue:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.subtask-rollup-pill.has-overdue .subtask-rollup-count {
+  color: #f87171;
+  opacity: 1;
+}
+
+/* Legacy pie chart styles (kept for backwards compatibility) */
 .subtask-progress-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  font-size: 10px;
+  gap: 6px;
+  padding: 3px 10px 3px 6px;
+  font-size: 11px;
   font-weight: 600;
   border-radius: var(--radius-sm);
-  background: rgba(59, 130, 246, 0.15);
+  background: rgba(59, 130, 246, 0.12);
   color: #93c5fd;
   cursor: pointer;
   transition: all 150ms ease;
 }
 
 .subtask-progress-pill:hover {
-  background: rgba(59, 130, 246, 0.25);
+  background: rgba(59, 130, 246, 0.2);
 }
 
 .subtask-progress-pill.all-done {
-  background: rgba(34, 197, 94, 0.15);
+  background: rgba(34, 197, 94, 0.12);
   color: #86efac;
 }
 
+.subtask-pie-chart {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: conic-gradient(
+    #60a5fa var(--progress, 0%),
+    rgba(255, 255, 255, 0.15) var(--progress, 0%)
+  );
+  position: relative;
+  flex-shrink: 0;
+}
+
+.subtask-pie-chart .pie-fill {
+  display: none;
+}
+
+.subtask-progress-pill.all-done .subtask-pie-chart {
+  background: conic-gradient(
+    #86efac 100%,
+    rgba(255, 255, 255, 0.15) 100%
+  );
+}
+
+.subtask-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.subtask-chevron {
+  font-size: 9px;
+  opacity: 0.7;
+}
+
+/* ============================================
+   Subtask List Container - Notion-like
+   ============================================ */
+
 .subtask-list-container {
-  margin-top: 8px;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: 6px;
+  padding: 0;
+  background: transparent;
+  border-radius: 0;
 }
 
 .subtask-list-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  padding: 6px 0;
+  margin-bottom: 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.subtask-list-label {
   font-size: 11px;
   font-weight: 600;
   color: var(--notion-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.add-subtask-inline-btn {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--notion-text-muted);
+  background: transparent;
+  border: none;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.add-subtask-inline-btn:hover {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
 }
 
 .subtask-list-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
+/* ============================================
+   Subtask Row - Main Task Mirror Style
+   ============================================ */
+
+.subtask-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  margin-left: 8px;
+  margin-right: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 150ms ease, outline 150ms ease;
+  transform: scale(0.95);
+  transform-origin: top left;
+  cursor: pointer;
+}
+
+.subtask-row:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.subtask-row:last-child {
+  border-bottom: none;
+}
+
+.subtask-row.is-complete {
+  opacity: 0.5;
+}
+
+.subtask-row.is-complete .subtask-title {
+  text-decoration: line-through;
+  color: var(--notion-text-muted);
+}
+
+/* Subtask selection - subtle Notion-like blue highlight */
+.subtask-row.is-selected {
+  background: rgba(35, 131, 226, 0.08);
+  border-radius: 4px;
+  outline: 1px solid rgba(35, 131, 226, 0.2);
+  outline-offset: -1px;
+}
+
+.subtask-row.is-selected:hover {
+  background: rgba(35, 131, 226, 0.12);
+}
+
+.subtask-row.is-selected.is-complete {
+  opacity: 0.65;
+}
+
+/* Subtask Row Main Line (checkbox + title + deadline) */
+.subtask-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+/* Notion-style Checkbox - Circle like Notion */
+.subtask-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms ease;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.subtask-checkbox:hover {
+  border-color: var(--notion-blue);
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.subtask-checkbox.is-checked {
+  background: var(--notion-blue);
+  border-color: var(--notion-blue);
+}
+
+.subtask-checkbox .check-icon {
+  font-size: 10px;
+  color: white;
+  font-weight: 600;
+}
+
+.subtask-checkbox-placeholder {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+/* Subtask Title */
+.subtask-title {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--notion-text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtask-row-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Subtask Deadline Chip */
+.subtask-deadline-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.subtask-deadline-chip.is-soft {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
+}
+
+.subtask-deadline-chip.is-hard {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+.subtask-deadline-chip:hover {
+  filter: brightness(1.1);
+}
+
+/* Subtask Properties Row */
+.subtask-row-properties {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 24px;
+  padding-right: 8px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: subtask-props;
+}
+
+.subtask-properties-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.subtask-properties-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+/* Container query: hide Urgent/Important labels when narrow */
+@container subtask-props (max-width: 450px) {
+  .subtask-properties-right .subtask-flag span {
+    display: none;
+  }
+  
+  .subtask-properties-right .subtask-flag {
+    padding: 4px;
+    min-width: 20px;
+    justify-content: center;
+  }
+  
+  .subtask-properties-right .subtask-notes-btn {
+    font-size: 10px;
+    padding: 2px 4px;
+  }
+}
+
+/* Very narrow: hide notes button too */
+@container subtask-props (max-width: 350px) {
+  .subtask-properties-right .subtask-notes-btn {
+    display: none;
+  }
+  
+  .subtask-properties-left .subtask-matrix-select {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+}
+
+.subtask-date-field {
+  font-size: 11px !important;
+  padding: 2px 6px !important;
+  min-width: 70px;
+}
+
+/* Subtask Status Select - scaled down version */
+.subtask-status-select .status-select-trigger {
+  min-height: 20px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.subtask-status-select .status-select-circle {
+  font-size: 9px;
+}
+
+.subtask-status-select .status-select-label {
+  font-size: 11px;
+}
+
+/* Subtask Matrix Select - scaled down version */
+.subtask-matrix-select {
+  appearance: none;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  color: white;
+  min-height: 20px;
+  transition: all var(--transition-fast);
+}
+
+.subtask-matrix-select:hover {
+  filter: brightness(1.15);
+}
+
+.subtask-matrix-select.matrix-do-now {
+  background: var(--matrix-do-now);
+}
+
+.subtask-matrix-select.matrix-deep-work {
+  background: var(--matrix-deep-work);
+}
+
+.subtask-matrix-select.matrix-delegate {
+  background: var(--matrix-delegate);
+}
+
+.subtask-matrix-select.matrix-trash {
+  background: var(--matrix-trash);
+}
+
+.subtask-notes-btn {
+  font-size: 11px;
+  color: var(--notion-text-muted);
+  background: transparent;
+  border: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.subtask-notes-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--notion-text);
+}
+
+/* Subtask Flags */
+.subtask-flag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--notion-text-muted);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.subtask-flag input {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.subtask-flag input:checked {
+  background: var(--notion-blue);
+  border-color: var(--notion-blue);
+}
+
+.subtask-flag input:checked::after {
+  content: '✓';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 8px;
+  color: white;
+  font-weight: 600;
+}
+
+.subtask-flag:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.subtask-flag.is-active {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fcd34d;
+}
+
+.subtask-flag.is-active input {
+  border-color: #fcd34d;
+  background: #fcd34d;
+}
+
+/* Subtask Actions Row */
+.subtask-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 24px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.subtask-action-btn {
+  font-size: 11px;
+  color: var(--notion-text-muted);
+  background: transparent;
+  border: none;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.subtask-action-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--notion-text);
+}
+
+.subtask-trash-btn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+.subtask-remaining {
+  font-size: 10px;
+  color: var(--notion-text-muted);
+  padding: 2px 6px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: var(--radius-sm);
+}
+
+.subtask-open-link {
+  font-size: 11px;
+  color: #93c5fd;
+  text-decoration: none;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: all 150ms ease;
+}
+
+.subtask-open-link:hover {
+  background: rgba(59, 130, 246, 0.15);
+}
+
+/* Subtask Expanded Panels */
+.subtask-expanded-panel {
+  margin-top: 6px;
+  margin-left: 24px;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+
+.subtask-notes-textarea {
+  width: 100%;
+  min-height: 60px;
+  font-size: 12px;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  color: var(--notion-text);
+  resize: vertical;
+}
+
+.subtask-notes-textarea:focus {
+  outline: none;
+  border-color: var(--notion-blue);
+}
+
+.subtask-estimate-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subtask-estimate-fields label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--notion-text-muted);
+}
+
+.subtask-estimate-fields input {
+  width: 80px;
+  padding: 4px 8px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  color: var(--notion-text);
+}
+
+.subtask-estimate-fields input:focus {
+  outline: none;
+  border-color: var(--notion-blue);
+}
+
+.subtask-panel-close {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 6px;
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  color: var(--notion-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.subtask-panel-close:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--notion-text);
+}
+
+/* Add Subtask Form */
+.add-subtask-form.subtask-row {
+  background: rgba(34, 197, 94, 0.03);
+  border-bottom: 1px solid rgba(34, 197, 94, 0.15);
+}
+
+.subtask-title-input {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--notion-text);
+  outline: none;
+}
+
+.subtask-title-input::placeholder {
+  color: var(--notion-text-muted);
+}
+
+.subtask-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.subtask-add-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.subtask-add-btn:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+.subtask-add-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.subtask-cancel-btn {
+  font-size: 12px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  color: var(--notion-text-muted);
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.subtask-cancel-btn:hover {
+  color: #f87171;
+}
+
+.subtask-loading {
+  padding: 12px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--notion-text-muted);
+}
+
+/* Legacy subtask-item styles (kept for backwards compatibility) */
 .subtask-item {
   display: flex;
   align-items: center;
@@ -23210,13 +27751,273 @@ select option {
   text-decoration: line-through;
 }
 
-.subtask-title {
+/* ============================================
+   Full-Featured Subtask Rows
+   ============================================ */
+
+.subtask-item.subtask-full {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid rgba(59, 130, 246, 0.5);
+}
+
+.subtask-item.subtask-full.is-complete {
+  border-left-color: rgba(34, 197, 94, 0.4);
+}
+
+/* Subtask Header Row */
+.subtask-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.subtask-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 1;
+  min-width: 0;
+}
+
+.subtask-full .subtask-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.subtask-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.subtask-deadline {
+  font-size: 10px;
+  padding: 2px 8px;
+}
+
+/* Subtask Properties Row */
+.subtask-properties {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 28px;
+}
+
+.subtask-properties-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.subtask-properties-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.subtask-date-input {
+  font-size: 11px;
+}
+
+.subtask-matrix-select {
+  font-size: 11px;
+  padding: 2px 8px;
+  min-height: 22px;
+}
+
+.subtask-flag {
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.subtask-flag .flag-label {
+  font-size: 10px;
+}
+
+/* Subtask Secondary Row */
+.subtask-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-left: 28px;
+}
+
+.subtask-secondary-left,
+.subtask-secondary-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.subtask-secondary .task-notes-toggle {
+  font-size: 11px;
+}
+
+.subtask-time-pill {
+  font-size: 10px;
+  padding: 2px 6px;
+}
+
+/* Subtask Expanded Panels */
+.subtask-tracking-panel,
+.subtask-notes-panel,
+.subtask-estimate-panel {
+  margin-top: 6px;
+  margin-left: 28px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  position: relative;
+}
+
+.subtask-notes-panel .task-notes-input {
+  width: 100%;
+  min-height: 60px;
   font-size: 12px;
+}
+
+.subtask-estimate-panel .estimate-editor-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subtask-estimate-panel .estimate-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--notion-text-muted);
+}
+
+.subtask-estimate-panel .estimate-input {
+  width: 80px;
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--notion-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.subtask-estimate-panel .estimate-input:focus {
+  outline: none;
+  border-color: var(--notion-blue);
+}
+
+.tracking-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tracking-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.tracking-label {
+  color: var(--notion-text-muted);
+}
+
+/* Subtask add form styling */
+.add-subtask-form.subtask-full {
+  border-left-color: rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.subtask-title-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--notion-text);
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  padding: 4px 0;
+}
+
+.subtask-title-input::placeholder {
+  color: var(--notion-text-muted);
+}
+
+.add-subtask-form .add-subtask-submit {
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.add-subtask-form .add-subtask-submit:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.3);
+}
+
+.add-subtask-form .add-subtask-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.add-subtask-form .add-subtask-cancel {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--notion-text-muted);
+  border: none;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.add-subtask-form .add-subtask-cancel:hover {
+  color: var(--notion-text);
+}
+
+/* Foam mode adjustments for subtasks */
+@container task-props (max-width: 550px) {
+  .subtask-properties {
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 28px;
+  }
+  
+  .subtask-properties-left,
+  .subtask-properties-right {
+    width: 100%;
+  }
+  
+  .subtask-secondary {
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 28px;
+  }
+  
+  .subtask-secondary-left,
+  .subtask-secondary-right {
+    width: 100%;
+  }
+  
+  .subtask-flag .flag-label {
+    display: none;
+  }
 }
 
 .subtask-date {
@@ -23306,6 +28107,70 @@ select option {
    TIME TRACKING GOAL STYLES
    =================================== */
 
+/* Circular Progress Ring */
+.tracking-goal-circle-container {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+
+.tracking-goal-circle {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.tracking-goal-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(0deg);
+}
+
+.tracking-goal-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.tracking-goal-percent {
+  font-size: 12px;
+  font-weight: 700;
+  color: #22c55e;
+  line-height: 1;
+}
+
+.tracking-goal-circle.exceeded .tracking-goal-percent {
+  color: #fbbf24;
+}
+
+.tracking-goal-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tracking-goal-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--notion-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.tracking-goal-detail {
+  font-size: 12px;
+  color: var(--notion-text-secondary);
+}
+
+/* Legacy bar styles (kept for backwards compat) */
 .tracking-goal-bar {
   width: 100%;
   height: 4px;
@@ -23380,6 +28245,37 @@ select option {
 
 .chatbot-header-actions button:hover {
   background: var(--notion-bg-hover);
+}
+
+.chatbot-header-actions .expand-btn {
+  font-size: 16px;
+}
+
+/* Expanded/Fullscreen Chatbot Panel */
+.fullscreen-chatbot-overlay.is-expanded {
+  top: 0;
+  right: 0;
+  width: 100%;
+  height: 100vh;
+  max-height: 100vh;
+  border-radius: 0;
+  animation: chatbotExpandIn 200ms ease-out;
+}
+
+.fullscreen-chatbot-overlay.is-expanded .chatbot-panel {
+  max-height: 100vh;
+  border-radius: 0;
+}
+
+@keyframes chatbotExpandIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .chatbot-messages {
@@ -23653,6 +28549,7 @@ select option {
 }
 
 .input-wrapper {
+  position: relative;
   display: flex;
   align-items: flex-end;
   gap: 8px;
@@ -23683,6 +28580,41 @@ select option {
 
 .input-wrapper textarea::placeholder {
   color: var(--notion-text-muted);
+}
+
+/* Live transcription indicator */
+.interim-indicator {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: rgba(239, 68, 68, 0.15);
+  border-radius: 4px;
+  font-size: 10px;
+  color: #ef4444;
+  pointer-events: none;
+}
+
+.interim-dot {
+  width: 6px;
+  height: 6px;
+  background: #ef4444;
+  border-radius: 50%;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.interim-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .input-actions {
@@ -23924,6 +28856,57 @@ select option {
   color: var(--notion-text-muted);
   margin-top: 4px;
   line-height: 1.4;
+}
+
+.settings-hint-box {
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--notion-bg-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--notion-border);
+}
+
+.settings-hint-box .settings-hint {
+  margin: 0;
+}
+
+.settings-hint-box .settings-hint strong {
+  color: var(--notion-text);
+}
+
+.settings-hint-detail {
+  margin-top: 8px !important;
+  opacity: 0.8;
+}
+
+.settings-hint-warning {
+  margin-top: 8px !important;
+  color: #f59e0b !important;
+}
+
+/* Model Download Progress */
+.model-download-status {
+  margin-top: 12px;
+  padding: 8px 10px;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: #60a5fa;
+}
+
+.model-progress-bar {
+  margin-top: 6px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.model-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #60a5fa);
+  border-radius: 2px;
+  transition: width 200ms ease;
 }
 
 /* ========================================

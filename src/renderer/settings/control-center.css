@@ -434,6 +434,9 @@ body {
 /* ============ DATABASE TABS ============ */
 
 .database-properties-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
   padding-top: 0 !important;
 }
 
@@ -688,6 +691,7 @@ body {
 }
 
 .toggle-card {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 12px;
@@ -1937,52 +1941,157 @@ body {
   color: white;
 }
 
-/* Database Properties Section */
-.database-properties-section {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
+/* Database Properties Section - styles defined in DATABASE TABS section above */
 
-.database-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 8px;
+/* ============ WEBHOOK SETTINGS ============ */
+
+.webhook-status-box,
+.webhook-setup-box {
+  padding: 16px;
   background: var(--cc-bg-tertiary);
-  border-radius: var(--cc-radius-lg);
   border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-lg);
 }
 
-.database-tab {
+.webhook-active {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--cc-radius-md);
-  color: var(--cc-text-secondary);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  font-weight: 500;
+  color: var(--cc-success);
+  margin-bottom: 16px;
 }
 
-.database-tab:hover {
-  background: var(--cc-bg-elevated);
+.webhook-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--cc-text-muted);
+}
+
+.webhook-status-dot.active {
+  background: var(--cc-success);
+  box-shadow: 0 0 8px var(--cc-success);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.webhook-url-display {
+  margin-bottom: 16px;
+}
+
+.webhook-url-display label {
+  display: block;
+  font-size: 12px;
+  color: var(--cc-text-muted);
+  margin-bottom: 8px;
+}
+
+.webhook-url-row {
+  display: flex;
+  gap: 8px;
+}
+
+.webhook-url-input {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--cc-bg-primary);
+  border: 1px solid var(--cc-border);
+  border-radius: var(--cc-radius-md);
+  color: var(--cc-text-primary);
+  font-family: var(--cc-font-mono);
+  font-size: 12px;
+}
+
+.webhook-url-input:focus {
+  outline: none;
+  border-color: var(--cc-accent);
+}
+
+.webhook-instructions {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--cc-bg-primary);
+  border-radius: var(--cc-radius-md);
+  font-size: 12px;
+  color: var(--cc-text-muted);
+  line-height: 1.6;
+}
+
+.webhook-benefit {
+  margin: 0 0 16px;
+  color: var(--cc-text-secondary);
+  line-height: 1.5;
+}
+
+.btn-danger-outline {
+  color: var(--cc-error) !important;
+  border-color: var(--cc-error) !important;
+  background: transparent !important;
+}
+
+.btn-danger-outline:hover {
+  background: var(--cc-error-muted) !important;
+}
+
+/* Webhook Setup Steps */
+.webhook-step {
+  padding: 16px;
+  background: var(--cc-bg-primary);
+  border-radius: var(--cc-radius-md);
+  margin-bottom: 12px;
+}
+
+.webhook-step:last-of-type {
+  margin-bottom: 16px;
+}
+
+.webhook-step-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.webhook-step-number {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cc-accent);
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.webhook-step-title {
+  font-weight: 500;
   color: var(--cc-text-primary);
 }
 
-.database-tab.active {
-  background: var(--cc-accent-muted);
-  border-color: var(--cc-accent);
-  color: var(--cc-accent);
+.webhook-step-hint {
+  font-size: 12px;
+  color: var(--cc-text-muted);
+  margin: 8px 0;
+  line-height: 1.5;
 }
 
-.database-tab .tab-icon {
-  font-size: 1.1rem;
+.webhook-step .webhook-url-row {
+  margin-top: 8px;
 }
 
-.database-tab .tab-label {
-  font-weight: 500;
+.webhook-step .btn-secondary {
+  margin-top: 8px;
+}
+
+.webhook-actions {
+  padding-top: 8px;
+  border-top: 1px solid var(--cc-border);
 }
 

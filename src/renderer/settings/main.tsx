@@ -6,6 +6,23 @@ const isElectronRuntime =
   typeof navigator !== 'undefined' &&
   navigator.userAgent.toLowerCase().includes('electron');
 
+// Show error message in the UI
+function showError(error: unknown) {
+  const container = document.getElementById('root');
+  if (container) {
+    container.innerHTML = `
+      <div class="control-center">
+        <div class="control-center-error">
+          <p>Failed to load Control Center</p>
+          <p style="font-size: 12px; opacity: 0.7;">${error instanceof Error ? error.message : 'Unknown error'}</p>
+          <button type="button" onclick="window.location.reload()">Retry</button>
+        </div>
+      </div>
+    `;
+  }
+  console.error('[ControlCenter] Bootstrap error:', error);
+}
+
 // Dynamic import to ensure bridge is ready
 async function bootstrap() {
   // Only initialize mobile bridge on non-Electron platforms
@@ -25,7 +42,7 @@ async function bootstrap() {
 
   // Check URL params for initial section
   const params = new URLSearchParams(window.location.search);
-  const initialSection = params.get('section') as 'general' | 'api' | 'tasks' | 'writing' | 'timelog' | 'projects' | 'widget' | 'import' | 'shortcuts' | 'about' | undefined;
+  const initialSection = params.get('section') as 'setup' | 'general' | 'api' | 'features' | 'databases' | 'widget' | 'voice' | 'import' | 'reset' | 'mcp' | 'shortcuts' | 'about' | undefined;
 
   const root = createRoot(container);
   root.render(
@@ -35,4 +52,4 @@ async function bootstrap() {
   );
 }
 
-bootstrap().catch(console.error);
+bootstrap().catch(showError);

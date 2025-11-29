@@ -13,6 +13,7 @@ async function build() {
       'electron',
       'better-sqlite3',
       'undici',
+      '@notionhq/client', // Keep Notion SDK external to avoid tree-shaking issues
       // Keep native modules external
     ],
     format: 'cjs',

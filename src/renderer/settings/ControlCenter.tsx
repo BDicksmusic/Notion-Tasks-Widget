@@ -175,6 +175,126 @@ const DEFAULT_FEATURE_TOGGLES: FeatureToggles = {
 const widgetAPI = widgetBridge;
 const settingsAPI = settingsBridge;
 
+// Webhook Token Status Indicator Component
+const WebhookTokenStatus = ({ userId }: { userId?: string }) => {
+  const [hasToken, setHasToken] = useState<boolean | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+    
+    const checkStatus = async () => {
+      setChecking(true);
+      try {
+        const response = await fetch(`https://notion-tasks-webhook-relay.bdicksmusic.workers.dev/webhook/${userId}`);
+        const data = await response.json();
+        setHasToken(data.hasVerificationToken === true);
+      } catch {
+        setHasToken(null);
+      }
+      setChecking(false);
+    };
+    
+    checkStatus();
+    // Poll every 5 seconds to check for token arrival
+    const interval = setInterval(checkStatus, 5000);
+    return () => clearInterval(interval);
+  }, [userId]);
+
+  if (!userId) return null;
+  if (checking && hasToken === null) return <span style={{ marginLeft: '8px', opacity: 0.6 }}>⏳</span>;
+  if (hasToken === true) return <span style={{ marginLeft: '8px', color: '#22c55e' }} title="Token received!">✓</span>;
+  if (hasToken === false) return <span style={{ marginLeft: '8px', color: '#ef4444' }} title="Waiting for token...">✗</span>;
+  return null;
+};
+
+// Webhook Token Fetcher Component with visible token display
+const WebhookTokenFetcher = ({ 
+  userId, 
+  onFeedback 
+}: { 
+  userId?: string; 
+  onFeedback: (feedback: { kind: 'success' | 'error'; message: string }) => void;
+}) => {
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const fetchToken = async () => {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      const result = await widgetAPI.getWebhookVerificationToken();
+      if (result.verificationToken) {
+        setToken(result.verificationToken);
+        setCopied(false);
+      } else {
+        onFeedback({ kind: 'error', message: result.message || 'No token yet. Click "Resend token" in Notion and wait up to 30 seconds.' });
+      }
+    } catch (err) {
+      onFeedback({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to fetch token' });
+    }
+    setLoading(false);
+  };
+
+  const copyToken = async () => {
+    if (!token) return;
+    await navigator.clipboard.writeText(token);
+    setCopied(true);
+    onFeedback({ kind: 'success', message: 'Token copied! Paste it in Notion.' });
+    // Hide token after copying
+    setTimeout(() => {
+      setToken(null);
+      setCopied(false);
+    }, 2000);
+  };
+
+  if (copied) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#22c55e' }}>
+        <span>✓ Copied!</span>
+      </div>
+    );
+  }
+
+  if (token) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        <div className="webhook-url-row">
+          <input
+            type="text"
+            value={token}
+            readOnly
+            className="webhook-url-input"
+            style={{ fontFamily: 'monospace', fontSize: '12px' }}
+          />
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={copyToken}
+          >
+            Copy Token
+          </button>
+        </div>
+        <p className="webhook-step-hint" style={{ fontSize: '11px' }}>
+          Copy this token and paste it in Notion's verification field
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="btn-secondary"
+      onClick={fetchToken}
+      disabled={loading || !userId}
+    >
+      {loading ? 'Checking...' : 'Get Verification Token'}
+    </button>
+  );
+};
+
 interface ControlCenterProps {
   initialSection?: Section;
 }
@@ -2072,6 +2192,60 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
               </div>
 
               <div className="section-group">
+                <h3>Task List Columns</h3>
+                <p className="section-description">
+                  Choose which columns to collapse by default. Collapsed columns appear on hover.
+                </p>
+                <div className="toggle-grid">
+                  <label className="toggle-card">
+                    <input
+                      type="checkbox"
+                      checked={preferences.collapseTimeColumn ?? false}
+                      onChange={(e) => handleAppPreferenceChange({ collapseTimeColumn: e.target.checked })}
+                    />
+                    <span className="toggle-slider" />
+                    <div className="toggle-content">
+                      <span className="toggle-title">Collapse Time Column</span>
+                      <span className="toggle-description">
+                        Hide "Add Estimate Time" and "Start Session" buttons until you hover over a task.
+                      </span>
+                    </div>
+                  </label>
+                  <label className="toggle-card">
+                    <input
+                      type="checkbox"
+                      checked={preferences.collapseProjectColumn ?? false}
+                      onChange={(e) => handleAppPreferenceChange({ collapseProjectColumn: e.target.checked })}
+                    />
+                    <span className="toggle-slider" />
+                    <div className="toggle-content">
+                      <span className="toggle-title">Collapse Project Column</span>
+                      <span className="toggle-description">
+                        Hide "Add to Project" and subtask buttons until you hover over a task.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+                
+                {preferences.collapseProjectColumn && (
+                  <label className="toggle-card" style={{ marginTop: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={preferences.autoExpandProjectRow ?? false}
+                      onChange={(e) => handleAppPreferenceChange({ autoExpandProjectRow: e.target.checked })}
+                    />
+                    <span className="toggle-slider" />
+                    <div className="toggle-content">
+                      <span className="toggle-title">Auto-expand when project assigned</span>
+                      <span className="toggle-description">
+                        Keep the project row visible if the task has a project assigned, otherwise stay collapsed.
+                      </span>
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              <div className="section-group">
                 <h3>Quick Add Options</h3>
                 <p className="section-description">Configure the task capture form.</p>
                 <div className="toggle-grid">
@@ -2234,6 +2408,12 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
           {/* UNIFIED DATABASE PROPERTIES SECTION */}
           {activeSection === 'databases' && (
             <section className="settings-section database-properties-section">
+              {/* Section Header */}
+              <div className="section-group">
+                <h3>Database Properties</h3>
+                <p className="section-description">Configure the mapping between your Notion databases and the widget.</p>
+              </div>
+              
               {/* Database Tab Switcher */}
               <div className="database-tabs">
                 {DATABASE_TABS.map((tab) => (
@@ -2457,7 +2637,19 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                           type="text"
                           value={taskSettings.parentTaskProperty || ''}
                           onChange={(e) => handleTaskFieldChange('parentTaskProperty', e.target.value)}
+                          placeholder="Main Actions"
                         />
+                        <span className="field-hint">Relation on subtask pointing to its parent (e.g., "Main Actions")</span>
+                      </div>
+                      <div className="field">
+                        <label>Sub-Actions Relation</label>
+                        <input
+                          type="text"
+                          value={taskSettings.subActionsProperty || ''}
+                          onChange={(e) => handleTaskFieldChange('subActionsProperty', e.target.value)}
+                          placeholder="Sub-Actions"
+                        />
+                        <span className="field-hint">Relation on parent showing its subtasks (two-way relation with Parent Task)</span>
                       </div>
                     </div>
                   </div>
@@ -2496,7 +2688,7 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                     <button 
                       type="button" 
                       className="btn-primary"
-                      onClick={handleTaskSettingsSave}
+                      onClick={handleTaskSave}
                       disabled={taskSaving}
                     >
                       {taskSaving ? 'Saving…' : 'Save Task Settings'}
@@ -3547,43 +3739,6 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
               </div>
 
               <div className="section-group">
-                <h3>Task List Columns</h3>
-                <p className="section-description">
-                  Choose which columns to collapse by default. Collapsed columns appear on hover.
-                </p>
-                <div className="toggle-grid">
-                  <label className="toggle-card">
-                    <input
-                      type="checkbox"
-                      checked={preferences.collapseTimeColumn ?? false}
-                      onChange={(e) => handleAppPreferenceChange({ collapseTimeColumn: e.target.checked })}
-                    />
-                    <span className="toggle-slider" />
-                    <div className="toggle-content">
-                      <span className="toggle-title">Collapse Time Column</span>
-                      <span className="toggle-description">
-                        Hide "Add Estimate Time" and "Start Session" buttons until you hover over a task.
-                      </span>
-                    </div>
-                  </label>
-                  <label className="toggle-card">
-                    <input
-                      type="checkbox"
-                      checked={preferences.collapseProjectColumn ?? false}
-                      onChange={(e) => handleAppPreferenceChange({ collapseProjectColumn: e.target.checked })}
-                    />
-                    <span className="toggle-slider" />
-                    <div className="toggle-content">
-                      <span className="toggle-title">Collapse Project Column</span>
-                      <span className="toggle-description">
-                        Hide "Add to Project" and subtask buttons until you hover over a task.
-                      </span>
-                    </div>
-                  </label>
-                </div>
-              </div>
-
-              <div className="section-group">
                 <h3>Sound Effects</h3>
                 <p className="section-description">
                   Control audio feedback for interactions.
@@ -4064,6 +4219,135 @@ const ControlCenter = ({ initialSection }: ControlCenterProps) => {
                     </div>
                   </button>
                 </div>
+              </div>
+
+              {/* Real-time Sync via Webhooks */}
+              <div className="section-group">
+                <h3>🔔 Real-time Sync (Webhooks)</h3>
+                <p className="section-description">
+                  Get instant updates when tasks change in Notion. Requires setting up a webhook in your Notion integration.
+                </p>
+                
+                {appPreferences?.webhookEnabled && appPreferences?.webhookUrl ? (
+                  <div className="webhook-status-box">
+                    <div className="webhook-active">
+                      <span className="webhook-status-dot active" />
+                      <span>Real-time sync enabled</span>
+                    </div>
+                    
+                    {/* Step 1: Webhook URL */}
+                    <div className="webhook-step">
+                      <div className="webhook-step-header">
+                        <span className="webhook-step-number">1</span>
+                        <span className="webhook-step-title">Copy your Webhook URL</span>
+                      </div>
+                      <div className="webhook-url-row">
+                        <input
+                          type="text"
+                          value={appPreferences.webhookUrl}
+                          readOnly
+                          className="webhook-url-input"
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => {
+                            navigator.clipboard.writeText(appPreferences.webhookUrl || '');
+                            setFeedback({ kind: 'success', message: 'Webhook URL copied!' });
+                          }}
+                        >
+                          Copy
+                        </button>
+                      </div>
+                      <p className="webhook-step-hint">
+                        Paste this URL in Notion → Settings → Connections → Your Integration → Webhooks
+                      </p>
+                    </div>
+
+                    {/* Step 2: Get Verification Token */}
+                    <div className="webhook-step">
+                      <div className="webhook-step-header">
+                        <span className="webhook-step-number">2</span>
+                        <span className="webhook-step-title">Get Verification Token</span>
+                        <WebhookTokenStatus userId={appPreferences?.webhookUserId} />
+                      </div>
+                      <p className="webhook-step-hint">
+                        After pasting the URL in Notion, click "Resend token". It may take up to 30 seconds to arrive.
+                      </p>
+                      <WebhookTokenFetcher 
+                        userId={appPreferences?.webhookUserId}
+                        onFeedback={setFeedback}
+                      />
+                    </div>
+
+                    {/* Step 3: Done */}
+                    <div className="webhook-step">
+                      <div className="webhook-step-header">
+                        <span className="webhook-step-number">3</span>
+                        <span className="webhook-step-title">Paste token in Notion & Verify</span>
+                      </div>
+                      <p className="webhook-step-hint">
+                        Paste the token in Notion's verification field and click "Verify subscription". 
+                        Once verified, changes in Notion will sync to this app automatically!
+                      </p>
+                    </div>
+
+                    <div className="webhook-actions">
+                      <button
+                        type="button"
+                        className="btn-secondary btn-danger-outline"
+                        onClick={async () => {
+                          try {
+                            await widgetAPI.disableWebhook();
+                            if (appPreferences) {
+                              setAppPreferences({
+                                ...appPreferences,
+                                webhookEnabled: false,
+                                webhookUrl: undefined,
+                                webhookUserId: undefined,
+                              });
+                            }
+                            setFeedback({ kind: 'success', message: 'Real-time sync disabled' });
+                          } catch (err) {
+                            setFeedback({ kind: 'error', message: 'Failed to disable webhook' });
+                          }
+                        }}
+                      >
+                        Disable Real-time Sync
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="webhook-setup-box">
+                    <p className="webhook-benefit">
+                      ⚡ Changes made in Notion will appear here within seconds, no manual refresh needed.
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      onClick={async () => {
+                        try {
+                          setFeedback({ kind: 'success', message: 'Setting up real-time sync...' });
+                          const result = await widgetAPI.registerWebhook();
+                          await widgetAPI.enableWebhook();
+                          if (appPreferences) {
+                            setAppPreferences({
+                              ...appPreferences,
+                              webhookEnabled: true,
+                              webhookUrl: result.webhookUrl,
+                              webhookUserId: result.userId,
+                            });
+                          }
+                          setFeedback({ kind: 'success', message: 'Real-time sync enabled! Copy the URL below and add it to Notion.' });
+                        } catch (err) {
+                          setFeedback({ kind: 'error', message: err instanceof Error ? err.message : 'Failed to enable real-time sync' });
+                        }
+                      }}
+                    >
+                      Enable Real-time Sync
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Sync Settings */}

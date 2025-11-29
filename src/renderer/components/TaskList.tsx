@@ -1,4 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type {
   MouseEvent as ReactMouseEvent,
   DragEvent as ReactDragEvent
@@ -18,7 +19,8 @@ import {
   type MatrixOptionId
 } from '../constants/matrix';
 import DateField from './DateField';
-import { getStatusColorClass } from '../utils/statusColors';
+import { StatusSelect } from './StatusSelect';
+import { getStatusColorClass, getStatusColorClassFromNotionColor } from '../utils/statusColors';
 import type { GroupingOption, TaskGroup } from '../utils/sorting';
 import MassEditToolbar from './MassEditToolbar';
 
@@ -78,7 +80,7 @@ interface Props {
   isFocusMode?: boolean;
   orderOptions?: TaskOrderOption[];
   selectedTaskId?: string | null;
-  onSelectTask?: (taskId: string) => void;
+  onSelectTask?: (taskId: string | null) => void;
   manualOrderingEnabled?: boolean;
   onManualReorder?: (payload: {
     sourceId: string;
@@ -97,6 +99,7 @@ interface Props {
   // Collapsible columns settings
   collapseTimeColumn?: boolean;    // Column 3: Estimate time, Start session
   collapseProjectColumn?: boolean; // Column 4: Add to project, Add subtasks
+  autoExpandProjectRow?: boolean;  // When true, auto-expand project row if task has a project
 }
 
 const NOTION_COLOR_MAP: Record<
@@ -195,7 +198,8 @@ const TaskList = ({
   projects = [],
   onAddSubtask,
   collapseTimeColumn = false,
-  collapseProjectColumn = false
+  collapseProjectColumn = false,
+  autoExpandProjectRow = false
 }: Props) => {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [customStatusDrafts, setCustomStatusDrafts] = useState<
@@ -211,8 +215,24 @@ const TaskList = ({
   const [trackingData, setTrackingData] = useState<Record<string, any[]>>({});
   const [expandedSessionTimer, setExpandedSessionTimer] = useState<Record<string, boolean>>({});
   const [sessionInputs, setSessionInputs] = useState<Record<string, { value: string; unit: 'minutes' | 'hours' }>>({});
+  const [sessionSettingsOpen, setSessionSettingsOpen] = useState<Record<string, boolean>>({});
+  const [sessionPresets, setSessionPresets] = useState<{ label: string; minutes: number }[]>([
+    { label: '15m', minutes: 15 },
+    { label: '25m', minutes: 25 },
+    { label: '45m', minutes: 45 },
+    { label: '1h', minutes: 60 },
+  ]);
+  const [sessionPresetInput, setSessionPresetInput] = useState('');
   const [expandedEstimateEditor, setExpandedEstimateEditor] = useState<Record<string, boolean>>({});
   const [estimateInputs, setEstimateInputs] = useState<Record<string, { value: string; unit: 'minutes' | 'hours' }>>({});
+  const [estimateSettingsOpen, setEstimateSettingsOpen] = useState<Record<string, boolean>>({});
+  const [estimatePresets, setEstimatePresets] = useState<{ label: string; minutes: number }[]>([
+    { label: '30m', minutes: 30 },
+    { label: '1h', minutes: 60 },
+    { label: '2h', minutes: 120 },
+    { label: '4h', minutes: 240 },
+  ]);
+  const [estimatePresetInput, setEstimatePresetInput] = useState('');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [now, setNow] = useState(() => Date.now());
   const [loggedTimes, setLoggedTimes] = useState<Record<string, number>>({});
@@ -228,6 +248,7 @@ const TaskList = ({
   const [subtaskCache, setSubtaskCache] = useState<Record<string, Task[]>>({});
   const [addingSubtaskFor, setAddingSubtaskFor] = useState<string | null>(null);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [selectedSubtaskId, setSelectedSubtaskId] = useState<string | null>(null);
   
   // Multi-select state
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
@@ -241,6 +262,9 @@ const TaskList = ({
   const [visibleRange, setVisibleRange] = useState({ start: 0, end: INITIAL_RENDER_COUNT });
   const virtualListRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  
+  // Suppress hover during scroll/click until mouse moves
+  const [suppressHover, setSuppressHover] = useState(false);
   
   const manualOrderingActive = Boolean(manualOrderingEnabled && onManualReorder);
   const hasGroups = grouping !== 'none' && Boolean(groups?.length);
@@ -290,6 +314,46 @@ const TaskList = ({
     container.addEventListener('scroll', handleScroll, { passive: true });
     return () => container.removeEventListener('scroll', handleScroll);
   }, [scrollContainerRef, updateVisibleRange]);
+  
+  // Suppress hover during scroll/click until mouse actually moves
+  useEffect(() => {
+    const container = scrollContainerRef?.current || virtualListRef.current;
+    if (!container) return;
+    
+    let lastMouseX = 0;
+    let lastMouseY = 0;
+    
+    const handleScroll = () => {
+      setSuppressHover(true);
+    };
+    
+    // Removed: mousedown suppress was causing selection issues
+    // const handleMouseDown = () => {
+    //   setSuppressHover(true);
+    // };
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      // Only re-enable hover if mouse actually moved (not just scroll causing position change)
+      const moved = Math.abs(e.clientX - lastMouseX) > 2 || Math.abs(e.clientY - lastMouseY) > 2;
+      if (moved) {
+        setSuppressHover(false);
+      }
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+    };
+    
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    // Removed: mousedown suppress was causing selection issues
+    // container.addEventListener('mousedown', handleMouseDown);
+    container.addEventListener('mousemove', handleMouseMove, { passive: true });
+    
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      // Removed: mousedown suppress was causing selection issues
+      // container.removeEventListener('mousedown', handleMouseDown);
+      container.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [scrollContainerRef]);
   
   // Reset visible range when tasks change significantly
   useEffect(() => {
@@ -401,6 +465,48 @@ const TaskList = ({
     }
     return `${totalMinutes}m`;
   };
+
+  // Parse time string like "15m", "1h", "1h30m", "90" (minutes)
+  const parseTimeString = (input: string): { minutes: number; label: string } | null => {
+    const trimmed = input.trim().toLowerCase();
+    if (!trimmed) return null;
+    
+    // Try to parse formats like "1h30m", "1h 30m", "1h30"
+    const hourMinMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*h(?:r|our)?s?\s*(\d+)?\s*m?(?:in)?s?$/);
+    if (hourMinMatch) {
+      const hours = parseFloat(hourMinMatch[1]);
+      const mins = hourMinMatch[2] ? parseInt(hourMinMatch[2]) : 0;
+      const totalMins = Math.round(hours * 60) + mins;
+      const label = mins > 0 ? `${Math.floor(hours)}h${mins}m` : `${hours}h`;
+      return { minutes: totalMins, label };
+    }
+    
+    // Try to parse "1h" or "2hr" or "1.5h"
+    const hourMatch = trimmed.match(/^(\d+(?:\.\d+)?)\s*h(?:r|our)?s?$/);
+    if (hourMatch) {
+      const hours = parseFloat(hourMatch[1]);
+      const totalMins = Math.round(hours * 60);
+      const label = hours % 1 === 0 ? `${hours}h` : `${hours}h`;
+      return { minutes: totalMins, label };
+    }
+    
+    // Try to parse "30m" or "30min" or "30 minutes"
+    const minMatch = trimmed.match(/^(\d+)\s*m(?:in)?(?:ute)?s?$/);
+    if (minMatch) {
+      const mins = parseInt(minMatch[1]);
+      return { minutes: mins, label: `${mins}m` };
+    }
+    
+    // Try to parse plain number as minutes
+    const numMatch = trimmed.match(/^(\d+)$/);
+    if (numMatch) {
+      const mins = parseInt(numMatch[1]);
+      return { minutes: mins, label: `${mins}m` };
+    }
+    
+    return null;
+  };
+
   useEffect(() => {
     if (!sortHold) return;
     const hasActive = Object.values(sortHold).some((expiry) => expiry > Date.now());
@@ -453,6 +559,11 @@ const TaskList = ({
       onScrollToCenter(element);
     }
   }, [selectedTaskId, onScrollToCenter]);
+
+  // Clear subtask selection when main task selection changes
+  useEffect(() => {
+    setSelectedSubtaskId(null);
+  }, [selectedTaskId]);
 
   // Update countdown display every second
   const [timerNow, setTimerNow] = useState(() => Date.now());
@@ -604,6 +715,13 @@ const TaskList = ({
     event: ReactMouseEvent<HTMLElement>,
     taskId: string
   ) => {
+    // Don't select if clicking on interactive elements inside the task row
+    const target = event.target as HTMLElement;
+    const interactiveSelector = 'button, input, select, textarea, a, [role="button"], .notion-input, .status-select, .matrix-select';
+    if (target.closest(interactiveSelector)) {
+      return; // Let the inner element handle the click
+    }
+    
     const allIds = getAllVisibleTaskIds();
     const taskIndex = allIds.indexOf(taskId);
     
@@ -956,8 +1074,9 @@ const TaskList = ({
   const toggleSessionTimer = (taskId: string, taskElement?: HTMLElement) => {
     const wasExpanded = expandedSessionTimer[taskId];
     setExpandedSessionTimer((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
-    setSessionInputs((prev) => {
-      if (prev[taskId] !== undefined) return prev;
+    
+    // Always sync input with task's current session length when expanding
+    if (!wasExpanded) {
       const taskData = tasks.find((task) => task.id === taskId);
       const defaultMinutes = taskData?.sessionLengthMinutes ?? null;
       const prefersHours =
@@ -971,14 +1090,14 @@ const TaskList = ({
           : defaultMinutes
             ? String(defaultMinutes)
             : '';
-      return {
+      setSessionInputs((prev) => ({
         ...prev,
         [taskId]: {
           value: defaultValue,
           unit: prefersHours ? 'hours' : 'minutes'
         }
-      };
-    });
+      }));
+    }
     
     // Scroll to center the task element after timer expand/collapse
     if (onScrollToCenter && taskElement && !wasExpanded) {
@@ -1248,6 +1367,21 @@ const TaskList = ({
     statusOptions.length > 0
       ? statusOptions
       : manualStatuses.map((name) => ({ id: name, name }));
+
+  // Helper to get status color class - prefers Notion color from options
+  const getStatusClass = (statusValue: string | undefined | null) => {
+    if (!statusValue) return '';
+    // Find the status option to get its Notion color
+    const statusOption = availableStatusOptions.find(
+      (opt) => opt.name.toLowerCase() === statusValue.toLowerCase()
+    );
+    // Prefer Notion color if available
+    if (statusOption?.color) {
+      return getStatusColorClassFromNotionColor(statusOption.color);
+    }
+    // Fallback to name-based mapping
+    return getStatusColorClass(statusValue);
+  };
 
   const isTaskActive = (task: Task) =>
     task.status === '⌚' || Boolean(isCountingDown?.(task.id));
@@ -1578,6 +1712,100 @@ const TaskList = ({
                     🔔
                   </span>
                 )}
+                {/* Subtask progress indicator - Notion rollup style */}
+                {(() => {
+                  const cachedSubtasks = subtaskCache[task.id] || [];
+                  const hasSubtasksFromProgress = task.subtaskProgress && task.subtaskProgress.total > 0;
+                  const hasSubtasksFromCache = cachedSubtasks.length > 0;
+                  
+                  if (!hasSubtasksFromProgress && !hasSubtasksFromCache) return null;
+                  
+                  // Calculate progress from cache if available, otherwise use task.subtaskProgress
+                  const total = hasSubtasksFromCache ? cachedSubtasks.length : (task.subtaskProgress?.total ?? 0);
+                  const completed = hasSubtasksFromCache 
+                    ? cachedSubtasks.filter(s => s.status === completedStatus).length
+                    : (task.subtaskProgress?.completed ?? 0);
+                  const allDone = total > 0 && completed === total;
+                  const isExpanded = expandedSubtasks[task.id];
+                  const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
+                  
+                  // Check for overdue subtasks (incomplete subtasks with past due dates)
+                  const now = new Date();
+                  now.setHours(0, 0, 0, 0); // Compare dates only
+                  const hasOverdueSubtask = hasSubtasksFromCache && cachedSubtasks.some(s => {
+                    if (s.status === completedStatus) return false; // Skip completed
+                    if (!s.dueDate) return false; // No due date
+                    const dueDate = new Date(s.dueDate);
+                    dueDate.setHours(0, 0, 0, 0);
+                    return dueDate < now;
+                  });
+                  
+                  // Determine ring color based on state
+                  let ringColor = 'currentColor'; // Default gray
+                  let statusClass = '';
+                  if (allDone) {
+                    ringColor = '#22c55e'; // Green - all complete
+                    statusClass = 'all-done';
+                  } else if (hasOverdueSubtask) {
+                    ringColor = '#ef4444'; // Red - has overdue
+                    statusClass = 'has-overdue';
+                  }
+                  
+                  return (
+                    <button
+                      type="button"
+                      className={`subtask-rollup-pill ${statusClass} ${isExpanded ? 'is-expanded' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedSubtasks(prev => ({ ...prev, [task.id]: !isExpanded }));
+                        
+                        // Clear subtask selection when collapsing
+                        if (isExpanded) {
+                          setSelectedSubtaskId(null);
+                        }
+                        
+                        // Fetch subtasks if not cached and expanding
+                        if (!isExpanded && !subtaskCache[task.id]) {
+                          window.widgetAPI.getSubtasks(task.id).then(subtasks => {
+                            setSubtaskCache(prev => ({ ...prev, [task.id]: subtasks }));
+                          });
+                        }
+                      }}
+                      title={hasOverdueSubtask ? `${completed} of ${total} subtasks done (has overdue!)` : `${completed} of ${total} subtasks done`}
+                    >
+                      <span className="subtask-rollup-count">{completed}/{total}</span>
+                      <svg 
+                        className="subtask-progress-ring" 
+                        viewBox="0 0 36 36"
+                        width="14"
+                        height="14"
+                      >
+                        {/* Background circle */}
+                        <circle
+                          cx="18"
+                          cy="18"
+                          r="15.9"
+                          fill="none"
+                          stroke="rgba(255, 255, 255, 0.15)"
+                          strokeWidth="4"
+                        />
+                        {/* Progress arc */}
+                        <circle
+                          cx="18"
+                          cy="18"
+                          r="15.9"
+                          fill="none"
+                          stroke={ringColor}
+                          strokeWidth="4"
+                          strokeLinecap="round"
+                          strokeDasharray={`${progressPercent}, 100`}
+                          transform="rotate(-90 18 18)"
+                          style={{ transition: 'stroke-dasharray 300ms ease, stroke 200ms ease' }}
+                        />
+                      </svg>
+                    </button>
+                  );
+                })()}
                 <button
                   type="button"
                   aria-label="Toggle deadline hardness"
@@ -1601,51 +1829,46 @@ const TaskList = ({
                 >
                   {task.hardDeadline ? 'Hard Deadline' : 'Soft Deadline'}
                 </button>
-                {/* Subtask progress indicator - show if task has subtaskProgress OR if we have cached subtasks */}
-                {(() => {
-                  const cachedSubtasks = subtaskCache[task.id] || [];
-                  const hasSubtasksFromProgress = task.subtaskProgress && task.subtaskProgress.total > 0;
-                  const hasSubtasksFromCache = cachedSubtasks.length > 0;
-                  
-                  if (!hasSubtasksFromProgress && !hasSubtasksFromCache) return null;
-                  
-                  // Calculate progress from cache if available, otherwise use task.subtaskProgress
-                  const total = hasSubtasksFromCache ? cachedSubtasks.length : (task.subtaskProgress?.total ?? 0);
-                  const completed = hasSubtasksFromCache 
-                    ? cachedSubtasks.filter(s => {
-                        const status = (s.normalizedStatus || s.status || '').toLowerCase();
-                        return status === 'done' || status.includes('complete');
-                      }).length
-                    : (task.subtaskProgress?.completed ?? 0);
-                  const allDone = total > 0 && completed === total;
-                  
-                  return (
-                    <button
-                      type="button"
-                      className={`subtask-progress-pill ${allDone ? 'all-done' : ''}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const isExpanded = expandedSubtasks[task.id];
-                        setExpandedSubtasks(prev => ({ ...prev, [task.id]: !isExpanded }));
-                        
-                        // Fetch subtasks if not cached and expanding
-                        if (!isExpanded && !subtaskCache[task.id]) {
-                          window.widgetAPI.getSubtasks(task.id).then(subtasks => {
-                            setSubtaskCache(prev => ({ ...prev, [task.id]: subtasks }));
-                          });
-                        }
-                      }}
-                      title={`${completed} of ${total} subtasks done`}
-                    >
-                      <span className="subtask-count">{completed}/{total}</span>
-                      <span className="subtask-chevron">{expandedSubtasks[task.id] ? '▾' : '▸'}</span>
-                    </button>
-                  );
-                })()}
               </div>
             </div>
             <div className="task-properties-row">
               <div className="property-group-left task-row-property-left">
+                {/* Status first */}
+                <div className="property-item status-item">
+                  {availableStatusOptions.length ? (
+                    <StatusSelect
+                      value={statusValue}
+                      options={
+                        statusMissing
+                          ? [{ id: statusValue, name: statusValue }, ...availableStatusOptions]
+                          : availableStatusOptions
+                      }
+                      onChange={(nextValue) => {
+                        void handleUpdate(task.id, {
+                          status: nextValue || null
+                        });
+                      }}
+                      disabled={isUpdating}
+                      showLabel={true}
+                    />
+                  ) : (
+                    <input
+                      type="text"
+                      aria-label="Status"
+                      value={customStatusDrafts[task.id] ?? statusValue}
+                      onChange={(event) =>
+                        handleCustomStatusChange(task.id, event.target.value)
+                      }
+                      onBlur={(event) =>
+                        void commitCustomStatus(task.id, event.target.value)
+                      }
+                      placeholder="Status"
+                      disabled={isUpdating}
+                      className="status-pill"
+                    />
+                  )}
+                </div>
+                {/* Date second */}
                 <div className="date-stack">
                   <DateField
                     value={task.dueDate ?? null}
@@ -1675,46 +1898,7 @@ const TaskList = ({
                     }}
                   />
                 </div>
-                <div className="property-item status-item">
-                  {availableStatusOptions.length ? (
-                    <select
-                      className={`pill-select status-pill ${getStatusColorClass(statusValue)}`}
-                      aria-label="Status"
-                      value={statusValue}
-                      onChange={(event) => {
-                        const nextValue = event.target.value || null;
-                        void handleUpdate(task.id, {
-                          status: nextValue
-                        });
-                      }}
-                      disabled={isUpdating}
-                    >
-                      {statusMissing && (
-                        <option value={statusValue}>{statusValue}</option>
-                      )}
-                      {availableStatusOptions.map((option) => (
-                        <option key={option.id} value={option.name}>
-                          {option.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      aria-label="Status"
-                      value={customStatusDrafts[task.id] ?? statusValue}
-                      onChange={(event) =>
-                        handleCustomStatusChange(task.id, event.target.value)
-                      }
-                      onBlur={(event) =>
-                        void commitCustomStatus(task.id, event.target.value)
-                      }
-                      placeholder="Status"
-                      disabled={isUpdating}
-                      className="status-pill"
-                    />
-                  )}
-                </div>
+                {/* Priority last */}
                 <div className="matrix-inline task-row-matrix-inline">
                   <label htmlFor={matrixSelectId} className="sr-only">
                     Priority
@@ -1739,6 +1923,16 @@ const TaskList = ({
 
               <div className="property-group-flags task-row-property-flags">
                 <div className="task-row-flag-row">
+                  <button
+                    type="button"
+                    className="task-notes-toggle notes-toggle-inline"
+                    onClick={(e) => {
+                      const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
+                      toggleNotes(task.id, task.mainEntry, taskRow);
+                    }}
+                  >
+                    {task.mainEntry ? 'Notes' : 'Add notes…'}
+                  </button>
                   <label
                     className={`flag urgent ${task.urgent ? 'is-active' : ''}`}
                   >
@@ -1775,96 +1969,7 @@ const TaskList = ({
                 </div>
               </div>
             </div>
-            {/* Time Column (Column 3): Estimate time, Start session - collapsible on hover */}
-            <div className={`task-secondary-row ${collapseTimeColumn ? 'collapsible-column' : ''}`}>
-              <div className="task-secondary-left">
-                <button
-                  type="button"
-                  className="task-notes-toggle"
-                  onClick={(e) => {
-                    const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
-                    toggleEstimateEditor(task.id, taskRow);
-                  }}
-                >
-                  {estimatedButtonLabel}
-                </button>
-                {isSessionActive || task.status === '⌚' ? (
-                  <button
-                    type="button"
-                    className="task-notes-toggle"
-                    onClick={(e) => {
-                      const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
-                      toggleSessionTimer(task.id, taskRow);
-                    }}
-                  >
-                    {isCountingDown?.(task.id) && getRemainingTime && task.sessionLengthMinutes ? (
-                      (() => {
-                        const remainingSeconds = getRemainingTime(task.id);
-                        const elapsedSeconds = (task.sessionLengthMinutes * 60) - remainingSeconds;
-                        const elapsedMinutes = Math.floor(elapsedSeconds / 60);
-                        const elapsedSecondsRemainder = Math.floor(elapsedSeconds % 60);
-                        // Format as "Xm Ys elapsed" or just "Xs elapsed" if less than a minute
-                        if (elapsedMinutes > 0) {
-                          return `${elapsedMinutes}m ${elapsedSecondsRemainder}s elapsed`;
-                        }
-                        return `${elapsedSecondsRemainder}s elapsed`;
-                      })()
-                    ) : (
-                      sessionButtonLabel
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="task-notes-toggle"
-                    onClick={(e) => {
-                      const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
-                      toggleSessionTimer(task.id, taskRow);
-                    }}
-                  >
-                    {sessionButtonLabel}
-                  </button>
-                )}
-              </div>
-              <div className="task-secondary-right">
-                {task.estimatedLengthMinutes && remainingMinutes != null && (
-                  <span className="estimated-length-pill">
-                    {remainingLabel} left
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className="task-notes-toggle"
-                  onClick={(e) => {
-                    const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
-                    toggleTrackingData(task.id, taskRow);
-                  }}
-                >
-                  Tracking data
-                </button>
-                <button
-                  type="button"
-                  className="task-notes-toggle"
-                  onClick={(e) => {
-                    const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
-                    toggleNotes(task.id, task.mainEntry, taskRow);
-                  }}
-                >
-                  {task.mainEntry ? 'View notes' : 'Add notes…'}
-                </button>
-                {task.url && (
-                  <a
-                    className="pill link open-link"
-                    href={task.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open
-                  </a>
-                )}
-              </div>
-            </div>
-            {/* Project & Tags row (Column 4): Add to project, Add subtasks - collapsible on hover */}
+            {/* Project & Tags row - now above secondary row */}
             {(() => {
               const taskProjects = getTaskProjects(task);
               const hasProjects = taskProjects.length > 0;
@@ -1873,7 +1978,7 @@ const TaskList = ({
               const taskTags: string[] = [];
               
               return (
-                <div className={`task-project-row ${collapseProjectColumn ? 'collapsible-column' : ''}`}>
+                <div className={`task-project-row ${(collapseProjectColumn || collapseTimeColumn) ? 'collapsible-column' : ''} ${hasProjects && autoExpandProjectRow ? 'has-project' : ''}`}>
                   <div className="task-project-row-left">
                     {hasProjects ? (
                       <button
@@ -1892,7 +1997,6 @@ const TaskList = ({
                         }}
                         title="Change project"
                       >
-                        <span className="project-icon">📁</span>
                         <span className="project-name">
                           {taskProjects.map((p) => p.title || 'Untitled').join(', ')}
                         </span>
@@ -1915,12 +2019,25 @@ const TaskList = ({
                         }}
                         title="Add to project"
                       >
-                        <span className="project-icon">+</span>
-                        <span className="project-name">Add to project</span>
+                        <span className="project-name">+ Project</span>
                       </button>
                     ) : null}
                     
-                    {isPickerOpen && openProjects.length > 0 && pickerPosition && (
+                    {/* Add tag button */}
+                    <button
+                      type="button"
+                      className="task-tag-add-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        // TODO: Open tag picker/input
+                      }}
+                      title="Add tag"
+                    >
+                      <span className="tag-icon">🏷️</span>
+                      <span className="tag-label">+ Tag</span>
+                    </button>
+                    
+                    {isPickerOpen && openProjects.length > 0 && pickerPosition && createPortal(
                       <>
                         <div 
                           className="task-project-picker-backdrop"
@@ -1933,6 +2050,7 @@ const TaskList = ({
                         <div 
                           className="task-project-picker"
                           style={{ top: pickerPosition.top, left: pickerPosition.left }}
+                          onClick={(e) => e.stopPropagation()}
                         >
                           <button
                             type="button"
@@ -1963,7 +2081,8 @@ const TaskList = ({
                             );
                           })}
                         </div>
-                      </>
+                      </>,
+                      document.body
                     )}
                   </div>
                   
@@ -1977,87 +2096,485 @@ const TaskList = ({
                       </div>
                     )}
                     
-                    {/* Add subtask button/form */}
+                    {/* Add subtask button - expands subtask panel */}
                     {onAddSubtask && (
                       <div className="add-subtask-container">
-                        {addingSubtaskFor === task.id ? (
-                          <form
-                            className="add-subtask-form"
-                            onSubmit={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (newSubtaskTitle.trim()) {
-                                void onAddSubtask(task.id, newSubtaskTitle.trim()).then((newTask) => {
-                                  if (newTask) {
-                                    // Update the subtask cache
-                                    setSubtaskCache(prev => ({
-                                      ...prev,
-                                      [task.id]: [...(prev[task.id] || []), newTask]
-                                    }));
-                                    // Auto-expand subtasks
-                                    setExpandedSubtasks(prev => ({ ...prev, [task.id]: true }));
-                                  }
-                                });
-                                setNewSubtaskTitle('');
-                                setAddingSubtaskFor(null);
-                              }
-                            }}
-                          >
-                            <input
-                              type="text"
-                              className="add-subtask-input"
-                              placeholder="Subtask title..."
-                              value={newSubtaskTitle}
-                              onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === 'Escape') {
-                                  e.stopPropagation();
-                                  setNewSubtaskTitle('');
-                                  setAddingSubtaskFor(null);
-                                }
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                            <button
-                              type="submit"
-                              className="add-subtask-submit"
-                              disabled={!newSubtaskTitle.trim()}
-                            >
-                              Add
-                            </button>
-                            <button
-                              type="button"
-                              className="add-subtask-cancel"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setNewSubtaskTitle('');
-                                setAddingSubtaskFor(null);
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </form>
-                        ) : (
-                          <button
-                            type="button"
-                            className="add-subtask-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAddingSubtaskFor(task.id);
-                            }}
-                            title="Add subtask"
-                          >
-                            <span className="add-subtask-icon">+</span>
-                            <span className="add-subtask-label">Add subtask</span>
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="add-subtask-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // Expand subtasks panel and start adding
+                            setExpandedSubtasks(prev => ({ ...prev, [task.id]: true }));
+                            setAddingSubtaskFor(task.id);
+                            // Fetch subtasks if not cached
+                            if (!subtaskCache[task.id]) {
+                              window.widgetAPI.getSubtasks(task.id).then(subtasks => {
+                                setSubtaskCache(prev => ({ ...prev, [task.id]: subtasks }));
+                              });
+                            }
+                          }}
+                          title="Add subtask"
+                        >
+                          <span className="add-subtask-icon">+</span>
+                          <span className="add-subtask-label">Add subtask</span>
+                        </button>
                       </div>
                     )}
                   </div>
                 </div>
               );
             })()}
+            {/* Subtask list - positioned above secondary row */}
+            {expandedSubtasks[task.id] && ((task.subtaskProgress && task.subtaskProgress.total > 0) || (subtaskCache[task.id] && subtaskCache[task.id].length > 0)) && (
+              <div className="subtask-list-container">
+                <div className="subtask-list-header">
+                  <span className="subtask-list-label">Subtasks</span>
+                  {onAddSubtask && (
+                    <button
+                      type="button"
+                      className="add-subtask-inline-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAddingSubtaskFor(task.id);
+                      }}
+                      title="Add subtask"
+                    >
+                      + New
+                    </button>
+                  )}
+                </div>
+                <div className="subtask-list-body">
+                  {/* Add subtask form */}
+                  {addingSubtaskFor === task.id && (
+                    <form
+                      className="add-subtask-form subtask-row"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (newSubtaskTitle.trim()) {
+                          void onAddSubtask?.(task.id, newSubtaskTitle.trim()).then((newTask) => {
+                            if (newTask) {
+                              setSubtaskCache(prev => ({
+                                ...prev,
+                                [task.id]: [...(prev[task.id] || []), newTask]
+                              }));
+                            }
+                          });
+                          setNewSubtaskTitle('');
+                          setAddingSubtaskFor(null);
+                        }
+                      }}
+                    >
+                      <div className="subtask-row-main">
+                        <span className="subtask-checkbox-placeholder" />
+                        <input
+                          type="text"
+                          className="subtask-title-input"
+                          placeholder="New subtask..."
+                          value={newSubtaskTitle}
+                          onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                              e.stopPropagation();
+                              setNewSubtaskTitle('');
+                              setAddingSubtaskFor(null);
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div className="subtask-form-actions">
+                          <button
+                            type="submit"
+                            className="subtask-add-btn"
+                            disabled={!newSubtaskTitle.trim()}
+                          >
+                            Add
+                          </button>
+                          <button
+                            type="button"
+                            className="subtask-cancel-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setNewSubtaskTitle('');
+                              setAddingSubtaskFor(null);
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
+                  {subtaskCache[task.id] ? (
+                    subtaskCache[task.id].map((subtask) => {
+                      const subtaskIsComplete = subtask.status === completedStatus;
+                      const subtaskStatusValue = subtask.status || '';
+                      const subtaskMatrixSelection = 
+                        subtask.urgent && subtask.important ? 'do-now' :
+                        !subtask.urgent && subtask.important ? 'deep-work' :
+                        subtask.urgent && !subtask.important ? 'delegate' : 'trash';
+                      const subtaskMatrixClass = `matrix-${subtaskMatrixSelection}`;
+                      
+                      // Time tracking calculations for subtask
+                      const subtaskLoggedMinutes = loggedTimes[subtask.id] ?? 0;
+                      const subtaskEstimated = subtask.estimatedLengthMinutes ?? 0;
+                      const subtaskRemaining = subtaskEstimated > 0 ? Math.max(0, subtaskEstimated - subtaskLoggedMinutes) : null;
+                      const subtaskRemainingLabel = subtaskRemaining != null ? formatMinutes(subtaskRemaining) : null;
+                      
+                      return (
+                        <div 
+                          key={subtask.id} 
+                          className={`subtask-row ${subtaskIsComplete ? 'is-complete' : ''} ${selectedSubtaskId === subtask.id ? 'is-selected' : ''}`}
+                          onClick={(e) => {
+                            // Don't select if clicking on an interactive element
+                            if ((e.target as HTMLElement).closest(POP_OUT_INTERACTIVE_SELECTOR)) {
+                              return;
+                            }
+                            // Toggle subtask selection
+                            setSelectedSubtaskId(prev => prev === subtask.id ? null : subtask.id);
+                          }}
+                        >
+                          {/* Row 1: Checkbox + Title + Deadline */}
+                          <div className="subtask-row-main">
+                            <button
+                              type="button"
+                              className={`subtask-checkbox ${subtaskIsComplete ? 'is-checked' : ''}`}
+                              onClick={() => {
+                                const newStatus = subtaskIsComplete 
+                                  ? (availableStatusOptions.find(opt => opt.name !== completedStatus)?.name ?? '')
+                                  : completedStatus;
+                                void onUpdateTask(subtask.id, { status: newStatus });
+                                setSubtaskCache(prev => ({
+                                  ...prev,
+                                  [task.id]: prev[task.id]?.map(s => 
+                                    s.id === subtask.id ? { ...s, status: newStatus } : s
+                                  ) ?? []
+                                }));
+                              }}
+                              disabled={isUpdating}
+                              title={subtaskIsComplete ? 'Mark as to-do' : 'Mark as complete'}
+                            >
+                              {subtaskIsComplete && <span className="check-icon">✓</span>}
+                            </button>
+                            <span className="subtask-title">{subtask.title}</span>
+                            <div className="subtask-row-right">
+                              <button
+                                type="button"
+                                className={`subtask-deadline-chip ${subtask.hardDeadline ? 'is-hard' : 'is-soft'}`}
+                                onClick={() => {
+                                  void onUpdateTask(subtask.id, { hardDeadline: !subtask.hardDeadline });
+                                  setSubtaskCache(prev => ({
+                                    ...prev,
+                                    [task.id]: prev[task.id]?.map(s => 
+                                      s.id === subtask.id ? { ...s, hardDeadline: !subtask.hardDeadline } : s
+                                    ) ?? []
+                                  }));
+                                }}
+                                disabled={isUpdating}
+                              >
+                                {subtask.hardDeadline ? 'Hard' : 'Soft'}
+                              </button>
+                            </div>
+                          </div>
+                          
+                          {/* Row 2: Properties - Due date, Status, Priority | Notes, Urgent, Important */}
+                          <div className="subtask-row-properties">
+                            <div className="subtask-properties-left">
+                              <DateField
+                                value={subtask.dueDate ?? null}
+                                endValue={subtask.dueDateEnd ?? null}
+                                allowRange
+                                allowTime
+                                onChange={(nextStart, nextEnd) => {
+                                  void onUpdateTask(subtask.id, { 
+                                    dueDate: nextStart, 
+                                    dueDateEnd: nextEnd ?? null 
+                                  });
+                                  setSubtaskCache(prev => ({
+                                    ...prev,
+                                    [task.id]: prev[task.id]?.map(s => 
+                                      s.id === subtask.id ? { ...s, dueDate: nextStart ?? undefined, dueDateEnd: nextEnd ?? undefined } : s
+                                    ) ?? []
+                                  }));
+                                }}
+                                disabled={isUpdating}
+                                inputClassName="subtask-date-field"
+                                placeholder="Due date"
+                              />
+                              <StatusSelect
+                                value={subtaskStatusValue}
+                                options={availableStatusOptions}
+                                onChange={(newStatus) => {
+                                  void onUpdateTask(subtask.id, { status: newStatus });
+                                  setSubtaskCache(prev => ({
+                                    ...prev,
+                                    [task.id]: prev[task.id]?.map(s => 
+                                      s.id === subtask.id ? { ...s, status: newStatus } : s
+                                    ) ?? []
+                                  }));
+                                }}
+                                disabled={isUpdating}
+                                showLabel={true}
+                                className="subtask-status-select"
+                              />
+                              <select
+                                className={`subtask-matrix-select ${subtaskMatrixClass}`}
+                                value={subtaskMatrixSelection}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  const newUrgent = val === 'do-now' || val === 'delegate';
+                                  const newImportant = val === 'do-now' || val === 'deep-work';
+                                  void onUpdateTask(subtask.id, { urgent: newUrgent, important: newImportant });
+                                  setSubtaskCache(prev => ({
+                                    ...prev,
+                                    [task.id]: prev[task.id]?.map(s => 
+                                      s.id === subtask.id ? { ...s, urgent: newUrgent, important: newImportant } : s
+                                    ) ?? []
+                                  }));
+                                }}
+                                disabled={isUpdating}
+                              >
+                                <option value="do-now">Do Now</option>
+                                <option value="deep-work">Deep Work</option>
+                                <option value="delegate">Delegate</option>
+                                <option value="trash">Trash</option>
+                              </select>
+                            </div>
+                            <div className="subtask-properties-right">
+                              <button
+                                type="button"
+                                className="subtask-notes-btn"
+                                onClick={(e) => {
+                                  const taskRow = e.currentTarget.closest('.subtask-row') as HTMLElement;
+                                  toggleNotes(subtask.id, subtask.mainEntry, taskRow);
+                                }}
+                              >
+                                {subtask.mainEntry ? 'Notes' : 'Add notes...'}
+                              </button>
+                              <label className={`subtask-flag ${subtask.urgent ? 'is-active' : ''}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={subtask.urgent || false}
+                                  onChange={() => {
+                                    void onUpdateTask(subtask.id, { urgent: !subtask.urgent });
+                                    setSubtaskCache(prev => ({
+                                      ...prev,
+                                      [task.id]: prev[task.id]?.map(s => 
+                                        s.id === subtask.id ? { ...s, urgent: !subtask.urgent } : s
+                                      ) ?? []
+                                    }));
+                                  }}
+                                  disabled={isUpdating}
+                                />
+                                <span>Urgent</span>
+                              </label>
+                              <label className={`subtask-flag ${subtask.important ? 'is-active' : ''}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={subtask.important || false}
+                                  onChange={() => {
+                                    void onUpdateTask(subtask.id, { important: !subtask.important });
+                                    setSubtaskCache(prev => ({
+                                      ...prev,
+                                      [task.id]: prev[task.id]?.map(s => 
+                                        s.id === subtask.id ? { ...s, important: !subtask.important } : s
+                                      ) ?? []
+                                    }));
+                                  }}
+                                  disabled={isUpdating}
+                                />
+                                <span>Important</span>
+                              </label>
+                            </div>
+                          </div>
+                          
+                          {/* Row 3: Actions */}
+                          <div className="subtask-row-actions">
+                            <button
+                              type="button"
+                              className="subtask-action-btn"
+                              onClick={(e) => {
+                                const row = e.currentTarget.closest('.subtask-row') as HTMLElement;
+                                toggleEstimateEditor(subtask.id, row);
+                              }}
+                            >
+                              {subtask.estimatedLengthMinutes ? `Edit ${subtask.estimatedLengthMinutes}m estimate` : 'Add time'}
+                            </button>
+                            <button
+                              type="button"
+                              className="subtask-action-btn subtask-trash-btn"
+                              onClick={() => {
+                                // Mark as cancelled/trash status
+                                void onUpdateTask(subtask.id, { status: '🗑️' });
+                                setSubtaskCache(prev => ({
+                                  ...prev,
+                                  [task.id]: prev[task.id]?.filter(s => s.id !== subtask.id) ?? []
+                                }));
+                              }}
+                            >
+                              Trash
+                            </button>
+                            {subtaskRemaining != null && (
+                              <span className="subtask-remaining">{subtaskRemainingLabel} left</span>
+                            )}
+                            <a
+                              className="subtask-open-link"
+                              href={subtask.url || `https://notion.so/${subtask.id.replace(/-/g, '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Open
+                            </a>
+                          </div>
+                          
+                          {/* Expanded panels for subtask */}
+                          {expandedNotes[subtask.id] && (
+                            <div className="subtask-expanded-panel">
+                              <textarea
+                                className="subtask-notes-textarea"
+                                placeholder="Add notes..."
+                                defaultValue={subtask.mainEntry || ''}
+                                onBlur={(e) => {
+                                  const val = e.target.value;
+                                  if (val !== subtask.mainEntry) {
+                                    void onUpdateTask(subtask.id, { mainEntry: val || null });
+                                    setSubtaskCache(prev => ({
+                                      ...prev,
+                                      [task.id]: prev[task.id]?.map(s => 
+                                        s.id === subtask.id ? { ...s, mainEntry: val || undefined } : s
+                                      ) ?? []
+                                    }));
+                                  }
+                                }}
+                                rows={3}
+                              />
+                              <button
+                                type="button"
+                                className="subtask-panel-close"
+                                onClick={() => setExpandedNotes(prev => ({ ...prev, [subtask.id]: false }))}
+                              >
+                                ↖
+                              </button>
+                            </div>
+                          )}
+                          
+                          {expandedEstimateEditor[subtask.id] && (
+                            <div className="subtask-expanded-panel">
+                              <div className="subtask-estimate-fields">
+                                <label>
+                                  <span>Estimated (min):</span>
+                                  <input
+                                    type="number"
+                                    defaultValue={subtask.estimatedLengthMinutes || ''}
+                                    min={0}
+                                    step={5}
+                                    onBlur={(e) => {
+                                      const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                                      void onUpdateTask(subtask.id, { estimatedLengthMinutes: val });
+                                      setSubtaskCache(prev => ({
+                                        ...prev,
+                                        [task.id]: prev[task.id]?.map(s => 
+                                          s.id === subtask.id ? { ...s, estimatedLengthMinutes: val ?? undefined } : s
+                                        ) ?? []
+                                      }));
+                                    }}
+                                  />
+                                </label>
+                              </div>
+                              <button
+                                type="button"
+                                className="subtask-panel-close"
+                                onClick={() => setExpandedEstimateEditor(prev => ({ ...prev, [subtask.id]: false }))}
+                              >
+                                ↖
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="subtask-loading">Loading subtasks...</div>
+                  )}
+                </div>
+              </div>
+            )}
+            {/* Time Column: Session, Time Left, Estimate + Tracking - collapsible on hover */}
+            <div className={`task-secondary-row ${collapseTimeColumn ? 'collapsible-column' : ''}`}>
+              <div className="task-secondary-left">
+                {/* Start/Active Session - Notion style */}
+                {isSessionActive || task.status === '⌚' ? (
+                  <button
+                    type="button"
+                    className="notion-session-btn is-active"
+                    onClick={(e) => {
+                      const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
+                      toggleSessionTimer(task.id, taskRow);
+                    }}
+                  >
+                    <span className="session-indicator" />
+                    {isCountingDown?.(task.id) && getRemainingTime && task.sessionLengthMinutes ? (
+                      (() => {
+                        const remainingSeconds = getRemainingTime(task.id);
+                        const elapsedSeconds = (task.sessionLengthMinutes * 60) - remainingSeconds;
+                        const elapsedMinutes = Math.floor(elapsedSeconds / 60);
+                        const elapsedSecondsRemainder = Math.floor(elapsedSeconds % 60);
+                        if (elapsedMinutes > 0) {
+                          return `${elapsedMinutes}m ${elapsedSecondsRemainder}s`;
+                        }
+                        return `${elapsedSecondsRemainder}s`;
+                      })()
+                    ) : (
+                      task.sessionLengthMinutes ? formatMinutes(task.sessionLengthMinutes) : 'Start'
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="notion-session-btn"
+                    onClick={(e) => {
+                      const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
+                      toggleSessionTimer(task.id, taskRow);
+                    }}
+                  >
+                    <span className="session-play-icon">▶</span>
+                    {task.sessionLengthMinutes ? formatMinutes(task.sessionLengthMinutes) : 'Start'}
+                  </button>
+                )}
+                {/* Time remaining - code style with dynamic colors */}
+                {task.estimatedLengthMinutes && remainingMinutes != null && (
+                  <code className={`time-remaining-code ${remainingMinutes <= 0 ? 'is-overtime' : remainingMinutes <= 15 ? 'is-low' : ''}`}>
+                    {remainingMinutes <= 0 ? `+${formatMinutes(Math.abs(remainingMinutes))} over` : `${remainingLabel} left`}
+                  </code>
+                )}
+              </div>
+              <div className="task-secondary-right">
+                {/* Estimate + Tracking grouped together */}
+                <button
+                  type="button"
+                  className="notion-estimate-btn"
+                  onClick={(e) => {
+                    const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
+                    toggleEstimateEditor(task.id, taskRow);
+                  }}
+                >
+                  {task.estimatedLengthMinutes ? `⏱ ${formatMinutes(task.estimatedLengthMinutes)}` : '⏱ Estimate'}
+                </button>
+                <button
+                  type="button"
+                  className="notion-tracking-btn"
+                  onClick={(e) => {
+                    const taskRow = e.currentTarget.closest('.task-row') as HTMLElement;
+                    toggleTrackingData(task.id, taskRow);
+                  }}
+                >
+                  <span className="tracking-icon">📊</span>
+                  Tracking
+                </button>
+              </div>
+            </div>
             {expandedTrackingData[task.id] && (
               <div className="task-notes">
                 {(() => {
@@ -2132,18 +2649,41 @@ const TaskList = ({
                           )}
                         </div>
                         
-                        {/* Goal progress bar */}
+                        {/* Goal progress circle */}
                         {goalMinutes && goalProgress !== null && (
-                          <div style={{ marginTop: '12px' }}>
-                            <div className="tracking-goal-label">
-                              <span>Goal: {formatMinutes(goalMinutes)}</span>
-                              <span>{Math.round(goalProgress * 100)}%</span>
+                          <div className="tracking-goal-circle-container">
+                            <div className={`tracking-goal-circle ${isGoalExceeded ? 'exceeded' : ''}`}>
+                              <svg viewBox="0 0 36 36" className="tracking-goal-svg">
+                                {/* Background track */}
+                                <circle
+                                  cx="18"
+                                  cy="18"
+                                  r="15.9"
+                                  fill="none"
+                                  stroke="rgba(255, 255, 255, 0.1)"
+                                  strokeWidth="3"
+                                />
+                                {/* Progress arc */}
+                                <circle
+                                  cx="18"
+                                  cy="18"
+                                  r="15.9"
+                                  fill="none"
+                                  stroke={isGoalExceeded ? '#fbbf24' : '#22c55e'}
+                                  strokeWidth="3"
+                                  strokeLinecap="round"
+                                  strokeDasharray={`${Math.min(100, goalProgress * 100)}, 100`}
+                                  transform="rotate(-90 18 18)"
+                                  style={{ transition: 'stroke-dasharray 300ms ease' }}
+                                />
+                              </svg>
+                              <div className="tracking-goal-text">
+                                <span className="tracking-goal-percent">{Math.round(goalProgress * 100)}%</span>
+                              </div>
                             </div>
-                            <div className="tracking-goal-bar">
-                              <div 
-                                className={`tracking-goal-progress ${isGoalExceeded ? 'exceeded' : ''}`}
-                                style={{ width: `${Math.min(100, goalProgress * 100)}%` }}
-                              />
+                            <div className="tracking-goal-info">
+                              <span className="tracking-goal-title">Tracking Goal/Est. Progress</span>
+                              <span className="tracking-goal-detail">Goal: {formatMinutes(goalMinutes)}</span>
                             </div>
                           </div>
                         )}
@@ -2258,193 +2798,350 @@ const TaskList = ({
                     </div>
                   </div>
                 ) : null}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                  <input
-                    data-task-session-input="true"
-                    type="number"
-                    min="0.5"
-                    step="0.5"
-                    placeholder="0"
-                    value={sessionInputs[task.id]?.value ?? ''}
-                    onChange={(e) => handleSessionInputChange(task.id, e.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' && event.shiftKey) {
-                        event.preventDefault();
-                        void handleStartSession(task.id);
-                      }
-                    }}
-                    style={{
-                      width: '60px',
-                      padding: '4px 6px',
-                      fontSize: '0.9em',
-                      border: '1px solid var(--notion-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--notion-bg-secondary)',
-                      color: 'var(--notion-text)'
-                    }}
-                    disabled={isUpdating}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleSessionUnitToggle(task.id)}
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: '0.85em',
-                      border: '1px solid var(--notion-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      background: sessionInputs[task.id]?.unit === 'hours' ? 'var(--notion-blue)' : 'var(--notion-bg-secondary)',
-                      color: 'var(--notion-text)',
-                      cursor: 'pointer'
-                    }}
-                    disabled={isUpdating}
-                  >
-                    {sessionInputs[task.id]?.unit === 'hours' ? 'Hours' : 'Minutes'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleStartSession(task.id)}
-                    disabled={isUpdating || !sessionInputs[task.id]?.value || parseFloat(sessionInputs[task.id]?.value ?? '0') <= 0}
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: '0.85em',
-                      border: '1px solid #4CAF50',
-                      borderRadius: 'var(--radius-sm)',
-                      background: '#4CAF50',
-                      color: 'white',
-                      cursor: 'pointer',
-                      opacity: (!sessionInputs[task.id]?.value || parseFloat(sessionInputs[task.id]?.value ?? '0') <= 0) ? 0.5 : 1
-                    }}
-                  >
-                    {isCountingDown?.(task.id) ? 'Add time' : 'Start'}
-                  </button>
+                {/* Panel header */}
+                <div className="panel-header">
+                  <span className="panel-title">Sessions</span>
+                  <div className="panel-header-actions">
+                    <button
+                      type="button"
+                      className="panel-reset-btn"
+                      onClick={() => {
+                        setSessionInputs(prev => ({ ...prev, [task.id]: { value: '', unit: 'minutes' } }));
+                      }}
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      className={`panel-settings-btn ${sessionSettingsOpen[task.id] ? 'is-active' : ''}`}
+                      onClick={() => setSessionSettingsOpen(prev => ({ ...prev, [task.id]: !prev[task.id] }))}
+                      title="Session settings"
+                    >
+                      <span className="settings-icon">⚙</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="notion-panel-close-sm"
+                      onClick={() => closeSessionTimer(task.id)}
+                      title="Close"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
-                <p className="task-notes-hint">
-                  {isCountingDown?.(task.id) ? 'Add extra time to current session' : 'Start a timed work session'}
-                </p>
-                <button
-                  type="button"
-                  className="task-notes-collapse"
-                  onClick={() => closeSessionTimer(task.id)}
-                  title="Collapse session timer"
-                >
-                  ↖
-                </button>
+                <div className="notion-session-panel">
+                  {/* Quick presets with remove buttons */}
+                  <div className="session-presets">
+                    {sessionPresets.map((preset, index) => {
+                      const currentMinutes = sessionInputs[task.id]?.unit === 'hours'
+                        ? parseFloat(sessionInputs[task.id]?.value || '0') * 60
+                        : parseFloat(sessionInputs[task.id]?.value || '0');
+                      const isSelected = currentMinutes === preset.minutes;
+                      return (
+                        <div key={`${preset.label}-${index}`} className="preset-chip">
+                          <button
+                            type="button"
+                            className={`session-preset-btn ${isSelected ? 'is-selected' : ''}`}
+                            onClick={() => {
+                              const useHours = preset.minutes >= 60 && preset.minutes % 60 === 0;
+                              setSessionInputs(prev => ({
+                                ...prev,
+                                [task.id]: {
+                                  value: useHours ? String(preset.minutes / 60) : String(preset.minutes),
+                                  unit: useHours ? 'hours' : 'minutes'
+                                }
+                              }));
+                            }}
+                            disabled={isUpdating}
+                          >
+                            {preset.label}
+                          </button>
+                          {sessionPresets.length > 2 && (
+                            <button
+                              type="button"
+                              className="preset-remove-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSessionPresets(prev => prev.filter((_, i) => i !== index));
+                              }}
+                              title="Remove preset"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* Add preset input */}
+                    {sessionPresets.length < 6 && (
+                      <div className="preset-add">
+                        <input
+                          type="text"
+                          className="preset-add-input"
+                          placeholder="+ add"
+                          value={sessionPresetInput}
+                          onChange={(e) => setSessionPresetInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const parsed = parseTimeString(sessionPresetInput);
+                              if (parsed && !sessionPresets.some(p => p.minutes === parsed.minutes)) {
+                                setSessionPresets(prev => [...prev, parsed]);
+                                setSessionPresetInput('');
+                              }
+                            }
+                          }}
+                          onBlur={() => {
+                            const parsed = parseTimeString(sessionPresetInput);
+                            if (parsed && !sessionPresets.some(p => p.minutes === parsed.minutes)) {
+                              setSessionPresets(prev => [...prev, parsed]);
+                              setSessionPresetInput('');
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {/* Custom input + Start */}
+                  <div className="session-custom">
+                    <div className="session-input-group">
+                      <input
+                        data-task-session-input="true"
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        placeholder="0"
+                        className="notion-input session-duration-input"
+                        value={sessionInputs[task.id]?.value ?? ''}
+                        onChange={(e) => handleSessionInputChange(task.id, e.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void handleStartSession(task.id);
+                          }
+                        }}
+                        disabled={isUpdating}
+                      />
+                      <div className="session-unit-toggle">
+                        <button
+                          type="button"
+                          className={`unit-btn ${sessionInputs[task.id]?.unit === 'minutes' ? 'is-active' : ''}`}
+                          onClick={() => sessionInputs[task.id]?.unit !== 'minutes' && handleSessionUnitToggle(task.id)}
+                          disabled={isUpdating}
+                        >
+                          min
+                        </button>
+                        <button
+                          type="button"
+                          className={`unit-btn ${sessionInputs[task.id]?.unit === 'hours' ? 'is-active' : ''}`}
+                          onClick={() => sessionInputs[task.id]?.unit !== 'hours' && handleSessionUnitToggle(task.id)}
+                          disabled={isUpdating}
+                        >
+                          hr
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="notion-start-btn"
+                      onClick={() => handleStartSession(task.id)}
+                      disabled={isUpdating || !sessionInputs[task.id]?.value || parseFloat(sessionInputs[task.id]?.value ?? '0') <= 0}
+                    >
+                      {isCountingDown?.(task.id) ? 'Add' : 'Start'}
+                    </button>
+                  </div>
+                </div>
+                {/* Settings dropdown */}
+                {sessionSettingsOpen[task.id] && (
+                  <div className="panel-settings-dropdown">
+                    <label className="settings-option">
+                      <input
+                        type="checkbox"
+                        checked={task.doneTrackingAfterCycle ?? false}
+                        onChange={(e) => {
+                          void handleUpdate(task.id, { doneTrackingAfterCycle: e.target.checked });
+                        }}
+                      />
+                      <div className="option-content">
+                        <span className="option-label">Auto-end session</span>
+                        <span className="option-hint">Stop timer when it reaches zero (otherwise continues negative)</span>
+                      </div>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
             {expandedEstimateEditor[task.id] && (
-              <div className="task-notes estimate-editor">
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    flexWrap: 'wrap'
-                  }}
-                >
-                  <input
-                    type="number"
-                    min="0.5"
-                    step="0.5"
-                    placeholder="0"
-                    value={estimateInputs[task.id]?.value ?? ''}
-                    onChange={(e) => handleEstimateInputChange(task.id, e.target.value)}
-                    style={{
-                      width: '60px',
-                      padding: '4px 6px',
-                      fontSize: '0.9em',
-                      border: '1px solid var(--notion-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--notion-bg-secondary)',
-                      color: 'var(--notion-text)'
-                    }}
-                    disabled={isUpdating}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleEstimateUnitToggle(task.id)}
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: '0.85em',
-                      border: '1px solid var(--notion-border)',
-                      borderRadius: 'var(--radius-sm)',
-                      background: estimateInputs[task.id]?.unit === 'hours' ? 'var(--notion-blue)' : 'var(--notion-bg-secondary)',
-                      color: 'var(--notion-text)',
-                      cursor: 'pointer'
-                    }}
-                    disabled={isUpdating}
-                  >
-                    {estimateInputs[task.id]?.unit === 'hours' ? 'Hours' : 'Minutes'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSaveEstimatedLength(task.id)}
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: '0.85em',
-                      border: '1px solid rgba(168, 85, 247, 0.5)',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'rgba(168, 85, 247, 0.25)',
-                      color: '#d8b4fe',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Save estimate
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleUpdate(task.id, { estimatedLengthMinutes: null });
-                      closeEstimateEditor(task.id);
-                    }}
-                    style={{
-                      padding: '4px 12px',
-                      fontSize: '0.85em',
-                      border: '1px solid rgba(255, 255, 255, 0.2)',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'transparent',
-                      color: 'rgba(255, 255, 255, 0.8)',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Clear
-                  </button>
+              <div className="task-notes estimate-editor notion-estimate-panel">
+                {/* Panel header */}
+                <div className="panel-header">
+                  <span className="panel-title">Estimates</span>
+                  <div className="panel-header-actions">
+                    <button
+                      type="button"
+                      className="panel-reset-btn"
+                      onClick={() => {
+                        handleUpdate(task.id, { estimatedLengthMinutes: null });
+                        setEstimateInputs(prev => ({ ...prev, [task.id]: { value: '', unit: 'minutes' } }));
+                      }}
+                    >
+                      Reset
+                    </button>
+                    <button
+                      type="button"
+                      className={`panel-settings-btn ${estimateSettingsOpen[task.id] ? 'is-active' : ''}`}
+                      onClick={() => setEstimateSettingsOpen(prev => ({ ...prev, [task.id]: !prev[task.id] }))}
+                      title="Estimate settings"
+                    >
+                      <span className="settings-icon">⚙</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="notion-panel-close-sm"
+                      onClick={() => closeEstimateEditor(task.id)}
+                      title="Close"
+                    >
+                      ×
+                    </button>
+                  </div>
                 </div>
-                <p className="task-notes-hint">Plan how long you expect this to take</p>
-                
-                {/* Auto-fill toggle */}
-                <label 
-                  style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: '8px', 
-                    marginTop: '12px',
-                    fontSize: '0.85em',
-                    color: 'var(--notion-text-muted)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={task.autoFillEstimatedTime ?? false}
-                    onChange={(e) => {
-                      void handleUpdate(task.id, { autoFillEstimatedTime: e.target.checked });
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <span>Auto-fill time on completion</span>
-                </label>
-                <p className="task-notes-hint" style={{ marginTop: '4px', fontSize: '0.75em' }}>
-                  When enabled, automatically log estimated time when task is completed (if no time was tracked today)
-                </p>
-                
-                <button
-                  type="button"
-                  className="task-notes-collapse"
-                  onClick={() => closeEstimateEditor(task.id)}
-                  title="Collapse estimated length editor"
-                >
-                  ↖
-                </button>
+                <div className="estimate-panel-content">
+                  {/* Quick presets with remove buttons */}
+                  <div className="estimate-presets">
+                    {estimatePresets.map((preset, index) => {
+                      const currentMinutes = estimateInputs[task.id]?.unit === 'hours'
+                        ? parseFloat(estimateInputs[task.id]?.value || '0') * 60
+                        : parseFloat(estimateInputs[task.id]?.value || '0');
+                      const isSelected = currentMinutes === preset.minutes;
+                      return (
+                        <div key={`${preset.label}-${index}`} className="preset-chip">
+                          <button
+                            type="button"
+                            className={`estimate-preset-btn ${isSelected ? 'is-selected' : ''}`}
+                            onClick={() => {
+                              const useHours = preset.minutes >= 60 && preset.minutes % 60 === 0;
+                              setEstimateInputs(prev => ({
+                                ...prev,
+                                [task.id]: {
+                                  value: useHours ? String(preset.minutes / 60) : String(preset.minutes),
+                                  unit: useHours ? 'hours' : 'minutes'
+                              }
+                            }));
+                          }}
+                          disabled={isUpdating}
+                        >
+                          {preset.label}
+                        </button>
+                          {estimatePresets.length > 2 && (
+                            <button
+                              type="button"
+                              className="preset-remove-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEstimatePresets(prev => prev.filter((_, i) => i !== index));
+                              }}
+                              title="Remove preset"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {/* Add preset input */}
+                    {estimatePresets.length < 6 && (
+                      <div className="preset-add">
+                        <input
+                          type="text"
+                          className="preset-add-input"
+                          placeholder="+ add"
+                          value={estimatePresetInput}
+                          onChange={(e) => setEstimatePresetInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const parsed = parseTimeString(estimatePresetInput);
+                              if (parsed && !estimatePresets.some(p => p.minutes === parsed.minutes)) {
+                                setEstimatePresets(prev => [...prev, parsed]);
+                                setEstimatePresetInput('');
+                              }
+                            }
+                          }}
+                          onBlur={() => {
+                            const parsed = parseTimeString(estimatePresetInput);
+                            if (parsed && !estimatePresets.some(p => p.minutes === parsed.minutes)) {
+                              setEstimatePresets(prev => [...prev, parsed]);
+                              setEstimatePresetInput('');
+                            }
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                  {/* Custom input + Save */}
+                  <div className="estimate-custom">
+                    <div className="estimate-input-group">
+                      <input
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        placeholder="0"
+                        className="notion-input estimate-duration-input"
+                        value={estimateInputs[task.id]?.value ?? ''}
+                        onChange={(e) => handleEstimateInputChange(task.id, e.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            void handleSaveEstimatedLength(task.id);
+                          }
+                        }}
+                        disabled={isUpdating}
+                      />
+                      <div className="estimate-unit-toggle">
+                        <button
+                          type="button"
+                          className={`unit-btn ${estimateInputs[task.id]?.unit === 'minutes' ? 'is-active' : ''}`}
+                          onClick={() => estimateInputs[task.id]?.unit !== 'minutes' && handleEstimateUnitToggle(task.id)}
+                          disabled={isUpdating}
+                        >
+                          min
+                        </button>
+                        <button
+                          type="button"
+                          className={`unit-btn ${estimateInputs[task.id]?.unit === 'hours' ? 'is-active' : ''}`}
+                          onClick={() => estimateInputs[task.id]?.unit !== 'hours' && handleEstimateUnitToggle(task.id)}
+                          disabled={isUpdating}
+                        >
+                          hr
+                        </button>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="notion-save-btn"
+                      onClick={() => handleSaveEstimatedLength(task.id)}
+                      disabled={isUpdating}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+                {/* Settings dropdown */}
+                {estimateSettingsOpen[task.id] && (
+                  <div className="panel-settings-dropdown">
+                    <label className="settings-option">
+                      <input
+                        type="checkbox"
+                        checked={task.autoFillEstimatedTime ?? false}
+                        onChange={(e) => {
+                          void handleUpdate(task.id, { autoFillEstimatedTime: e.target.checked });
+                        }}
+                      />
+                      <div className="option-content">
+                        <span className="option-label">Auto-fill on completion</span>
+                        <span className="option-hint">Log estimate as tracked time when task completes</span>
+                      </div>
+                    </label>
+                  </div>
+                )}
               </div>
             )}
             {isCountingDown?.(task.id) && (
@@ -2507,70 +3204,6 @@ const TaskList = ({
                     >
                       {isFocusedTask ? 'Exit focus' : 'Focus'}
                     </button>
-                  )}
-                </div>
-              </div>
-            )}
-            {/* Collapsible subtask list */}
-            {expandedSubtasks[task.id] && ((task.subtaskProgress && task.subtaskProgress.total > 0) || (subtaskCache[task.id] && subtaskCache[task.id].length > 0)) && (
-              <div className="subtask-list-container">
-                <div className="subtask-list-header">
-                  {(() => {
-                    const cachedSubtasks = subtaskCache[task.id] || [];
-                    const total = cachedSubtasks.length > 0 ? cachedSubtasks.length : (task.subtaskProgress?.total ?? 0);
-                    const completed = cachedSubtasks.length > 0 
-                      ? cachedSubtasks.filter(s => {
-                          const status = (s.normalizedStatus || s.status || '').toLowerCase();
-                          return status === 'done' || status.includes('complete');
-                        }).length
-                      : (task.subtaskProgress?.completed ?? 0);
-                    return <span>Subtasks ({completed}/{total})</span>;
-                  })()}
-                  <button
-                    type="button"
-                    className="task-notes-collapse"
-                    onClick={() => setExpandedSubtasks(prev => ({ ...prev, [task.id]: false }))}
-                    title="Collapse subtasks"
-                  >
-                    ↖
-                  </button>
-                </div>
-                <div className="subtask-list-body">
-                  {subtaskCache[task.id] ? (
-                    subtaskCache[task.id].map((subtask) => (
-                      <div 
-                        key={subtask.id} 
-                        className={`subtask-item ${subtask.status === completedStatus ? 'is-complete' : ''}`}
-                      >
-                        <button
-                          type="button"
-                          className={`complete-toggle ${subtask.status === completedStatus ? 'is-complete' : ''}`}
-                          onClick={() => {
-                            const newStatus = subtask.status === completedStatus 
-                              ? (availableStatusOptions.find(opt => opt.name !== completedStatus)?.name ?? '')
-                              : completedStatus;
-                            void onUpdateTask(subtask.id, { status: newStatus });
-                            // Update cache
-                            setSubtaskCache(prev => ({
-                              ...prev,
-                              [task.id]: prev[task.id]?.map(s => 
-                                s.id === subtask.id ? { ...s, status: newStatus } : s
-                              ) ?? []
-                            }));
-                          }}
-                          disabled={isUpdating}
-                          title={subtask.status === completedStatus ? 'Mark as to-do' : 'Mark as complete'}
-                        />
-                        <span className="subtask-title">{subtask.title}</span>
-                        {subtask.dueDate && (
-                          <span className="subtask-date">
-                            {new Date(subtask.dueDate).toLocaleDateString()}
-                          </span>
-                        )}
-                      </div>
-                    ))
-                  ) : (
-                    <div className="subtask-loading">Loading subtasks...</div>
                   )}
                 </div>
               </div>
@@ -2811,9 +3444,16 @@ const TaskList = ({
             (scrollContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
           }
         }}
-        className={`task-list ${hasGroups ? 'with-groups' : ''} ${multiSelectMode ? 'in-multi-select-mode' : ''} ${draggingTaskId ? 'is-dragging' : ''}`}
+        className={`task-list ${hasGroups ? 'with-groups' : ''} ${multiSelectMode ? 'in-multi-select-mode' : ''} ${draggingTaskId ? 'is-dragging' : ''} ${suppressHover ? 'suppress-hover' : ''}`}
         onDragOver={manualOrderingActive ? handleListDragOver : undefined}
         onDrop={manualOrderingActive ? handleListDrop : undefined}
+        onClick={(e) => {
+          // Deselect when clicking on empty space (not on a task row)
+          const target = e.target as HTMLElement;
+          if (!target.closest('.task-row') && !target.closest('.task-group-header')) {
+            onSelectTask?.(null);
+          }
+        }}
       >
         {hasGroups && groups ? (
           groups.map((group) => renderGroup(group))

@@ -1,15 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const RECURRENCE_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const REMINDER_OPTIONS = [
-  { key: '15min', label: 'In 15 minutes', icon: '⏱️' },
-  { key: '30min', label: 'In 30 minutes', icon: '⏱️' },
-  { key: '1hr', label: 'In 1 hour', icon: '🕐' },
-  { key: '3hr', label: 'In 3 hours', icon: '🕒' },
-  { key: 'tomorrow9am', label: 'Tomorrow 9 AM', icon: '🌅' },
-  { key: 'tomorrow6pm', label: 'Tomorrow 6 PM', icon: '🌆' },
-  { key: 'nextWeek', label: 'Next week', icon: '📅' },
-  { key: 'dueDate', label: 'At due date/time', icon: '📌' },
+  { key: 'none', label: 'None' },
+  { key: 'dueDate', label: 'On day of event (9:00 AM)' },
+  { key: '1dayBefore', label: '1 day before (9:00 AM)' },
+  { key: '2daysBefore', label: '2 days before (9:00 AM)' },
+  { key: '1weekBefore', label: '1 week before (9:00 AM)' },
+] as const;
+
+const REPEAT_OPTIONS = [
+  { key: 'none', label: 'None' },
+  { key: 'daily', label: 'Daily' },
+  { key: 'weekdays', label: 'Every weekday' },
+  { key: 'weekly', label: 'Weekly' },
+  { key: 'biweekly', label: 'Every 2 weeks' },
+  { key: 'monthly', label: 'Monthly' },
+  { key: 'yearly', label: 'Yearly' },
 ] as const;
 
 // Recurrence pattern types for smarter scheduling
@@ -96,6 +104,52 @@ const MONTH_NAME_MAP: Record<string, number> = {
   december: 11
 };
 
+// Parse time segment to hours/minutes object
+function parseTimeSegment(segment?: string): { hours: number; minutes: number } | null {
+  if (!segment) return null;
+  const normalized = segment
+    .trim()
+    .replace(/^at\s+/i, '')
+    .toLowerCase();
+  if (!normalized) return null;
+  if (normalized === 'noon') {
+    return { hours: 12, minutes: 0 };
+  }
+  if (normalized === 'midnight') {
+    return { hours: 0, minutes: 0 };
+  }
+  const match = normalized.match(
+    /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/
+  );
+  if (!match) return null;
+  let hours = Number(match[1]);
+  const minutes = match[2] ? Number(match[2]) : 0;
+  const meridiem = match[3]?.toLowerCase();
+  if (
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes) ||
+    hours > 24 ||
+    minutes > 59
+  ) {
+    return null;
+  }
+  if (meridiem === 'am') {
+    if (hours === 12) hours = 0;
+  } else if (meridiem === 'pm') {
+    if (hours < 12) hours += 12;
+  }
+  return { hours, minutes };
+}
+
+// Parse time from natural text input and return "HH:MM" format
+function parseTimeFromText(text: string): string | null {
+  if (!text?.trim()) return null;
+  
+  const result = parseTimeSegment(text);
+  if (!result) return null;
+  return `${result.hours.toString().padStart(2, '0')}:${result.minutes.toString().padStart(2, '0')}`;
+}
+
 const DateField = ({
   value,
   endValue,
@@ -131,6 +185,7 @@ const DateField = ({
   const popoverRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [popoverPosition, setPopoverPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [submenuPosition, setSubmenuPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   
   // Secondary panel state for recurrence/reminder
   const [activePanel, setActivePanel] = useState<'none' | 'repeat' | 'reminder'>('none');
@@ -148,6 +203,7 @@ const DateField = ({
     setVisibleMonth(deriveVisibleMonth(value, allowRange ? endValue : null));
     setTimeState(deriveTimeState(value, allowRange ? endValue : null));
   }, [value, endValue, allowRange]);
+
 
   const updatePopoverPosition = () => {
     const wrapper = wrapperRef.current;
@@ -186,6 +242,44 @@ const DateField = ({
     setPopoverPosition({ top, left });
   };
 
+  const updateSubmenuPosition = (rowElement?: HTMLElement | null) => {
+    const popover = popoverRef.current;
+    if (!popover) return;
+    
+    const popoverRect = popover.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || 0;
+    const viewportHeight = window.innerHeight || 0;
+    const submenuWidth = 220;
+    const submenuHeight = 250; // Approximate height
+    
+    // Position to the right of the popover
+    let left = popoverRect.right + 4;
+    
+    // If not enough space on right, position to the left
+    if (left + submenuWidth > viewportWidth - 10) {
+      left = popoverRect.left - submenuWidth - 4;
+    }
+    
+    // Align first menu item with the clicked row
+    // Offset by submenu padding (4px) + first item padding (8px) to align text
+    let top: number;
+    if (rowElement) {
+      const rowRect = rowElement.getBoundingClientRect();
+      // Offset so the first option text aligns with the row
+      top = rowRect.top - 4 - 8; // submenu padding + option padding
+    } else {
+      top = popoverRect.top + popoverRect.height / 2;
+    }
+    
+    // Keep submenu within viewport
+    if (top + submenuHeight > viewportHeight - 10) {
+      top = viewportHeight - submenuHeight - 10;
+    }
+    top = Math.max(10, top);
+    
+    setSubmenuPosition({ top, left: Math.max(10, left) });
+  };
+
   useEffect(() => {
     if (!open) return;
     
@@ -193,17 +287,22 @@ const DateField = ({
     updatePopoverPosition();
     
     // Recalculate after a frame to get accurate popover dimensions
+    // and focus the start date input
     requestAnimationFrame(() => {
       updatePopoverPosition();
+      // Focus the start date input when popover opens
+      inputRef.current?.focus();
+      inputRef.current?.select();
     });
     
     const handlePointer = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (
-        !popoverRef.current?.contains(target) &&
-        !inputRef.current?.contains(target) &&
-        !buttonRef.current?.contains(target)
-      ) {
+      const target = event.target as HTMLElement;
+      // Check if click is on popover, trigger button, wrapper, or any submenu
+      const isOnPopover = popoverRef.current?.contains(target) || target.closest('.date-field-popover');
+      const isOnWrapper = wrapperRef.current?.contains(target);
+      const isOnSubmenu = target.closest('.date-field-submenu');
+      
+      if (!isOnPopover && !isOnWrapper && !isOnSubmenu) {
         setOpen(false);
         setActivePanel('none');
       }
@@ -256,41 +355,21 @@ const DateField = ({
   };
 
   const handleSelectDate = (iso: string) => {
-    if (!allowRange) {
-      const nextStart = allowTime
-        ? applyTimePreference(iso, timeState.startEnabled, timeState.startValue)
-        : iso;
-      commitRangeChange(nextStart, null);
-      setOpen(false);
-      return;
-    }
-    const { start, end } = pendingRange;
-    if (!start || end) {
-      const nextStart = allowTime
-        ? applyTimePreference(iso, timeState.startEnabled, timeState.startValue)
-        : iso;
-      setPendingRange({ start: nextStart, end: null });
-      setTextValue(formatTextValue(nextStart, null));
-      return;
-    }
-    let nextStart = start;
-    let nextEnd = allowTime
-      ? applyTimePreference(iso, timeState.endEnabled, timeState.endValue)
+    // Always update the start date when clicking on calendar
+    // End date is only set via the toggle or by typing
+    const nextStart = allowTime
+      ? applyTimePreference(iso, timeState.startEnabled, timeState.startValue)
       : iso;
-    let nextTimeState = { ...timeState };
-
-    if (new Date(nextEnd) < new Date(nextStart)) {
-      [nextStart, nextEnd] = [nextEnd, nextStart];
-      nextTimeState = {
-        startEnabled: timeState.endEnabled,
-        startValue: timeState.endValue,
-        endEnabled: timeState.startEnabled,
-        endValue: timeState.startValue
-      };
-      setTimeState(nextTimeState);
+    
+    // Keep existing end date if we have one, but adjust if needed
+    let nextEnd = pendingRange.end;
+    if (nextEnd && new Date(nextStart) > new Date(nextEnd)) {
+      // If new start is after end, clear end date
+      nextEnd = null;
     }
+    
     commitRangeChange(nextStart, nextEnd);
-    setOpen(false);
+    // Don't close the window - let user make more changes
   };
 
   const handleManualCommit = () => {
@@ -375,65 +454,244 @@ const DateField = ({
     .filter(Boolean)
     .join(' ');
 
-  return (
-    <div className={rootClassName} ref={wrapperRef}>
-      <div className={`date-field-input-wrapper ${inputClassName ?? ''}`}>
-        <button
-          type="button"
-          ref={buttonRef}
-          className="date-field-calendar"
-          onClick={() => setOpen((prev) => !prev)}
-          disabled={disabled}
-          aria-label="Open calendar"
-        >
-          📅
-        </button>
-        <input
-          ref={inputRef}
-          type="text"
-          value={textValue}
-          onChange={(event) => setTextValue(event.target.value)}
-          onBlur={handleManualCommit}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              handleManualCommit();
-              inputRef.current?.blur();
-            }
-          }}
-          placeholder={placeholder}
-          aria-label={ariaLabel}
-          disabled={disabled}
-          className="date-field-input"
-        />
-      </div>
-      {open && (
-        <div 
-          className="date-field-popover" 
-          ref={popoverRef}
-          style={{
-            top: popoverPosition.top,
-            left: popoverPosition.left
-          }}
-        >
+  const hasActiveReminder = reminderAt && new Date(reminderAt) > new Date();
+  const hasValue = Boolean(textValue);
+  
+  // Format reminder tooltip text
+  const reminderTooltip = hasActiveReminder 
+    ? `Reminder: ${new Date(reminderAt!).toLocaleString(undefined, { 
+        month: 'short', 
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit'
+      })}`
+    : undefined;
+
+  // Text input states for natural language parsing
+  const [startDateText, setStartDateText] = useState(() => {
+    if (!value) return '';
+    const date = parseIsoToDate(value);
+    return date ? date.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', year: 'numeric' }) : '';
+  });
+  const [startTimeText, setStartTimeText] = useState(() => {
+    if (!value || !hasTimeComponent(value)) return '';
+    const date = parseIsoToDate(value);
+    return date ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+  });
+  const [endDateText, setEndDateText] = useState(() => {
+    if (!endValue) return '';
+    const date = parseIsoToDate(endValue);
+    return date ? date.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', year: 'numeric' }) : '';
+  });
+  const [endTimeText, setEndTimeText] = useState(() => {
+    if (!endValue || !hasTimeComponent(endValue)) return '';
+    const date = parseIsoToDate(endValue);
+    return date ? date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+  });
+
+  // Sync text inputs when values change externally
+  useEffect(() => {
+    if (value) {
+      const date = parseIsoToDate(value);
+      if (date) {
+        setStartDateText(date.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', year: 'numeric' }));
+        if (hasTimeComponent(value)) {
+          setStartTimeText(date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+        }
+      }
+    } else {
+      setStartDateText('');
+      setStartTimeText('');
+    }
+  }, [value]);
+
+  useEffect(() => {
+    if (endValue) {
+      const date = parseIsoToDate(endValue);
+      if (date) {
+        setEndDateText(date.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', year: 'numeric' }));
+        if (hasTimeComponent(endValue)) {
+          setEndTimeText(date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }));
+        }
+      }
+    } else {
+      setEndDateText('');
+      setEndTimeText('');
+    }
+  }, [endValue]);
+
+  // Parse and commit start date from text
+  const commitStartDate = () => {
+    if (!startDateText.trim()) return;
+    const parsed = parseDateInput(startDateText);
+    if (parsed) {
+      let nextStart = parsed;
+      // If time is enabled and we have a time, apply it
+      if (timeState.startEnabled && startTimeText) {
+        const timeParsed = parseTimeFromText(startTimeText);
+        if (timeParsed) {
+          nextStart = applyTimePreference(parsed, true, timeParsed);
+        }
+      }
+      commitRangeChange(nextStart, pendingRange.end);
+    }
+  };
+
+  // Parse and commit start time from text
+  const commitStartTime = () => {
+    if (!startTimeText.trim() || !pendingRange.start) return;
+    const timeParsed = parseTimeFromText(startTimeText);
+    if (timeParsed) {
+      const nextStart = applyTimePreference(stripTimeComponent(pendingRange.start), true, timeParsed);
+      commitRangeChange(nextStart, pendingRange.end);
+    }
+  };
+
+  // Parse and commit end date from text
+  const commitEndDate = () => {
+    if (!endDateText.trim()) return;
+    const parsed = parseDateInput(endDateText);
+    if (parsed) {
+      let nextEnd = parsed;
+      // If time is enabled and we have a time, apply it
+      if (timeState.endEnabled && endTimeText) {
+        const timeParsed = parseTimeFromText(endTimeText);
+        if (timeParsed) {
+          nextEnd = applyTimePreference(parsed, true, timeParsed);
+        }
+      }
+      commitRangeChange(pendingRange.start, nextEnd);
+    }
+  };
+
+  // Parse and commit end time from text
+  const commitEndTime = () => {
+    if (!endTimeText.trim() || !pendingRange.end) return;
+    const timeParsed = parseTimeFromText(endTimeText);
+    if (timeParsed) {
+      const nextEnd = applyTimePreference(stripTimeComponent(pendingRange.end), true, timeParsed);
+      commitRangeChange(pendingRange.start, nextEnd);
+    }
+  };
+
+  // Determine if we should use stacked layout (two rows)
+  const useStackedLayout = allowRange && pendingRange.end && allowTime && timeState.startEnabled;
+
+  // Popover content - rendered via portal to escape stacking contexts
+  const popoverContent = open ? (
+    <div 
+      className="date-field-popover" 
+      ref={popoverRef}
+      style={{
+        top: popoverPosition.top,
+        left: popoverPosition.left
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+          {/* Notion-style date inputs at top */}
+          <div className={`date-field-inputs-row ${useStackedLayout ? 'stacked' : ''}`}>
+            <div className="date-input-group">
+              <input
+                ref={inputRef}
+                type="text"
+                value={startDateText}
+                onChange={(e) => setStartDateText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    commitStartDate();
+                    e.preventDefault();
+                  }
+                }}
+                onBlur={commitStartDate}
+                placeholder="e.g. next Friday, Dec 25"
+                className="date-field-date-input"
+                autoFocus
+              />
+              {allowTime && timeState.startEnabled && (
+                <input
+                  type="text"
+                  value={startTimeText}
+                  onChange={(e) => setStartTimeText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitStartTime();
+                      e.preventDefault();
+                    }
+                  }}
+                  onBlur={commitStartTime}
+                  placeholder="e.g. 3pm, noon"
+                  className="date-field-time-input"
+                />
+              )}
+            </div>
+            
+            {allowRange && pendingRange.end && (
+              <div className="date-input-group">
+                <input
+                  type="text"
+                  value={endDateText}
+                  onChange={(e) => setEndDateText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      commitEndDate();
+                      e.preventDefault();
+                    }
+                  }}
+                  onBlur={commitEndDate}
+                  placeholder="e.g. in 2 weeks"
+                  className="date-field-date-input"
+                />
+                {allowTime && timeState.endEnabled && (
+                  <input
+                    type="text"
+                    value={endTimeText}
+                    onChange={(e) => setEndTimeText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        commitEndTime();
+                        e.preventDefault();
+                      }
+                    }}
+                    onBlur={commitEndTime}
+                    placeholder="e.g. 5pm"
+                    className="date-field-time-input"
+                  />
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Month header with navigation */}
           <header className="date-field-header">
-            <button
-              type="button"
-              onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))}
-              aria-label="Previous month"
-            >
-              ‹
-            </button>
             <p>{formatMonthLabel(visibleMonth)}</p>
             <button
               type="button"
-              onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))}
-              aria-label="Next month"
+              className="date-field-today-btn"
+              onClick={() => setVisibleMonth(new Date())}
             >
-              ›
+              Today
             </button>
+            <div className="date-field-nav">
+              <button
+                type="button"
+                onClick={() => setVisibleMonth(addMonths(visibleMonth, -1))}
+                aria-label="Previous month"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                onClick={() => setVisibleMonth(addMonths(visibleMonth, 1))}
+                aria-label="Next month"
+              >
+                ›
+              </button>
+            </div>
           </header>
+
+          {/* Calendar grid */}
           <div className="date-field-weekdays">
-            {WEEKDAY_LABELS.map((label) => (
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((label) => (
               <span key={label}>{label}</span>
             ))}
           </div>
@@ -469,276 +727,299 @@ const DateField = ({
               );
             })}
           </div>
-          {allowTime && (
-            <div className="date-field-time">
-              <div className="date-field-time-row">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={timeState.startEnabled}
-                    onChange={(event) => toggleStartTime(event.target.checked)}
-                  />
-                  Include time
-                </label>
-                {timeState.startEnabled && (
-                  <input
-                    type="time"
-                    value={timeState.startValue}
-                    onChange={(event) => handleStartTimeChange(event.target.value)}
-                  />
-                )}
+
+          {/* Options section */}
+          <div className="date-field-options">
+            {allowRange && (
+              <div className="date-field-option-row">
+                <span className="option-label">End date</span>
+                <button
+                  type="button"
+                  className={`option-toggle ${pendingRange.end ? 'is-on' : ''}`}
+                  onClick={() => {
+                    if (pendingRange.end) {
+                      // Clear end date
+                      setPendingRange(prev => ({ ...prev, end: null }));
+                      commitRangeChange(pendingRange.start, null);
+                    } else if (pendingRange.start) {
+                      // Enable end date - default to same as start
+                      const endDate = pendingRange.start;
+                      setPendingRange(prev => ({ ...prev, end: endDate }));
+                      commitRangeChange(pendingRange.start, endDate);
+                    }
+                  }}
+                >
+                  <span className="toggle-track">
+                    <span className="toggle-thumb" />
+                  </span>
+                </button>
               </div>
-              {allowRange && (
-                <div className="date-field-time-row">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={timeState.endEnabled}
-                      onChange={(event) => toggleEndTime(event.target.checked)}
-                    />
-                    End time
-                  </label>
-                  {timeState.endEnabled && (
-                    <input
-                      type="time"
-                      value={timeState.endValue}
-                      onChange={(event) => handleEndTimeChange(event.target.value)}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          
-          {/* Action buttons bar */}
-          <div className="date-field-actions">
+            )}
+            
+            {allowTime && (
+              <div className="date-field-option-row">
+                <span className="option-label">Include time</span>
+                <button
+                  type="button"
+                  className={`option-toggle ${timeState.startEnabled ? 'is-on' : ''}`}
+                  onClick={() => {
+                    toggleStartTime(!timeState.startEnabled);
+                    // Also toggle end time if we have an end date
+                    if (pendingRange.end) {
+                      toggleEndTime(!timeState.endEnabled);
+                    }
+                  }}
+                >
+                  <span className="toggle-track">
+                    <span className="toggle-thumb" />
+                  </span>
+                </button>
+              </div>
+            )}
+
             {onRecurrenceChange && (
-              <button
-                type="button"
-                className={`date-field-action-btn ${recurrence && recurrence.length > 0 ? 'is-active' : ''}`}
-                onClick={() => setActivePanel(activePanel === 'repeat' ? 'none' : 'repeat')}
-              >
-                <span className="action-icon">🔄</span>
-                <span className="action-label">
-                  {recurrence && recurrence.length > 0 
-                    ? formatRecurrenceLabel(recurrence)
-                    : 'Repeat'}
-                </span>
-                <span className="action-chevron">{activePanel === 'repeat' ? '▾' : '▸'}</span>
-              </button>
-            )}
-            {onReminderChange && (
-              <button
-                type="button"
-                className={`date-field-action-btn ${reminderAt && new Date(reminderAt) > new Date() ? 'is-active' : ''}`}
-                onClick={() => setActivePanel(activePanel === 'reminder' ? 'none' : 'reminder')}
-              >
-                <span className="action-icon">🔔</span>
-                <span className="action-label">
-                  {reminderAt && new Date(reminderAt) > new Date()
-                    ? formatReminderLabel(reminderAt)
-                    : 'Remind me'}
-                </span>
-                <span className="action-chevron">{activePanel === 'reminder' ? '▾' : '▸'}</span>
-              </button>
-            )}
-            <button type="button" className="date-field-clear-btn" onClick={handleClear}>
-              Clear
-            </button>
-          </div>
-
-          {/* Repeat Panel */}
-          {activePanel === 'repeat' && onRecurrenceChange && (
-            <div className="date-field-panel repeat-panel">
-              <div className="panel-header">
-                <span>Repeat Schedule</span>
-                <button type="button" className="panel-close" onClick={() => setActivePanel('none')}>✕</button>
-              </div>
-              
-              {/* Preset options */}
-              <div className="repeat-presets">
+              <div className="date-field-option-row-wrapper">
                 <button
                   type="button"
-                  className={`repeat-preset ${repeatType === 'daily' ? 'is-selected' : ''}`}
-                  onClick={() => {
-                    setRepeatType('daily');
-                    onRecurrenceChange([...RECURRENCE_WEEKDAYS]);
+                  className={`date-field-option-row clickable ${activePanel === 'repeat' ? 'is-active' : ''}`}
+                  onClick={(e) => {
+                    const newPanel = activePanel === 'repeat' ? 'none' : 'repeat';
+                    setActivePanel(newPanel);
+                    if (newPanel !== 'none') {
+                      requestAnimationFrame(() => updateSubmenuPosition(e.currentTarget));
+                    }
                   }}
                 >
-                  <span className="preset-icon">📅</span>
-                  <span>Daily</span>
+                  <span className="option-label">Repeat</span>
+                  <span className="option-value-text">
+                    {recurrence && recurrence.length > 0 
+                      ? formatRecurrenceLabel(recurrence)
+                      : 'None'}
+                    <span className="option-chevron">›</span>
+                  </span>
                 </button>
-                <button
-                  type="button"
-                  className={`repeat-preset ${repeatType === 'weekdays' ? 'is-selected' : ''}`}
-                  onClick={() => {
-                    setRepeatType('weekdays');
-                    onRecurrenceChange(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
-                  }}
-                >
-                  <span className="preset-icon">💼</span>
-                  <span>Weekdays</span>
-                </button>
-                <button
-                  type="button"
-                  className={`repeat-preset ${repeatType === 'weekly' ? 'is-selected' : ''}`}
-                  onClick={() => {
-                    setRepeatType('weekly');
-                    const todayName = RECURRENCE_WEEKDAYS[new Date().getDay()];
-                    onRecurrenceChange([todayName]);
-                  }}
-                >
-                  <span className="preset-icon">🗓️</span>
-                  <span>Weekly</span>
-                </button>
-                <button
-                  type="button"
-                  className={`repeat-preset ${repeatType === 'biweekly' ? 'is-selected' : ''}`}
-                  onClick={() => {
-                    setRepeatType('biweekly');
-                    const todayName = RECURRENCE_WEEKDAYS[new Date().getDay()];
-                    onRecurrenceChange([`biweekly:${todayName}`]);
-                  }}
-                >
-                  <span className="preset-icon">📆</span>
-                  <span>Bi-weekly</span>
-                </button>
-                <button
-                  type="button"
-                  className={`repeat-preset ${repeatType === 'monthly' ? 'is-selected' : ''}`}
-                  onClick={() => {
-                    setRepeatType('monthly');
-                    const dayOfMonth = new Date().getDate();
-                    onRecurrenceChange([`monthly:${dayOfMonth}`]);
-                  }}
-                >
-                  <span className="preset-icon">📅</span>
-                  <span>Monthly</span>
-                </button>
-                <button
-                  type="button"
-                  className={`repeat-preset ${repeatType === 'everyXDays' ? 'is-selected' : ''}`}
-                  onClick={() => {
-                    setRepeatType('everyXDays');
-                    onRecurrenceChange([`every:${everyXDays}`]);
-                  }}
-                >
-                  <span className="preset-icon">🔢</span>
-                  <span>Every X days</span>
-                </button>
-              </div>
-
-              {/* Every X days input */}
-              {repeatType === 'everyXDays' && (
-                <div className="repeat-interval">
-                  <span>Every</span>
-                  <input
-                    type="number"
-                    min="2"
-                    max="365"
-                    value={everyXDays}
-                    onChange={(e) => {
-                      const val = Math.max(2, Math.min(365, parseInt(e.target.value) || 2));
-                      setEveryXDays(val);
-                      onRecurrenceChange([`every:${val}`]);
-                    }}
-                    className="interval-input"
-                  />
-                  <span>days</span>
-                </div>
-              )}
-
-              {/* Custom weekday picker */}
-              {(repeatType === 'weekly' || repeatType === 'custom') && (
-                <div className="repeat-custom">
-                  <div className="custom-label">Select days:</div>
-                  <div className="weekday-picker">
-                    {RECURRENCE_WEEKDAYS.map((day) => {
-                      const isSelected = recurrence?.includes(day) ?? false;
+                
+                {/* Repeat Submenu - rendered via portal */}
+                {activePanel === 'repeat' && createPortal(
+                  <div 
+                    className="date-field-submenu"
+                    style={{ top: submenuPosition.top, left: submenuPosition.left }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {REPEAT_OPTIONS.map((opt) => {
+                      const isSelected = opt.key === 'none' 
+                        ? (!recurrence || recurrence.length === 0)
+                        : repeatType === opt.key;
                       return (
                         <button
-                          key={day}
+                          key={opt.key}
                           type="button"
-                          className={`weekday-btn ${isSelected ? 'is-selected' : ''}`}
+                          className={`submenu-option ${isSelected ? 'is-selected' : ''}`}
                           onClick={() => {
-                            setRepeatType('custom');
-                            const current = recurrence?.filter(d => !d.includes(':')) ?? [];
-                            const next = isSelected
-                              ? current.filter((d) => d !== day)
-                              : [...current, day];
-                            onRecurrenceChange(next.length > 0 ? next : null);
+                            if (opt.key === 'none') {
+                              onRecurrenceChange(null);
+                              setRepeatType('custom');
+                            } else if (opt.key === 'daily') {
+                              setRepeatType('daily');
+                              onRecurrenceChange([...RECURRENCE_WEEKDAYS]);
+                            } else if (opt.key === 'weekdays') {
+                              setRepeatType('weekdays');
+                              onRecurrenceChange(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+                            } else if (opt.key === 'weekly') {
+                              setRepeatType('weekly');
+                              const todayName = RECURRENCE_WEEKDAYS[new Date().getDay()];
+                              onRecurrenceChange([todayName]);
+                            } else if (opt.key === 'biweekly') {
+                              setRepeatType('biweekly');
+                              const todayName = RECURRENCE_WEEKDAYS[new Date().getDay()];
+                              onRecurrenceChange([`biweekly:${todayName}`]);
+                            } else if (opt.key === 'monthly') {
+                              setRepeatType('monthly');
+                              const dayOfMonth = new Date().getDate();
+                              onRecurrenceChange([`monthly:${dayOfMonth}`]);
+                            } else if (opt.key === 'yearly') {
+                              setRepeatType('monthly');
+                              onRecurrenceChange([`yearly:${new Date().getMonth() + 1}-${new Date().getDate()}`]);
+                            }
+                            setActivePanel('none');
                           }}
                         >
-                          {day}
+                          <span className="submenu-label">{opt.label}</span>
+                          {isSelected && <span className="submenu-check">✓</span>}
                         </button>
                       );
                     })}
-                  </div>
-                </div>
-              )}
+                  </div>,
+                  document.body
+                )}
+              </div>
+            )}
 
-              {/* Clear button */}
-              {recurrence && recurrence.length > 0 && (
+            {onReminderChange && (
+              <div className="date-field-option-row-wrapper">
                 <button
                   type="button"
-                  className="repeat-clear"
-                  onClick={() => {
-                    setRepeatType('custom');
-                    onRecurrenceChange(null);
+                  className={`date-field-option-row clickable ${activePanel === 'reminder' ? 'is-active' : ''}`}
+                  onClick={(e) => {
+                    const newPanel = activePanel === 'reminder' ? 'none' : 'reminder';
+                    setActivePanel(newPanel);
+                    if (newPanel !== 'none') {
+                      requestAnimationFrame(() => updateSubmenuPosition(e.currentTarget));
+                    }
                   }}
                 >
-                  <span>❌</span>
-                  <span>Remove repeat</span>
+                  <span className="option-label">Remind</span>
+                  <span className="option-value-text">
+                    {reminderAt && new Date(reminderAt) > new Date()
+                      ? formatReminderLabel(reminderAt)
+                      : 'None'}
+                    <span className="option-chevron">›</span>
+                  </span>
                 </button>
-              )}
-            </div>
-          )}
-
-          {/* Reminder Panel */}
-          {activePanel === 'reminder' && onReminderChange && (
-            <div className="date-field-panel reminder-panel">
-              <div className="panel-header">
-                <span>🔔 Set Reminder</span>
-                <button type="button" className="panel-close" onClick={() => setActivePanel('none')}>✕</button>
-              </div>
-              
-              <div className="reminder-options">
-                {REMINDER_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    className="reminder-option"
-                    onClick={() => {
-                      const reminderTime = calculateReminderTime(opt.key, value);
-                      onReminderChange(reminderTime);
-                      setActivePanel('none');
-                    }}
+                
+                {/* Reminder Submenu - rendered via portal */}
+                {activePanel === 'reminder' && createPortal(
+                  <div 
+                    className="date-field-submenu"
+                    style={{ top: submenuPosition.top, left: submenuPosition.left }}
+                    onClick={(e) => e.stopPropagation()}
                   >
-                    <span className="reminder-icon">{opt.icon}</span>
-                    <span>{opt.label}</span>
-                  </button>
-                ))}
+                    {REMINDER_OPTIONS.map((opt) => {
+                      const isSelected = opt.key === 'none' 
+                        ? (!reminderAt || new Date(reminderAt) <= new Date())
+                        : false; // We'd need more logic to detect which is selected
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          className={`submenu-option ${isSelected ? 'is-selected' : ''}`}
+                          onClick={() => {
+                            if (opt.key === 'none') {
+                              onReminderChange(null);
+                            } else {
+                              const reminderTime = calculateReminderTime(opt.key, value);
+                              onReminderChange(reminderTime);
+                            }
+                            setActivePanel('none');
+                          }}
+                        >
+                          <span className="submenu-label">{opt.label}</span>
+                          {isSelected && <span className="submenu-check">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>,
+                  document.body
+                )}
               </div>
+            )}
+          </div>
 
-              {reminderAt && new Date(reminderAt) > new Date() && (
-                <button
-                  type="button"
-                  className="reminder-clear"
-                  onClick={() => {
-                    onReminderChange(null);
-                    setActivePanel('none');
-                  }}
-                >
-                  <span>❌</span>
-                  <span>Remove reminder</span>
-                </button>
-              )}
-            </div>
-          )}
+          {/* Clear button */}
+          <button type="button" className="date-field-clear-btn" onClick={handleClear}>
+            Clear
+          </button>
         </div>
-      )}
-    </div>
-  );
+      ) : null;
+
+      // Structured date display for foam mode support
+      const renderStructuredDate = () => {
+        if (!value) {
+          return <span className="date-field-placeholder">{placeholder}</span>;
+        }
+        
+        const startDate = parseIsoToDate(value);
+        const endDate = endValue ? parseIsoToDate(endValue) : null;
+        
+        if (!startDate) {
+          return <span className="date-field-placeholder">{placeholder}</span>;
+        }
+        
+        const startDateLabel = startDate.toLocaleDateString(undefined, {
+          month: 'short',
+          day: 'numeric'
+        });
+        
+        const startHasTime = hasTimeComponent(value);
+        const startTimeLabel = startHasTime ? startDate.toLocaleTimeString(undefined, {
+          hour: 'numeric',
+          minute: '2-digit'
+        }) : null;
+        
+        // Single date (no range)
+        if (!endDate || !endValue || endValue === value) {
+          return (
+            <span className="date-field-structured">
+              <span className="date-part">{startDateLabel}</span>
+              {startTimeLabel && (
+                <span className="time-part">{startTimeLabel}</span>
+              )}
+            </span>
+          );
+        }
+        
+        // Range: check if same day
+        const isSameDayRange = isSameDay(startDate, endDate);
+        const endHasTime = hasTimeComponent(endValue);
+        
+        const endDateLabel = endDate.toLocaleDateString(undefined, {
+          month: 'short',
+          day: 'numeric'
+        });
+        
+        const endTimeLabel = endHasTime ? endDate.toLocaleTimeString(undefined, {
+          hour: 'numeric',
+          minute: '2-digit'
+        }) : null;
+        
+        if (isSameDayRange && startHasTime && endHasTime) {
+          // Same day with times: "Nov 27" with times stacked below
+          return (
+            <span className="date-field-structured same-day-range">
+              <span className="date-part">{startDateLabel}</span>
+              <span className="time-range-part">
+                <span className="time-part start">{startTimeLabel}</span>
+                <span className="time-separator">–</span>
+                <span className="time-part end">{endTimeLabel}</span>
+              </span>
+            </span>
+          );
+        }
+        
+        // Different days range
+        return (
+          <span className="date-field-structured date-range">
+            <span className="range-start">
+              <span className="date-part">{startDateLabel}</span>
+              {startTimeLabel && <span className="time-part">{startTimeLabel}</span>}
+            </span>
+            <span className="date-separator">–</span>
+            <span className="range-end">
+              <span className="date-part">{endDateLabel}</span>
+              {endTimeLabel && <span className="time-part">{endTimeLabel}</span>}
+            </span>
+          </span>
+        );
+      };
+
+      return (
+        <div className={rootClassName} ref={wrapperRef}>
+          {/* Clickable date trigger - clean text style */}
+          <button
+            type="button"
+            ref={buttonRef}
+            className={`date-field-trigger ${inputClassName ?? ''} ${hasActiveReminder ? 'has-reminder' : ''} ${hasValue ? 'has-value' : ''}`}
+            onClick={() => setOpen((prev) => !prev)}
+            disabled={disabled}
+            aria-label={ariaLabel ?? 'Select date'}
+            title={reminderTooltip}
+          >
+            <span className="date-field-text">{renderStructuredDate()}</span>
+          </button>
+          
+          {popoverContent && createPortal(popoverContent, document.body)}
+        </div>
+      );
 };
 
 const deriveVisibleMonth = (start?: string | null, end?: string | null) => {
@@ -804,7 +1085,7 @@ const formatDisplayDate = (iso: string) => {
 
 const formatMonthLabel = (date: Date) =>
   date.toLocaleDateString(undefined, {
-    month: 'long',
+    month: 'short',
     year: 'numeric'
   });
 
@@ -936,26 +1217,143 @@ const applyTimePreference = (iso: string, enabled: boolean, timeValue: string) =
 const includesTimeHint = (value: string) =>
   TIME_HINT_REGEX.test(value) || value.includes('T');
 
-const parseDateInput = (text: string) => {
-  const normalized = normalizeDateText(text);
-  if (!normalized) return null;
-  const keyword = normalized.toLowerCase();
-  if (KEYWORD_DATE_OFFSETS[keyword] !== undefined) {
-    const offset = KEYWORD_DATE_OFFSETS[keyword];
-    return formatDateOnly(addDays(new Date(), offset));
+const parseDateInput = (text: string): string | null => {
+  if (!text?.trim()) return null;
+  
+  const normalized = text.trim().toLowerCase();
+  const now = new Date();
+  let resultDate: Date | null = null;
+  let hasTime = false;
+  
+  // Extract time component if present (e.g., "at 3pm", "9:30 AM")
+  const timeMatch = normalized.match(/(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?|noon|midnight/i);
+  let hours = 0;
+  let minutes = 0;
+  
+  if (timeMatch) {
+    hasTime = true;
+    if (timeMatch[0].toLowerCase() === 'noon') {
+      hours = 12;
+    } else if (timeMatch[0].toLowerCase() === 'midnight') {
+      hours = 0;
+    } else {
+      hours = parseInt(timeMatch[1]);
+      minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+      const meridiem = timeMatch[3]?.toLowerCase();
+      if (meridiem === 'pm' && hours < 12) hours += 12;
+      if (meridiem === 'am' && hours === 12) hours = 0;
+    }
   }
-
-  const numericMatch = parseNumericDate(normalized);
+  
+  // Day names
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const dayAbbrev = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  
+  // Check for relative patterns
+  if (/^today/.test(normalized)) {
+    resultDate = new Date(now);
+  } else if (/^tomorrow/.test(normalized)) {
+    resultDate = addDays(now, 1);
+  } else if (/^yesterday/.test(normalized)) {
+    resultDate = addDays(now, -1);
+  }
+  // "in X days/weeks/months"
+  else if (/^in\s+(\d+)\s*(day|days|week|weeks|month|months)/.test(normalized)) {
+    const match = normalized.match(/^in\s+(\d+)\s*(day|days|week|weeks|month|months)/);
+    if (match) {
+      const amount = parseInt(match[1]);
+      const unit = match[2];
+      if (unit.startsWith('day')) {
+        resultDate = addDays(now, amount);
+      } else if (unit.startsWith('week')) {
+        resultDate = addDays(now, amount * 7);
+      } else if (unit.startsWith('month')) {
+        resultDate = addMonths(now, amount);
+      }
+    }
+  }
+  // "X days/weeks from now"
+  else if (/(\d+)\s*(day|days|week|weeks|month|months)\s+from\s+now/.test(normalized)) {
+    const match = normalized.match(/(\d+)\s*(day|days|week|weeks|month|months)\s+from\s+now/);
+    if (match) {
+      const amount = parseInt(match[1]);
+      const unit = match[2];
+      if (unit.startsWith('day')) {
+        resultDate = addDays(now, amount);
+      } else if (unit.startsWith('week')) {
+        resultDate = addDays(now, amount * 7);
+      } else if (unit.startsWith('month')) {
+        resultDate = addMonths(now, amount);
+      }
+    }
+  }
+  // "next week/month"
+  else if (/^next\s+week/.test(normalized)) {
+    resultDate = addDays(now, 7);
+  } else if (/^next\s+month/.test(normalized)) {
+    resultDate = addMonths(now, 1);
+  }
+  // "next Thursday", "this Friday"
+  else if (/^(next|this)\s+(\w+)/.test(normalized)) {
+    const match = normalized.match(/^(next|this)\s+(\w+)/);
+    if (match) {
+      const modifier = match[1];
+      const dayName = match[2];
+      let targetDay = dayNames.indexOf(dayName);
+      if (targetDay === -1) targetDay = dayAbbrev.indexOf(dayName.substring(0, 3));
+      
+      if (targetDay !== -1) {
+        const currentDay = now.getDay();
+        let daysUntil = targetDay - currentDay;
+        if (daysUntil <= 0) daysUntil += 7;
+        if (modifier === 'next' && daysUntil < 7) daysUntil += 7;
+        resultDate = addDays(now, daysUntil);
+      }
+    }
+  }
+  // Just a day name "Thursday", "Friday"
+  else {
+    for (let i = 0; i < dayNames.length; i++) {
+      if (normalized.startsWith(dayNames[i]) || normalized.startsWith(dayAbbrev[i])) {
+        const currentDay = now.getDay();
+        let daysUntil = i - currentDay;
+        if (daysUntil <= 0) daysUntil += 7; // Always forward
+        resultDate = addDays(now, daysUntil);
+        break;
+      }
+    }
+  }
+  
+  // If we got a date from relative parsing
+  if (resultDate) {
+    if (hasTime) {
+      resultDate.setHours(hours, minutes, 0, 0);
+      return formatLocalDateTime(resultDate);
+    }
+    return formatDateOnly(resultDate);
+  }
+  
+  // Try standard date formats
+  const normalizedText = normalizeDateText(text);
+  if (!normalizedText) return null;
+  
+  // Numeric formats (12/25, 03/02, etc.)
+  const numericMatch = parseNumericDate(normalizedText);
   if (numericMatch) return numericMatch;
-
-  const monthTextMatch = parseMonthTextDate(normalized);
+  
+  // Month name formats (December 25, Dec 7)
+  const monthTextMatch = parseMonthTextDate(normalizedText);
   if (monthTextMatch) return monthTextMatch;
-
-  const parsed = new Date(normalized);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return includesTimeHint(normalized)
-    ? formatLocalDateTime(parsed)
-    : formatDateOnly(parsed);
+  
+  // Try native Date parsing as last resort
+  const parsed = new Date(normalizedText);
+  if (!Number.isNaN(parsed.getTime())) {
+    return includesTimeHint(normalizedText)
+      ? formatLocalDateTime(parsed)
+      : formatDateOnly(parsed);
+  }
+  
+  return null;
 };
 
 const parseRangeInput = (text: string) => {
@@ -1053,81 +1451,38 @@ const buildDateIso = (
   return formatLocalDateTime(date);
 };
 
-const parseTimeSegment = (segment?: string) => {
-  if (!segment) return null;
-  const normalized = segment
-    .trim()
-    .replace(/^at\s+/i, '')
-    .toLowerCase();
-  if (!normalized) return null;
-  if (normalized === 'noon') {
-    return { hours: 12, minutes: 0 };
-  }
-  if (normalized === 'midnight') {
-    return { hours: 0, minutes: 0 };
-  }
-  const match = normalized.match(
-    /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/
-  );
-  if (!match) return null;
-  let hours = Number(match[1]);
-  const minutes = match[2] ? Number(match[2]) : 0;
-  const meridiem = match[3]?.toLowerCase();
-  if (
-    Number.isNaN(hours) ||
-    Number.isNaN(minutes) ||
-    hours > 24 ||
-    minutes > 59
-  ) {
-    return null;
-  }
-  if (meridiem === 'am') {
-    if (hours === 12) hours = 0;
-  } else if (meridiem === 'pm') {
-    if (hours < 12) hours += 12;
-  }
-  return { hours, minutes };
-};
-
 // Reminder helper functions
 const calculateReminderTime = (option: string, dueDate?: string | null): string => {
-  const now = new Date();
+  // Get due date or default to today
+  const dueDateObj = dueDate ? new Date(dueDate) : new Date();
+  
   switch (option) {
-    case '15min':
-      return new Date(now.getTime() + 15 * 60 * 1000).toISOString();
-    case '30min':
-      return new Date(now.getTime() + 30 * 60 * 1000).toISOString();
-    case '1hr':
-      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
-    case '3hr':
-      return new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString();
-    case 'tomorrow9am': {
-      const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(9, 0, 0, 0);
-      return tomorrow.toISOString();
-    }
-    case 'tomorrow6pm': {
-      const tomorrow = new Date(now);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(18, 0, 0, 0);
-      return tomorrow.toISOString();
-    }
-    case 'nextWeek': {
-      const nextWeek = new Date(now);
-      nextWeek.setDate(nextWeek.getDate() + 7);
-      nextWeek.setHours(9, 0, 0, 0);
-      return nextWeek.toISOString();
-    }
     case 'dueDate': {
-      // Use the task's due date if available, otherwise default to 1 hour from now
-      if (dueDate) {
-        return dueDate;
-      }
-      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+      // On day of event at 9 AM
+      const reminder = new Date(dueDateObj);
+      reminder.setHours(9, 0, 0, 0);
+      return reminder.toISOString();
+    }
+    case '1dayBefore': {
+      const reminder = new Date(dueDateObj);
+      reminder.setDate(reminder.getDate() - 1);
+      reminder.setHours(9, 0, 0, 0);
+      return reminder.toISOString();
+    }
+    case '2daysBefore': {
+      const reminder = new Date(dueDateObj);
+      reminder.setDate(reminder.getDate() - 2);
+      reminder.setHours(9, 0, 0, 0);
+      return reminder.toISOString();
+    }
+    case '1weekBefore': {
+      const reminder = new Date(dueDateObj);
+      reminder.setDate(reminder.getDate() - 7);
+      reminder.setHours(9, 0, 0, 0);
+      return reminder.toISOString();
     }
     default:
-      return new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+      return new Date(dueDateObj.getTime()).toISOString();
   }
 };
 

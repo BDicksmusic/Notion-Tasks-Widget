@@ -13,6 +13,7 @@ import {
 } from '../constants/matrix';
 import DateField from './DateField';
 import { getStatusColorClass } from '../utils/statusColors';
+import { playUISound } from '../utils/sounds';
 
 interface Props {
   onAdd(payload: NotionCreatePayload): Promise<void>;
@@ -133,6 +134,7 @@ const QuickAdd = ({
         mainEntry: notes.trim() || undefined,
         projectIds: selectedProjectId ? [selectedProjectId] : undefined
       });
+      playUISound('success');
       setValue('');
       setDate(todayISO());
       setDateEnd(null);
@@ -143,6 +145,7 @@ const QuickAdd = ({
       setSelectedProjectId('');
       setError(null);
     } catch (err) {
+      playUISound('error');
       setError(err instanceof Error ? err.message : 'Unable to create task');
     } finally {
       setPending(false);
@@ -277,24 +280,6 @@ const QuickAdd = ({
                 ))}
               </select>
             </div>
-            {projects.length > 0 && (
-              <div className="capture-project-inline">
-                <select
-                  className="project-select capture-project-select"
-                  value={selectedProjectId}
-                  onChange={(event) => setSelectedProjectId(event.target.value)}
-                  disabled={pending}
-                  aria-label="Project"
-                >
-                  <option value="">No project</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.title || 'Untitled'}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
 
           <div className="property-group-flags capture-property-group-flags">
@@ -338,6 +323,7 @@ const QuickAdd = ({
           </div>
         </div>
 
+        {/* Notes section */}
         <div
           className={`task-notes capture-task-notes ${
             showNotes ? 'is-open' : 'is-closing'
@@ -355,10 +341,10 @@ const QuickAdd = ({
                 id={notesFieldId}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="Write extra detail (maps to “Main Entry”)"
+                placeholder="Write extra detail (maps to 'Main Entry')"
                 disabled={pending}
               />
-              <p className="task-notes-hint">Maps to “Main Entry”</p>
+              <p className="task-notes-hint">Maps to "Main Entry"</p>
               <button
                 type="button"
                 className="task-notes-collapse"
@@ -371,20 +357,32 @@ const QuickAdd = ({
           )}
         </div>
 
-          <div className="capture-actions">
-            <button
-              type="submit"
-              className="capture-submit"
-              disabled={pending || !value.trim()}
-            >
-              {pending ? 'Adding…' : 'Add Task'}
-            </button>
+        {/* Project + Actions row */}
+        <div className="capture-footer-row">
+          <div className="capture-footer-left">
+            {projects.length > 0 && (
+              <select
+                className="project-select capture-project-select"
+                value={selectedProjectId}
+                onChange={(event) => setSelectedProjectId(event.target.value)}
+                disabled={pending}
+                aria-label="Project"
+              >
+                <option value="">No project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.title || 'Untitled'}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="capture-footer-right">
             {enableDragToPlace && value.trim() && (
               <div
                 className="capture-drag-handle"
                 draggable
                 onDragStart={(e) => {
-                  // Create payload for the new task
                   const payload: NotionCreatePayload = {
                     title: value.trim(),
                     date: date || undefined,
@@ -398,8 +396,6 @@ const QuickAdd = ({
                   };
                   e.dataTransfer.setData('application/x-new-task', JSON.stringify(payload));
                   e.dataTransfer.effectAllowed = 'copy';
-                  
-                  // Visual feedback
                   const dragElement = e.currentTarget as HTMLElement;
                   dragElement.classList.add('is-dragging');
                 }}
@@ -413,7 +409,15 @@ const QuickAdd = ({
                 <span className="drag-label">Drag to place</span>
               </div>
             )}
+            <button
+              type="submit"
+              className="capture-submit"
+              disabled={pending || !value.trim()}
+            >
+              {pending ? 'Adding…' : 'ADD TASK'}
+            </button>
           </div>
+        </div>
         </article>
 
         {error && <p className="inline-error">{error}</p>}

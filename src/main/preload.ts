@@ -116,6 +116,32 @@ const widgetAPI: WidgetAPI = {
   transcribeSpeech(payload) {
     return ipcRenderer.invoke('speech:transcribe', payload);
   },
+  
+  // Webhook Real-time Sync
+  registerWebhook() {
+    return ipcRenderer.invoke('webhook:register');
+  },
+  enableWebhook() {
+    return ipcRenderer.invoke('webhook:enable');
+  },
+  disableWebhook() {
+    return ipcRenderer.invoke('webhook:disable');
+  },
+  getWebhookStatus() {
+    return ipcRenderer.invoke('webhook:status');
+  },
+  getWebhookVerificationToken() {
+    return ipcRenderer.invoke('webhook:getVerificationToken');
+  },
+  onWebhookEvents(callback: (data: { count: number }) => void) {
+    ipcRenderer.on('webhook:events-processed', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('webhook:events-processed');
+  },
+  onWebhookPageDeleted(callback: (data: { pageId: string }) => void) {
+    ipcRenderer.on('webhook:page-deleted', (_event, data) => callback(data));
+    return () => ipcRenderer.removeAllListeners('webhook:page-deleted');
+  },
+  
   getAllTimeLogEntries(taskId) {
     return ipcRenderer.invoke('timeLog:getAllEntries', taskId);
   },
